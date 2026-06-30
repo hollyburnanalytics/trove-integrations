@@ -10,13 +10,14 @@ affiliation with, sponsorship by, or endorsement by those owners.
 
 ## Third-party software
 
-The only third-party package this project ships at runtime is:
+The source connectors ship a single third-party runtime package:
 
 - [`node-html-parser`](https://github.com/taoqf/node-html-parser) — MIT
 
-Everything else is build- and test-time tooling (Biome, ESLint and its plugins,
-TypeScript, Playwright, Vitest, Zod, etc.). That tooling is used to develop the
-project; it is not linked into or redistributed with the published source. A few
-of those dev/build dependencies carry weak-copyleft licenses (e.g. LGPL-3.0 for
-`eslint-plugin-sonarjs`, MPL-2.0 for `lightningcss`); because they are not
-distributed here, their terms do not extend to this MIT-licensed source.
+The MCP servers additionally run on the `@ontrove/mcp` SDK and `zod` when deployed
+— both MIT. Everything else is build- and test-time tooling (Biome, ESLint and its
+plugins, TypeScript, Playwright, Zod, etc.); it is used to develop the project, not
+linked into or redistributed with the published source. One of those dev
+dependencies carries a weak-copyleft license (LGPL-3.0 for `eslint-plugin-sonarjs`);
+because it is not distributed here, its terms do not extend to this MIT-licensed
+source.

@@ -1,4 +1,7 @@
 [test]
-# Enforced when running `bun test --coverage` (test:coverage / check / CI).
-coverageThreshold = { line = 0.95, function = 0.95 }
+# Per-file regression floor, enforced in CI (`bun test --coverage`). Bun honors the
+# PLURAL keys (lines/functions) — the singular forms are silently ignored, so keep
+# them plural. Global coverage is ~99%; this floor sits at the least-covered shared
+# helper (mcp/lib). Raise toward 0.95 once mcp/lib/http.ts + the test harness are covered.
+coverageThreshold = { lines = 0.85, functions = 0.80 }
 coverageSkipTestFiles = true

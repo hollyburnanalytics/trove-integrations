@@ -33,7 +33,7 @@ const FILING_TYPES = new Set([
 ]);
 
 const SEC_HEADERS = {
-  'User-Agent': 'TroveApp support@trove.app',
+  'User-Agent': 'TroveBot/0.1 (+https://github.com/hollyburnanalytics/trove-integrations)',
   Accept: 'application/json, text/html, */*',
 };
 

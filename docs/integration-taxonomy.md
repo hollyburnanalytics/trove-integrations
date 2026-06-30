@@ -39,17 +39,19 @@ is just "declares `trove:ingest`."
 
 ## Manifest fields
 
-```jsonc
-{
-  "id": "...", "name": "...", "description": "...", "icon": "...",
-  "version": "1.0.0",
-  "kind": "source" | "tool",
-  "trigger": "scheduled" | "on-demand",
-  "location": "cloud" | "client",
-  // tool: sdk, tools[], secrets[], egress[], scopes[], auth?
-  // source: transport, watermark, documentSemantics, schedule
-}
-```
+This page is a *conceptual map*, not the on-disk schema — the two kinds carry
+deliberately different manifests. For the authoritative, validator-enforced
+**source** schema, see [`connector-taxonomy.md`](connector-taxonomy.md) §4.
+
+- **Source** (`sources/**/manifest.json`) — `id`, `name`, `description`, `icon`,
+  `version`, `category`, `kind` (e.g. `scheduled-sync`), `transport`, `watermark`,
+  `documentSemantics`, `schedule`, `status`, optional `available`.
+- **Tool** (`mcp/**/manifest.json`) — `id`, `name`, `description`, `icon`,
+  `version`, `sdk`, `tools[]`, `secrets[]`, `egress[]`, `scopes[]`, `visibility`.
+
+The Source-vs-Tool distinction comes from the directory and manifest shape, not a
+literal `"kind": "source" | "tool"` field; the `trigger` and `location` axes above
+are descriptive, not manifest keys.
 
 ## ⚠️ Keep the runtimes separate
 
