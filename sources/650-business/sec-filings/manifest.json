@@ -1,0 +1,26 @@
+{
+  "id": "sec-filings",
+  "name": "SEC Filings",
+  "description": "10-K, 10-Q, 20-F, S-1, and F-1 filings for tracked companies via SEC EDGAR",
+  "icon": "🏛️",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "650-business",
+  "kind": "scheduled-sync",
+  "transport": "api",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "schedule": "daily",
+  "status": "implemented",
+  "available": false,
+  "auth": {},
+  "needs_browser": false,
+  "live": false,
+  "config": {
+    "tickers": {
+      "label": "Company Tickers",
+      "type": "array",
+      "default": []
+    }
+  }
+}

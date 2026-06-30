@@ -1,0 +1,18 @@
+{
+  "id": "our-world-in-data",
+  "name": "Our World in Data",
+  "description": "Research and data on how the world is changing, across health, poverty, energy and more (CC-BY)",
+  "icon": "🌍",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "300-social-sciences",
+  "kind": "scheduled-sync",
+  "transport": "scrape",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "schedule": "daily",
+  "status": "implemented",
+  "auth": {},
+  "needs_browser": false,
+  "live": false
+}

@@ -1,0 +1,12 @@
+{
+  "id": "ebay",
+  "name": "eBay",
+  "description": "Search live eBay listings and fetch listing details — price, condition, seller, shipping — across marketplaces. Real-time secondhand-market prices. Needs a free eBay developer key.",
+  "icon": "🛒",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": ["EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET"],
+  "egress": ["api.ebay.com"],
+  "scopes": [],
+  "visibility": "public"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "resend",
+  "name": "Resend Email",
+  "description": "Send email via Resend to a fixed owner address (the RECIPIENT_EMAIL secret) — for automated digests/notifications to yourself (e.g. a daily digest). Sending to your own address needs no domain setup. Needs a free Resend API key.",
+  "icon": "✉️",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": ["RESEND_API_KEY", "RECIPIENT_EMAIL"],
+  "egress": ["api.resend.com"],
+  "scopes": [],
+  "visibility": "public"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "x",
+  "name": "X (Twitter)",
+  "description": "Read posts and profiles from X (Twitter) via the official X API v2: a user's recent posts (choose originals/reposts/replies via include), one post + its quoted/replied context, get_post_replies (the reply thread under a post — what people are saying), search_posts (recent last-7-days OR full archive back to 2006 via a scope parameter, filterable by post type), count_posts (a count-only cost preview, recent OR full archive via the same scope), handle→profile lookup, and your own bookmarks. The read tools need a free X API Bearer Token (X_BEARER_TOKEN, from the X developer portal); get_bookmarks additionally needs user-context OAuth (X_OAUTH_CLIENT_ID, optional X_OAUTH_CLIENT_SECRET, and a X_OAUTH_REFRESH_TOKEN obtained via scripts/x-authorize.mjs). Reads are metered per the official X API pricing (https://docs.x.com/x-api/getting-started/pricing): $0.005 per post read, $0.010 per user lookup, and a discounted $0.001 'owned read' for your own bookmarks; count_posts is a flat per-request fee ($0.005 recent / $0.010 full archive) and same-resource re-reads within a UTC day are free. Each tool states its cost in its description.",
+  "icon": "🐦",
+  "version": "1.6.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": [
+    "X_BEARER_TOKEN",
+    "X_OAUTH_CLIENT_ID",
+    "X_OAUTH_CLIENT_SECRET",
+    "X_OAUTH_REFRESH_TOKEN"
+  ],
+  "egress": ["api.x.com"],
+  "scopes": [],
+  "visibility": "public"
+}

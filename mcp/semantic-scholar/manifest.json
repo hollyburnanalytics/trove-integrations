@@ -1,0 +1,12 @@
+{
+  "id": "semantic-scholar",
+  "name": "Semantic Scholar",
+  "description": "Search and read academic papers from the public Semantic Scholar Graph API.",
+  "icon": "🔬",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": [],
+  "egress": ["api.semanticscholar.org"],
+  "scopes": [],
+  "visibility": "public"
+}

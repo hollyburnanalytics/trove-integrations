@@ -1,0 +1,12 @@
+{
+  "id": "arxiv",
+  "name": "arXiv",
+  "description": "Search and fetch scientific papers from the public arXiv.org preprint server.",
+  "icon": "📚",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": [],
+  "egress": ["export.arxiv.org"],
+  "scopes": [],
+  "visibility": "public"
+}

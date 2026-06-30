@@ -1,0 +1,18 @@
+{
+  "id": "lennys-newsletter",
+  "name": "Lenny's Newsletter",
+  "description": "Lenny Rachitsky on product, growth, and career",
+  "icon": "🎯",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "650-business",
+  "kind": "scheduled-sync",
+  "transport": "feed",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "schedule": "weekly",
+  "status": "implemented",
+  "auth": {},
+  "needs_browser": false,
+  "live": false
+}

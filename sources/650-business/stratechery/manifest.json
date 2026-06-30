@@ -1,0 +1,18 @@
+{
+  "id": "stratechery",
+  "name": "Stratechery",
+  "description": "Ben Thompson on tech strategy and business models",
+  "icon": "📊",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "650-business",
+  "kind": "scheduled-sync",
+  "transport": "feed",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "schedule": "daily",
+  "status": "implemented",
+  "auth": {},
+  "needs_browser": false,
+  "live": false
+}

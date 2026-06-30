@@ -1,0 +1,24 @@
+{
+  "id": "rss-feeds",
+  "name": "RSS Feeds",
+  "description": "Subscribe to any RSS or Atom feed. Configure multiple feed URLs.",
+  "icon": "📡",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "000-general",
+  "kind": "scheduled-sync",
+  "transport": "feed",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "schedule": "every 2 hours",
+  "status": "implemented",
+  "available": false,
+  "auth": {
+    "feeds": {
+      "label": "Feed URLs",
+      "type": "url[]"
+    }
+  },
+  "needs_browser": false,
+  "live": false
+}

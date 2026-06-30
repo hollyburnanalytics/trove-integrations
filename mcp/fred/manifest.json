@@ -1,0 +1,12 @@
+{
+  "id": "fred",
+  "name": "FRED Economic Data",
+  "description": "Search and fetch U.S. economic time-series (rates, CPI, GDP, employment…) from the St. Louis Fed FRED API. Requires a FRED_API_KEY secret (free from fred.stlouisfed.org).",
+  "icon": "📈",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": ["FRED_API_KEY"],
+  "egress": ["api.stlouisfed.org"],
+  "scopes": [],
+  "visibility": "public"
+}

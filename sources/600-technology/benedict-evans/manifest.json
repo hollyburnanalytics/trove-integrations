@@ -1,0 +1,18 @@
+{
+  "id": "benedict-evans",
+  "name": "Benedict Evans",
+  "description": "Weekly analysis of technology trends and shifts",
+  "icon": "📱",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "600-technology",
+  "kind": "scheduled-sync",
+  "transport": "feed",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "schedule": "daily",
+  "status": "implemented",
+  "auth": {},
+  "needs_browser": false,
+  "live": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "hacker-news",
+  "name": "Hacker News",
+  "description": "Top stories from the HN front page",
+  "icon": "🔶",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "070-news",
+  "kind": "scheduled-sync",
+  "transport": "api",
+  "watermark": "none",
+  "documentSemantics": "append",
+  "schedule": "every 1 hour",
+  "status": "implemented",
+  "auth": {},
+  "needs_browser": false,
+  "live": false
+}

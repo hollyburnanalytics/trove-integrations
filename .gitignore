@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Lockfiles — this project uses bun; keep only bun.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+
+# mise local state
+.mise/
+
+# Claude Code local settings (user-specific)
+.claude/settings.local.json
+
+# Local working artifacts (not part of the public repo)
+/OPEN-SOURCE-READINESS.md
+
+# Private, local-only working rules for AI assistants (never commit)
+CLAUDE.local.md
+
+# Internal authoring aids — not part of the public gallery.
+.claude/

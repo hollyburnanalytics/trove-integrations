@@ -1,0 +1,23 @@
+{
+  "id": "arxiv-papers",
+  "name": "arXiv Papers",
+  "description": "ML and CS paper abstracts matching your search queries",
+  "icon": "📄",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "500-science",
+  "kind": "scheduled-sync",
+  "transport": "api",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "schedule": "every 6 hours",
+  "status": "implemented",
+  "auth": {
+    "queries": {
+      "label": "Search Queries",
+      "type": "text[]"
+    }
+  },
+  "needs_browser": false,
+  "live": false
+}

@@ -1,0 +1,12 @@
+{
+  "id": "world-bank",
+  "name": "World Bank Data",
+  "description": "Global development indicators (GDP, population, inflation, health…) from the free World Bank API. No key required.",
+  "icon": "🌍",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": [],
+  "egress": ["api.worldbank.org"],
+  "scopes": [],
+  "visibility": "public"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "nytimes-headlines",
+  "name": "NYTimes Headlines",
+  "description": "Top headlines from the New York Times homepage via RSS (no full article text)",
+  "icon": "📰",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "070-news",
+  "kind": "scheduled-sync",
+  "transport": "api",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "schedule": "every 2 hours",
+  "status": "implemented",
+  "auth": {},
+  "needs_browser": false,
+  "live": false
+}

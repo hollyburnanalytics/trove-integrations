@@ -1,0 +1,18 @@
+{
+  "id": "apple-podcasts",
+  "name": "Apple Podcasts",
+  "description": "Transcripts of new episodes from the podcasts you follow in the Apple Podcasts app",
+  "icon": "🎙️",
+  "version": "0.2.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "000-general",
+  "kind": "scheduled-sync",
+  "transport": "local",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "schedule": "every 6 hours",
+  "status": "implemented",
+  "auth": {},
+  "needs_browser": false,
+  "live": false
+}

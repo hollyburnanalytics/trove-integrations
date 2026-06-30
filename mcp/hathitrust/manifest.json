@@ -1,0 +1,12 @@
+{
+  "id": "hathitrust",
+  "name": "HathiTrust",
+  "description": "Look up whether HathiTrust's 18M-volume digital library holds a book (by ISBN/OCLC/LCCN), with per-copy access rights and reading links. No key required.",
+  "icon": "📚",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": [],
+  "egress": ["catalog.hathitrust.org"],
+  "scopes": [],
+  "visibility": "public"
+}

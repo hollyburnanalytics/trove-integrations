@@ -1,0 +1,18 @@
+{
+  "id": "openstax",
+  "name": "OpenStax",
+  "description": "Free, peer-reviewed, openly licensed (Creative Commons) college textbooks across the sciences, social sciences, humanities, and business — full section text pulled from OpenStax's official content API. A bounded corpus (~130 books) backfilled incrementally.",
+  "icon": "📚",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "000-general",
+  "kind": "scheduled-sync",
+  "transport": "api",
+  "watermark": "idSet",
+  "documentSemantics": "append",
+  "schedule": "monthly",
+  "status": "implemented",
+  "auth": {},
+  "needs_browser": false,
+  "live": false
+}
