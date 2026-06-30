@@ -16,7 +16,7 @@ The source connectors ship a single third-party runtime package:
 
 The MCP servers additionally run on the `@ontrove/mcp` SDK and `zod` when deployed
 — both MIT. Everything else is build- and test-time tooling (Biome, ESLint and its
-plugins, TypeScript, Playwright, Zod, etc.); it is used to develop the project, not
+plugins, TypeScript, Zod, etc.); it is used to develop the project, not
 linked into or redistributed with the published source. One of those dev
 dependencies carries a weak-copyleft license (LGPL-3.0 for `eslint-plugin-sonarjs`);
 because it is not distributed here, its terms do not extend to this MIT-licensed

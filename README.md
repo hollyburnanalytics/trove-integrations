@@ -24,8 +24,6 @@ searchable knowledge base in the background. On their own, agents struggle to:
   API, or the weather through one typed `/mcp` endpoint, instead of guessing.
 - **Reach your own accounts and feeds** — your newsletters, your read-later
   list, your podcast queue.
-- **Read JavaScript-heavy pages** — many modern sites don't render with a simple
-  HTTP fetch.
 - **Maintain state across sessions** — knowing what's already been fetched vs.
   what's new.
 - **Access historical archives** — years of RSS history, paged API backfills.

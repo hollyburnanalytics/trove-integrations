@@ -124,7 +124,6 @@ config/auth UI exists. Absent = available. (Currently off: rss-feeds, sec-filing
 | `feed` (RSS/Atom) | none | `650-business/stratechery`, `000-general/rss-feeds` | `syncRSS()` / `parseRSS()` |
 | `scrape` (CC full-text) | none | `500-science/quanta-magazine` | `syncFeedArticles()` |
 | `api` (JSON/REST) | none **or** API key | `070-news/hacker-news` (keyless) | Direct `fetch` |
-| `browser` | cookies | — | Playwright via `ctx.browser` |
 
 The repo favours **direct pulls** — public feeds and official/documented APIs — and stores
 bodies as plain text (`htmlToText()`), no rich-Markdown reconstruction. The one exception is
@@ -139,9 +138,8 @@ The harness provides:
 - `ctx.log` — `{ info(), warn(), error() }` logger (lines go to stderr)
 - `ctx.progress(count, message)` — update sync progress
 - `ctx.config` — connector **preferences** from the manifest (feed URLs, sections — NO secrets)
-- `ctx.credentials` — secrets sourced from the macOS Keychain (API keys, cookies); kept separate from `config` and never stored in the cloud
+- `ctx.credentials` — secrets sourced from the macOS Keychain (API keys, tokens); kept separate from `config` and never stored in the cloud
 - `ctx.cursor` — previous cursor value (`undefined` on first sync)
-- `ctx.browser` — Playwright BrowserContext (only when `needs_browser: true`)
 
 ## Return Shape
 
@@ -171,7 +169,6 @@ The harness provides:
 
 - Has an RSS/Atom feed? → Use `syncRSS()` (easiest, 8 lines)
 - Has a JSON API? → Fetch directly
-- Needs login/cookies? → Browser connector with `ctx.browser`
 
 ### Step 2: Create the files
 
@@ -283,13 +280,6 @@ export async function sync(ctx) {
   };
 }
 ```
-
-### Browser-Based (scroll-and-collect)
-Browser connectors drive a Playwright `ctx.browser`. Key patterns:
-- Wait for content: `await page.waitForSelector('<selector>', { timeout: 15000 })`
-- Extract via `page.evaluate(() => { ... })` — DOM code runs in browser
-- Scroll to load content, pausing for network/render between scrolls
-- Always close page in `finally` block
 
 ## Linting
 

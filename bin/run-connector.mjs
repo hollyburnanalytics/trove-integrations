@@ -16,8 +16,6 @@
  *   --timeout <ms>          Hard-timeout budget (default: 120000)
  *   --cursor <json>         Resume cursor, as a JSON value
  *   --config <key=value>    Connector config entry (repeatable)
- *   --no-browser            Skip launching a browser even if the manifest needs one
- *   --headless              Launch the browser headless (or set TROVE_HEADLESS=1)
  *   --json                  Print the full result as JSON instead of a summary
  *
  * Examples:
@@ -38,8 +36,6 @@ function parseArguments(argv) {
     timeoutMs: DEFAULT_TIMEOUT_MS,
     cursor: undefined,
     config: {},
-    browser: true,
-    headless: process.env.TROVE_HEADLESS === '1',
     json: false,
     connectorPath: undefined,
   };
@@ -61,14 +57,6 @@ function parseArguments(argv) {
       case '--config': {
         const [key, ...rest] = argv[++index].split('=');
         options.config[key] = rest.join('=');
-        break;
-      }
-      case '--no-browser': {
-        options.browser = false;
-        break;
-      }
-      case '--headless': {
-        options.headless = true;
         break;
       }
       case '--json': {
@@ -114,36 +102,9 @@ function logLine(level, message) {
   );
 }
 
-/** Launch a Playwright browser context for connectors that need one. */
-async function launchBrowser(connectorPath, headless) {
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch({
-    headless,
-    args: ['--disable-dev-shm-usage'], // shared-memory flag for CI/containers, not evasion
-    ...(headless ? {} : { channel: 'chrome' }),
-  });
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-    locale: 'en-US',
-  });
-  logLine('info', `launched browser (${headless ? 'headless' : 'chrome'}) for ${connectorPath}`);
-  return { browser, context };
-}
-
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   const manifest = readManifest(options.connectorPath);
-
-  let browser;
-  let browserContext;
-  if (manifest.needs_browser && options.browser) {
-    ({ browser, context: browserContext } = await launchBrowser(
-      options.connectorPath,
-      options.headless,
-    ));
-  } else if (manifest.needs_browser) {
-    logLine('warn', 'manifest needs a browser but --no-browser was passed; running without one');
-  }
 
   logLine(
     'info',
@@ -157,7 +118,6 @@ async function main() {
       method: /** @type {'sync' | 'query'} */ (options.method),
       config: options.config,
       cursor: options.cursor,
-      browser: browserContext,
       timeoutMs: options.timeoutMs,
       onLog: logLine,
       onProgress: (documentsSoFar, message) =>
@@ -184,9 +144,6 @@ async function main() {
   } catch (error) {
     logLine('error', error?.message ?? String(error));
     process.exitCode = 1;
-  } finally {
-    if (browserContext) await browserContext.close().catch(() => {});
-    if (browser) await browser.close().catch(() => {});
   }
 }
 

@@ -40,7 +40,6 @@
     "eslint": "^10.1.0",
     "eslint-plugin-sonarjs": "^4.0.2",
     "eslint-plugin-unicorn": "^63.0.0",
-    "playwright": "^1.58.2",
     "typescript": "^6.0.2",
     "zod": "^3.25.28"
   }

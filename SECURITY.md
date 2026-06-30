@@ -17,8 +17,8 @@ When reporting, please include:
 
 ## Scope & handling secrets
 
-These connectors handle credentials you supply (API keys, cookies, session
-tokens). Keep the following in mind:
+These connectors handle credentials you supply (API keys and OAuth tokens).
+Keep the following in mind:
 
 - **Never commit secrets.** Use environment variables / `.env` (git-ignored) and
   the host's secret store. See [`.env.example`](.env.example) for the variables
