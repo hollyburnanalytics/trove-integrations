@@ -1,0 +1,12 @@
+{
+  "id": "orgbook-bc",
+  "name": "OrgBook BC",
+  "description": "Verify BC-registered legal entities in the province's public corporate registry (OrgBook BC) — search by name, look up a registration number, and read an entity's registration/name history. No key needed.",
+  "icon": "🏛️",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": [],
+  "egress": ["orgbook.gov.bc.ca"],
+  "scopes": [],
+  "visibility": "public"
+}
