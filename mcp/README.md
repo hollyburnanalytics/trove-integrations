@@ -45,6 +45,7 @@ in their manifest `egress`.
 | `canada-open-data` | `search_datasets`, `get_dataset`, `query_dataset`, `find_organizations` | open.canada.ca (CKAN — federal + provincial) | — |
 | `openparliament` | `find_mp`, `mp_speeches`, `search_bills` | api.openparliament.ca (Canada Hansard) | — |
 | `dnv-permits` | `search_permits`, `suggest_addresses`, `recent_permits` | app.dnv.org (District of North Vancouver) | — |
+| `orgbook-bc` | `search_entities`, `get_entity`, `get_entity_history` | orgbook.gov.bc.ca (BC Corporate Registry mirror) | — ◊|
 
 ### Geo, weather & time
 | Server | Tools | Source | Auth |
@@ -81,6 +82,16 @@ in their manifest `egress`.
 | `resend` | `send_email` | api.resend.com | **`RESEND_API_KEY` + `RECIPIENT_EMAIL`** ※|
 
 ※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted connectors are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
+
+◊ `orgbook-bc` — **verify BC-registered legal entities** in the province's public
+registry (OrgBook BC, the verifiable-credential mirror of the BC Corporate
+Registry): ranked name search, exact lookup by registration number (`BC…`/`FM…`/
+`S…`), and the credential timeline behind a registration (name changes, business
+number, Active/Historical transitions). Keyless. The API has no
+lookup-by-registration-number endpoint, so `get_entity` searches the number and
+then insists on an exact `source_id` match — a fuzzy near-miss is treated as
+not-found, never returned as the answer. Pairs naturally with `jonas-premier`:
+confirm a vendor's exact legal name and status before money moves.
 
 ¶ `jonas-premier` — **read-only window into a Premier Construction Software
 (Jonas Premier) tenant**: companies → jobs → job-cost transactions & original
