@@ -60,6 +60,11 @@ in their manifest `egress`.
 | `fred` | `search_series`, `get_observations` | api.stlouisfed.org (St. Louis Fed) | **`FRED_API_KEY`** |
 | `openfda` | `search_drug_labels`, `search_recalls` | api.fda.gov | — |
 
+### Business ops
+| Server | Tools | Source | Auth |
+|---|---|---|---|
+| `jonas-premier` | `list_companies`, `search_jobs`, `get_job_transactions`, `get_job_estimate`, `search_vendors`, `get_ap_invoices`, `get_ap_payments`, `get_gl_accounts`, `get_subcontracts`, `get_subcontract_change_orders` | api.jonas-premier.com (Premier Construction Software External API) | **`JONAS_USERNAME` + `JONAS_PASSWORD`** ¶|
+
 ### Social
 | Server | Tools | Source | Auth |
 |---|---|---|---|
@@ -77,6 +82,21 @@ in their manifest `egress`.
 
 ※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted connectors are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
 
+¶ `jonas-premier` — **read-only window into a Premier Construction Software
+(Jonas Premier) tenant**: companies → jobs → job-cost transactions & original
+estimates, vendors → AP invoices & payments, GL accounts, and subcontracts with
+their change orders (contract amount + builders-lien holdback %). Auth is the
+vendor's documented OAuth2 *password* grant (`POST /Authenticate`, fixed client
+id `Premier.ExternalAPI`) using an **API user created inside the Premier tenant**
+— the SDK's declarative client-credentials block doesn't fit, so the server
+hand-rolls the mint with a **per-user token cache** (one tenant's token must
+never serve another) and one re-mint on 401. Quirks worth knowing: the tenant is
+multi-company, so `list_companies` comes first; the AP tools require an
+`apSubledgerId` that comes from a `search_vendors` result; and
+`get_job_transactions` requires an updated-date range (Premier's rule — it keeps
+pulls time-boxed). Write endpoints (create/pay invoices, create subcontracts) and
+the Payroll module (employee PII) are deliberately not exposed.
+
 ‡ `hathitrust` — covers the **public Bibliographic API** only: given an ISBN/OCLC/LCCN/HathiTrust id it reports holdings + per-copy access rights (Full view = readable public domain, vs Limited = search-only). Its distinctive value over Open Library / Google Books is that **rights signal** — "can I actually read this, or only search it?" — plus a deep-link to the reader for full-view scans. It's an *exact-identifier* lookup against HathiTrust's catalog records, not a fuzzy search: an `htid` is the most reliable key and ISBN works well for modern books, but an arbitrary edition's OCLC can miss even when the work is held. HathiTrust gates corpus-wide *full-text search* (it 403s automated clients and requires partner credentials), so that surface is intentionally not exposed. For full-text search *inside* a book, use `gutenberg`.
 
 § `gutenberg` — beyond discovery, the high-value tool is `search_inside`: legal full-text search within any public-domain book, good for **locating/verifying a quotation** (exact wording + citation offset), **detecting misquotes** (e.g. "Elementary, my dear Watson" returns zero matches in the Sherlock canon), and **term-frequency** checks (e.g. "Napoleon" × 588 in *War and Peace*). `get_excerpt` then pages through the text from any offset. Book text is fetched from the fast University of Waterloo PG mirror (gutenberg.org's own origin serves a 1 MB book in ~10 s — past the gateway wall-clock; the mirror returns *War and Peace*'s 3.4 MB in ~1 s), with gutenberg.org as fallback. Matching is case-insensitive substring (not regex/semantic), and non-English title searches need exact accents.
@@ -89,7 +109,7 @@ trove secret set <slug> <NAME> <value>          # for servers that declare secre
 trove mcp ls                                    # list your deployed servers
 ```
 
-Servers declaring secrets (`mapbox`, `fred`, `ebay`, `x`) return a clear "not set" /
+Servers declaring secrets (`mapbox`, `fred`, `ebay`, `x`, `jonas-premier`) return a clear "not set" /
 "not declared" error until their secret is set (a secret is registered to a
 server the first time you `trove secret set` it). Auth'd APIs redeem the key at
 call time from the encrypted vault via `ctx.secret(...)` — it is never bundled or

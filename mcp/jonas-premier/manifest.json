@@ -1,0 +1,12 @@
+{
+  "id": "jonas-premier",
+  "name": "Jonas Premier",
+  "description": "Read a Premier Construction Software (Jonas Premier) tenant — companies, jobs, job-cost transactions, estimates, vendors, AP invoices & payments, GL accounts, subcontracts, and subcontract change orders. Read-only; needs an API user created in Premier.",
+  "icon": "🏗️",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": ["JONAS_USERNAME", "JONAS_PASSWORD"],
+  "egress": ["api.jonas-premier.com"],
+  "scopes": [],
+  "visibility": "public"
+}
