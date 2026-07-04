@@ -179,7 +179,7 @@ describe('parseRSS', () => {
     expect(items[0].link).toBe('https://example.com/test');
   });
 
-  it('uses a self-closing <link href> when no rel="alternate" is present (connectors-2)', () => {
+  it('uses a self-closing <link href> when no rel="alternate" is present (sources-2)', () => {
     // Many Atom feeds emit a single <link href="..."/> with no rel attribute;
     // the alternate-specific regexes miss it, so a plain href fallback is needed.
     const xml = `<feed xmlns="http://www.w3.org/2005/Atom">

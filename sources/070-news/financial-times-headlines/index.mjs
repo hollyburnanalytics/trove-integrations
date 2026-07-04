@@ -1,5 +1,5 @@
 /**
- * Financial Times Connector
+ * Financial Times source
  *
  * Fetches headlines and summaries from the FT's public RSS feeds.
  * No auth required — the RSS feeds provide headlines and summaries only.

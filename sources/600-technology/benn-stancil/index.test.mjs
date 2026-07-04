@@ -18,7 +18,7 @@ function makeContext() {
   };
 }
 
-describe('benn-stancil connector', () => {
+describe('benn-stancil source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

@@ -1,7 +1,7 @@
 ---
-name: New connector request
-about: Suggest a data source to add as a connector
-title: "[connector] "
+name: New source request
+about: Suggest a data source to add to the catalog
+title: "[source] "
 labels: enhancement
 ---
 

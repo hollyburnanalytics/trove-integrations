@@ -1,20 +1,20 @@
 /**
- * In-process connector harness.
+ * In-process source-adapter harness.
  *
- * Runs a connector's `sync()` / `query()` through the *same* `context` contract
+ * Runs a source's `sync()` / `query()` through the *same* `context` contract
  * the production runtime builds, but with plain in-process callbacks. This lets
- * connectors be exercised standalone — from the `bin/run-connector.mjs` CLI and
- * from contract/fixture tests in CI.
+ * source adapters be exercised standalone — from the `bin/run-source.mjs` CLI
+ * and from contract/fixture tests in CI.
  *
  * CONTRACT:
  *   - soft deadline = Date.now() + floor(timeoutMs * {@link SOFT_BUDGET_RATIO})
  *   - context.log.{info,warn,error}(msg)
  *   - context.progress(documentsSoFar, message)
- *   - the connector returns `{ documents: Doc[], cursor?, stats? }`, where each
+ *   - the source returns `{ documents: Doc[], cursor?, stats? }`, where each
  *     Doc has string `id`, `title`, and `text`.
  *
- * The harness validates the returned shape so connector bugs surface here — in
- * CI — instead of as an opaque runtime error.
+ * The harness validates the returned shape so source-adapter bugs surface here
+ * — in CI — instead of as an opaque runtime error.
  */
 
 import path from 'node:path';
@@ -24,39 +24,39 @@ import { pathToFileURL } from 'node:url';
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
- * Fraction of the hard-timeout budget granted to the connector as its soft
+ * Fraction of the hard-timeout budget granted to the source adapter as its soft
  * deadline. The remaining margin covers the final in-flight fetch and the
  * result/cursor write.
  */
 export const SOFT_BUDGET_RATIO = 0.8;
 
 /**
- * Thrown when a connector returns a value that violates the result contract
+ * Thrown when a source returns a value that violates the result contract
  * (not an object, missing/!array `documents`, or a malformed document). This is
- * the in-harness analogue of the app's "Invalid response from connector
+ * the in-harness analogue of the app's "Invalid response from source
  * runtime", raised with a specific reason.
  */
-export class InvalidConnectorResponseError extends Error {
+export class InvalidSourceResponseError extends Error {
   /** @param {string} message - Why the response is invalid. */
   constructor(message) {
     super(message);
-    this.name = 'InvalidConnectorResponseError';
+    this.name = 'InvalidSourceResponseError';
   }
 }
 
 /**
- * Build the `context` object passed to a connector's `sync()` / `query()`.
+ * Build the `context` object passed to a source's `sync()` / `query()`.
  *
  * @param {object} options - Context inputs.
- * @param {Record<string, string>} [options.config] - Connector config.
- * @param {Record<string, string>} [options.credentials] - Connector credentials.
+ * @param {Record<string, string>} [options.config] - Source config.
+ * @param {Record<string, string>} [options.credentials] - Source credentials.
  * @param {unknown} [options.cursor] - Resume cursor from a prior run.
  * @param {unknown} [options.browser] - Playwright browser context, or null.
  * @param {number} [options.timeoutMs] - Hard-timeout budget in ms.
  * @param {number} [options.now] - Current epoch ms (injectable for tests).
  * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [options.onLog] - Log sink.
  * @param {(documentsSoFar: number, message: string) => void} [options.onProgress] - Progress sink.
- * @returns {object} The connector context.
+ * @returns {object} The source context.
  */
 export function buildContext({
   config,
@@ -91,16 +91,16 @@ export function buildContext({
  *
  * @param {unknown} document - One entry of the `documents` array.
  * @param {number} index - Its position, for error messages.
- * @throws {InvalidConnectorResponseError} If the document is malformed.
+ * @throws {InvalidSourceResponseError} If the document is malformed.
  */
 function validateDocument(document, index) {
   if (document === null || typeof document !== 'object') {
-    throw new InvalidConnectorResponseError(`document at index ${index} is not an object`);
+    throw new InvalidSourceResponseError(`document at index ${index} is not an object`);
   }
   const record = /** @type {Record<string, unknown>} */ (document);
   for (const field of ['id', 'title']) {
     if (typeof record[field] !== 'string') {
-      throw new InvalidConnectorResponseError(
+      throw new InvalidSourceResponseError(
         `document at index ${index} has a non-string \`${field}\``,
       );
     }
@@ -110,27 +110,27 @@ function validateDocument(document, index) {
   const hasText = typeof record.text === 'string';
   const hasAudio = typeof record.audio_url === 'string' && record.audio_url !== '';
   if (!hasText && !hasAudio) {
-    throw new InvalidConnectorResponseError(
+    throw new InvalidSourceResponseError(
       `document at index ${index} has neither \`text\` nor \`audio_url\``,
     );
   }
 }
 
 /**
- * Validate a connector's return value against the result contract.
+ * Validate a source's return value against the result contract.
  *
  * @param {unknown} result - The value returned by `sync()` / `query()`.
- * @throws {InvalidConnectorResponseError} If the shape is invalid.
+ * @throws {InvalidSourceResponseError} If the shape is invalid.
  */
 export function validateResult(result) {
   if (result === null || typeof result !== 'object') {
-    throw new InvalidConnectorResponseError(
-      `connector returned ${result === null ? 'null' : typeof result}, expected an object`,
+    throw new InvalidSourceResponseError(
+      `source returned ${result === null ? 'null' : typeof result}, expected an object`,
     );
   }
   const { documents } = /** @type {{ documents?: unknown }} */ (result);
   if (!Array.isArray(documents)) {
-    throw new InvalidConnectorResponseError('connector result is missing a `documents` array');
+    throw new InvalidSourceResponseError('source result is missing a `documents` array');
   }
   for (const [index, document] of documents.entries()) {
     validateDocument(document, index);
@@ -138,40 +138,38 @@ export function validateResult(result) {
 }
 
 /**
- * Resolve a connector directory to the absolute file URL of its `index.mjs`.
+ * Resolve a source directory to the absolute file URL of its `index.mjs`.
  *
- * @param {string} connectorPath - Absolute or cwd-relative path to the connector directory.
- * @returns {string} A `file://` URL for the connector entry module.
+ * @param {string} sourcePath - Absolute or cwd-relative path to the source directory.
+ * @returns {string} A `file://` URL for the source entry module.
  */
-function connectorModuleUrl(connectorPath) {
-  const abs = path.isAbsolute(connectorPath)
-    ? connectorPath
-    : path.resolve(process.cwd(), connectorPath);
+function sourceModuleUrl(sourcePath) {
+  const abs = path.isAbsolute(sourcePath) ? sourcePath : path.resolve(process.cwd(), sourcePath);
   return pathToFileURL(path.join(abs, 'index.mjs')).href;
 }
 
 /**
- * Import and run a connector method, returning a normalized result.
+ * Import and run a source method, returning a normalized result.
  *
- * Executes a connector method: pick `sync`/`query`, build the context, invoke,
+ * Executes a source method: pick `sync`/`query`, build the context, invoke,
  * validate the shape, and normalize to `{ documents, cursor, stats }` with a
  * measured `duration_ms`.
  *
  * @param {object} options - Run inputs.
- * @param {string} options.connectorPath - Path to the connector directory.
+ * @param {string} options.sourcePath - Path to the source directory.
  * @param {'sync' | 'query'} [options.method] - Method to invoke (default 'sync').
- * @param {Record<string, string>} [options.config] - Connector config.
- * @param {Record<string, string>} [options.credentials] - Connector credentials.
+ * @param {Record<string, string>} [options.config] - Source config.
+ * @param {Record<string, string>} [options.credentials] - Source credentials.
  * @param {unknown} [options.cursor] - Resume cursor.
  * @param {unknown} [options.browser] - Playwright browser context, or null.
  * @param {number} [options.timeoutMs] - Hard-timeout budget in ms.
  * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [options.onLog] - Log sink.
  * @param {(documentsSoFar: number, message: string) => void} [options.onProgress] - Progress sink.
  * @returns {Promise<{ documents: object[], cursor: unknown, stats: object }>} Normalized result.
- * @throws {InvalidConnectorResponseError} If the connector lacks the method or returns an invalid shape.
+ * @throws {InvalidSourceResponseError} If the source lacks the method or returns an invalid shape.
  */
-export async function runConnector({
-  connectorPath,
+export async function runSource({
+  sourcePath,
   method = 'sync',
   config,
   credentials,
@@ -181,10 +179,10 @@ export async function runConnector({
   onLog,
   onProgress,
 }) {
-  const connector = await import(connectorModuleUrl(connectorPath));
-  const function_ = method === 'query' ? connector.query : connector.sync;
+  const source = await import(sourceModuleUrl(sourcePath));
+  const function_ = method === 'query' ? source.query : source.sync;
   if (typeof function_ !== 'function') {
-    throw new InvalidConnectorResponseError(`connector does not export ${method}()`);
+    throw new InvalidSourceResponseError(`source does not export ${method}()`);
   }
 
   const context = buildContext({

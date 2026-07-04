@@ -5,7 +5,7 @@
   "type": "module",
   "license": "MIT",
   "author": "Hollyburn Analytics Inc.",
-  "description": "Data-source connectors and MCP tool servers that connect Trove (and AI agents) to the outside world.",
+  "description": "Toolkits and sources that connect Trove (and AI agents) to the outside world.",
   "repository": {
     "type": "git",
     "url": "https://github.com/hollyburnanalytics/trove-integrations.git"
@@ -25,7 +25,7 @@
     "typecheck": "bun run typecheck:mcp && bun run typecheck:sources",
     "typecheck:mcp": "tsc --noEmit -p mcp/tsconfig.json",
     "typecheck:sources": "tsc -p tsconfig.sources.json",
-    "connector": "bun bin/run-connector.mjs",
+    "source": "bun bin/run-source.mjs",
     "check": "bun run lint && bun run lint:sonar && bun run test:coverage && bun run typecheck && bun run validate",
     "validate": "bun scripts/validate-registry.mjs",
     "lint:sonar": "eslint ."

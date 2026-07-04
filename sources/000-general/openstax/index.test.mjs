@@ -99,7 +99,7 @@ const context = (overrides = {}) => ({
   ...overrides,
 });
 
-describe('openstax connector', () => {
+describe('openstax source', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     deadlineReached.mockReturnValue(false);

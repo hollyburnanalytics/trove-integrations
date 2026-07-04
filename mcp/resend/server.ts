@@ -7,7 +7,7 @@ import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
  * applies send-time confirmation.
  *
  * The motivating use case is letting an automated agent email the user — e.g. a
- * scheduled daily digest — in settings where only remote/hosted connectors are
+ * scheduled daily digest — in settings where only remote/hosted MCP servers are
  * reachable (not a local stdio MCP). The recipient is
  * **fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are not allowed,
  * so this tool can only ever email that one address — it can't be steered into

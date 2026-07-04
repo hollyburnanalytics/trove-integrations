@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
 import { stableId, syncRSS } from './feeds.mjs';
 
-// Multi-run / watermark round-trip integration tests.
+// Multi-run / watermark round-trip tests.
 //
 // The per-call cursor logic is covered by feeds.test.mjs. These tests
-// run a connector *multiple times in sequence*, feeding the cursor produced by
+// run a source adapter *multiple times in sequence*, feeding the cursor produced by
 // one run into the next, to pin down the cross-run incremental contract:
 //   - a second run over an unchanged source returns nothing new,
 //   - only items past the watermark are returned next run, and the cursor advances,

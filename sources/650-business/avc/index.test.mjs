@@ -18,7 +18,7 @@ function makeContext() {
   };
 }
 
-describe('avc connector', () => {
+describe('avc source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

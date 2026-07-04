@@ -7,15 +7,15 @@ const NULL = JSON.parse('null');
 import {
   buildContext,
   DEFAULT_TIMEOUT_MS,
-  InvalidConnectorResponseError,
-  runConnector,
+  InvalidSourceResponseError,
+  runSource,
   SOFT_BUDGET_RATIO,
   validateResult,
 } from './harness.mjs';
 
-/** Absolute path to a fixture connector directory. */
+/** Absolute path to a fixture source directory. */
 function fixture(name) {
-  return path.resolve(import.meta.dirname, '../../test/fixtures/connectors', name);
+  return path.resolve(import.meta.dirname, '../../test/fixtures/sources', name);
 }
 
 describe('buildContext', () => {
@@ -106,7 +106,7 @@ describe('validateResult', () => {
     ['a number', 7, 'expected an object'],
     ['a string', 'x', 'expected an object'],
   ])('rejects %s', (_label, value, expectedMessage) => {
-    expect(() => validateResult(value)).toThrow(InvalidConnectorResponseError);
+    expect(() => validateResult(value)).toThrow(InvalidSourceResponseError);
     expect(() => validateResult(value)).toThrow(expectedMessage);
   });
 
@@ -153,40 +153,40 @@ describe('validateResult', () => {
   });
 });
 
-describe('runConnector', () => {
+describe('runSource', () => {
   it('runs sync and normalizes documents, cursor, and stats', async () => {
-    const result = await runConnector({ connectorPath: fixture('echo') });
+    const result = await runSource({ sourcePath: fixture('echo') });
     expect(result.documents).toHaveLength(2);
     expect(result.cursor).toBe('echo-cursor');
     expect(result.stats.fetched).toBe(2);
     expect(typeof result.stats.duration_ms).toBe('number');
   });
 
-  it('resolves a cwd-relative connector path', async () => {
-    const result = await runConnector({ connectorPath: 'test/fixtures/connectors/echo' });
+  it('resolves a cwd-relative source path', async () => {
+    const result = await runSource({ sourcePath: 'test/fixtures/sources/echo' });
     expect(result.documents).toHaveLength(2);
   });
 
   it('runs the query method when asked', async () => {
-    const result = await runConnector({ connectorPath: fixture('echo'), method: 'query' });
+    const result = await runSource({ sourcePath: fixture('echo'), method: 'query' });
     expect(result.documents).toHaveLength(1);
     expect(result.cursor).toBeUndefined();
     expect(result.stats.fetched).toBe(1);
   });
 
-  it('forwards onLog and onProgress to the connector', async () => {
+  it('forwards onLog and onProgress to the source', async () => {
     const onLog = mock();
     const onProgress = mock();
-    await runConnector({ connectorPath: fixture('echo'), onLog, onProgress });
+    await runSource({ sourcePath: fixture('echo'), onLog, onProgress });
     expect(onLog).toHaveBeenCalledWith('info', 'echo: starting');
     expect(onProgress).toHaveBeenCalledWith(0, 'echo: working');
   });
 
-  it('throws when the connector does not export the method', async () => {
-    await expect(runConnector({ connectorPath: fixture('no-export') })).rejects.toThrow(
-      InvalidConnectorResponseError,
+  it('throws when the source does not export the method', async () => {
+    await expect(runSource({ sourcePath: fixture('no-export') })).rejects.toThrow(
+      InvalidSourceResponseError,
     );
-    await expect(runConnector({ connectorPath: fixture('no-export') })).rejects.toThrow(
+    await expect(runSource({ sourcePath: fixture('no-export') })).rejects.toThrow(
       'does not export sync()',
     );
   });
@@ -197,14 +197,14 @@ describe('runConnector', () => {
     ['doc-not-object', 'index 0 is not an object'],
     ['bad-text', 'neither `text` nor `audio_url`'],
   ])('rejects an invalid %s result', async (mode, expected) => {
-    await expect(
-      runConnector({ connectorPath: fixture('bad-shape'), config: { mode } }),
-    ).rejects.toThrow(expected);
+    await expect(runSource({ sourcePath: fixture('bad-shape'), config: { mode } })).rejects.toThrow(
+      expected,
+    );
   });
 
   it('returns documents when within the soft budget', async () => {
-    const result = await runConnector({
-      connectorPath: fixture('deadline-aware'),
+    const result = await runSource({
+      sourcePath: fixture('deadline-aware'),
       timeoutMs: 100_000,
     });
     expect(result.documents).toHaveLength(1);

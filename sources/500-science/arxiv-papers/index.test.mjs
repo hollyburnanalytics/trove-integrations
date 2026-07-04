@@ -38,7 +38,7 @@ const ARXIV_RESPONSE = `<feed>
   </entry>
 </feed>`;
 
-describe('arxiv-papers connector', () => {
+describe('arxiv-papers source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

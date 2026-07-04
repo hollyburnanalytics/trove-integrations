@@ -1,14 +1,15 @@
-# Trove Integrations
+# Trove Toolkits & Sources
 
 [![CI](https://github.com/hollyburnanalytics/trove-integrations/actions/workflows/ci.yml/badge.svg)](https://github.com/hollyburnanalytics/trove-integrations/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Integrations that connect Trove (and the agent) to the outside world. There are
-two **kinds** — see [`docs/integration-taxonomy.md`](docs/integration-taxonomy.md):
+Toolkits and sources that connect Trove (and the agent) to the outside world.
+There are two **kinds** — see [`docs/taxonomy.md`](docs/taxonomy.md):
 
-- **Tools** (`mcp/`) — MCP servers the agent **calls directly**, live, to read or
-  act. Built on the [`@ontrove/mcp`](mcp/README.md) SDK and deployed as sandboxed
-  servers over public APIs. *(the current focus — see the [catalog](mcp/README.md))*
+- **Toolkits** (`mcp/`) — named bundles of tools the agent **calls directly**,
+  live, to read or act. Every toolkit runs as a full MCP server on Trove's
+  cloud, built on the [`@ontrove/mcp`](mcp/README.md) SDK and sandboxed over
+  public APIs. *(the current focus — see the [catalog](mcp/README.md))*
 - **Sources** (`sources/`) — fetch content you can already access (your own
   feeds and accounts, public APIs, RSS/Atom, sitemaps, archives), polling on a
   cadence and tracking what's new, and **fill the searchable knowledge base**.
@@ -17,8 +18,8 @@ two **kinds** — see [`docs/integration-taxonomy.md`](docs/integration-taxonomy
 ## Why Trove?
 
 AI agents are powerful reasoners but poor data gatherers. Trove gives them two
-ways to reach real data — **tools** they call live, and **sources** that fill a
-searchable knowledge base in the background. On their own, agents struggle to:
+ways to reach real data — **toolkits** they call live, and **sources** that fill
+a searchable knowledge base in the background. On their own, agents struggle to:
 
 - **Reach trustworthy data live** — query arXiv, SEC EDGAR, FRED, Wikidata, a map
   API, or the weather through one typed `/mcp` endpoint, instead of guessing.
@@ -28,21 +29,21 @@ searchable knowledge base in the background. On their own, agents struggle to:
   what's new.
 - **Access historical archives** — years of RSS history, paged API backfills.
 
-Each **tool** is a sandboxed MCP server over a public API; each **connector**
-encapsulates one source's complexity — pagination, rate limiting, incremental
-resume — behind a simple `sync(ctx) → documents` interface.
+Each **toolkit** is a sandboxed server over a public API; each **source**
+encapsulates one feed or account's complexity — pagination, rate limiting,
+incremental resume — behind a simple `sync(ctx) → documents` interface.
 
 ## What's Included
 
-### MCP servers (`mcp/`) — called live by the agent
+### Toolkits (`mcp/`) — called live by the agent
 
-Read-only hosted servers over public APIs (plus one mutating server, `resend`,
+Read-only hosted toolkits over public APIs (plus one mutating toolkit, `resend`,
 for send-email) — arXiv, Wikipedia, Wikidata, OpenAlex, Semantic Scholar, Open
 Library, Internet Archive, Project Gutenberg, SEC EDGAR, FRED, World Bank, Canada
 Open Data, OpenParliament, Mapbox, Open-Meteo, PubChem, openFDA, The Met, and
 more. See the full catalog in [`mcp/README.md`](mcp/README.md).
 
-### Connectors (`sources/`) — fill the knowledge base
+### Sources (`sources/`) — fill the knowledge base
 
 Filed by **subject**, Dewey-decimal style (folder name = category):
 
@@ -67,19 +68,19 @@ Filed by **subject**, Dewey-decimal style (folder name = category):
 bun install
 ```
 
-### Run a connector
+### Run a source
 
-The headless runner exercises any connector through the same `context` contract
+The headless runner exercises any source through the same `context` contract
 the app uses, printing the resulting documents, cursor, and stats:
 
 ```bash
-# RSS connector (no auth, instant)
-bun run connector sources/070-news/hacker-news --json
+# RSS source (no auth, instant)
+bun run source sources/070-news/hacker-news --json
 ```
 
 ### Incremental sync
 
-Connectors return a `cursor` that you pass back on the next sync to skip
+Sources return a `cursor` that you pass back on the next sync to skip
 already-fetched content:
 
 ```javascript
@@ -88,9 +89,9 @@ ctx.cursor = result1.cursor;              // Save cursor
 const result2 = await sync({ ...ctx, cursor: result1.cursor }); // 0 new, 48 skipped
 ```
 
-## Building a Connector
+## Building a Source
 
-The simplest connector is 8 lines — an RSS feed URL and a prefix:
+The simplest source is 8 lines — an RSS feed URL and a prefix:
 
 ```javascript
 import { syncRSS } from '../../lib/feeds.mjs';
@@ -105,7 +106,7 @@ export async function sync(ctx) {
 ```
 
 See [CLAUDE.md](CLAUDE.md) — the contributor guide written for both humans and
-AI assistants — for the full reference: connector types, shared helpers,
+AI assistants — for the full reference: source types, shared helpers,
 copy-paste patterns, and rules. Quick pointers in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Development
@@ -113,7 +114,7 @@ copy-paste patterns, and rules. Quick pointers in [CONTRIBUTING.md](CONTRIBUTING
 ```bash
 bun run lint          # Biome: formatting + core lint
 bun run lint:sonar    # ESLint (SonarJS + Unicorn): code quality
-bun run typecheck     # tsc: MCP servers (.ts) + connectors (.mjs, checkJs)
+bun run typecheck     # tsc: toolkits (.ts) + sources (.mjs, checkJs)
 bun run test          # bun test (all fetches mocked — no network)
 bun run validate      # registry.json consistency
 bun run check         # everything above: lint + lint:sonar + test + typecheck + validate

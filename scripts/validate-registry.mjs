@@ -9,7 +9,7 @@
  *   3. schedule values are from the allowed set
  *   4. path field matches actual directory
  *   5. Orphans: manifests not in registry, registry entries with no manifest
- *   6. connector_count matches actual count
+ *   6. source_count matches actual count
  *
  * Usage:
  *   node scripts/validate-registry.mjs          # report-only
@@ -19,16 +19,16 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  CONNECTOR_TYPE_FIELDS,
+  SOURCE_TYPE_FIELDS,
   VALID_SCHEDULES,
-  validateConnectorTypeFields,
+  validateSourceTypeFields,
 } from '../sources/lib/constants.mjs';
 
 const { join } = path;
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const REGISTRY_PATH = join(ROOT, 'registry.json');
-const MARKETPLACE_PATH = join(ROOT, 'sources', 'marketplace.json');
+const CATALOG_PATH = join(ROOT, 'sources', 'marketplace.json');
 // Dewey-style subject classification (folder name = manifest `category`).
 const CATEGORIES = [
   '000-general',
@@ -51,9 +51,9 @@ function ok(message) {
   info.push(message);
 }
 
-// --- Discover all connectors from filesystem ---
-function discoverConnectors() {
-  const connectors = [];
+// --- Discover all sources from filesystem ---
+function discoverSources() {
+  const sources = [];
   for (const category of CATEGORIES) {
     const categoryDirectory = join(ROOT, 'sources', category);
     if (!existsSync(categoryDirectory)) continue;
@@ -69,38 +69,38 @@ function discoverConnectors() {
       const hasCode = existsSync(join(directory, 'index.mjs'));
       const path = `sources/${category}/${name}`;
 
-      connectors.push({ manifest, hasCode, path, directory });
+      sources.push({ manifest, hasCode, path, directory });
     }
   }
-  return connectors;
+  return sources;
 }
 
 // --- Load registry ---
 const registry = JSON.parse(readFileSync(REGISTRY_PATH, 'utf8'));
-const registryById = new Map(registry.connectors.map((c) => [c.id, c]));
+const registryById = new Map(registry.sources.map((c) => [c.id, c]));
 
-// --- Discover filesystem connectors ---
-const fsConnectors = discoverConnectors();
-const fsById = new Map(fsConnectors.map((c) => [c.manifest.id, c]));
+// --- Discover filesystem sources ---
+const fsSources = discoverSources();
+const fsById = new Map(fsSources.map((c) => [c.manifest.id, c]));
 
-// --- Check 0: marketplace identity ---
-// A connector's cloud identity is `{marketplace.id}/{connector.id}` (category is
-// NOT part of identity), so the marketplace must declare a stable id and every
-// connector id must be unique across the whole marketplace — not just within its
-// category. See docs/connector-taxonomy.md.
-if (existsSync(MARKETPLACE_PATH)) {
-  const marketplace = JSON.parse(readFileSync(MARKETPLACE_PATH, 'utf8'));
-  if (typeof marketplace.id === 'string' && marketplace.id.trim() !== '') {
-    ok(`Marketplace id: ${marketplace.id}`);
+// --- Check 0: catalog identity ---
+// A source's cloud identity is `{catalog.id}/{source.id}` (category is
+// NOT part of identity), so the catalog must declare a stable id and every
+// source id must be unique across the whole catalog — not just within its
+// category. See docs/source-adapter-taxonomy.md.
+if (existsSync(CATALOG_PATH)) {
+  const catalog = JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
+  if (typeof catalog.id === 'string' && catalog.id.trim() !== '') {
+    ok(`Catalog id: ${catalog.id}`);
   } else {
     warn('sources/marketplace.json must declare a non-empty string "id"');
   }
 } else {
-  warn('sources/marketplace.json is missing (declares the marketplace identity)');
+  warn('sources/marketplace.json is missing (declares the catalog identity)');
 }
 
 const idCounts = new Map();
-for (const c of fsConnectors) {
+for (const c of fsSources) {
   const list = idCounts.get(c.manifest.id) ?? [];
   list.push(c.path);
   idCounts.set(c.manifest.id, list);
@@ -108,7 +108,7 @@ for (const c of fsConnectors) {
 for (const [id, paths] of idCounts) {
   if (paths.length > 1) {
     warn(
-      `Connector id "${id}" is used by ${paths.length} connectors (${paths.join(', ')}) — ids must be unique across the marketplace, since identity is {marketplace.id}/{id}`,
+      `Source id "${id}" is used by ${paths.length} sources (${paths.join(', ')}) — ids must be unique across the catalog, since identity is {catalog.id}/{id}`,
     );
   }
 }
@@ -152,16 +152,16 @@ for (const [id, regEntry] of registryById) {
 }
 
 // Also check manifests directly
-for (const { manifest, path } of fsConnectors) {
+for (const { manifest, path } of fsSources) {
   if (manifest.schedule && !VALID_SCHEDULES.includes(manifest.schedule)) {
     warn(`${path}/manifest.json: invalid schedule "${manifest.schedule}"`);
   }
 }
 
-// --- Check 3b: connector type-system fields (kind/transport/watermark/documentSemantics) ---
-// Implemented connectors are held to the MVP cut; stubs may declare deferred values.
-for (const { manifest, hasCode, path } of fsConnectors) {
-  for (const error of validateConnectorTypeFields(manifest, { implemented: hasCode })) {
+// --- Check 3b: source type-system fields (kind/transport/watermark/documentSemantics) ---
+// Implemented sources are held to the MVP cut; stubs may declare deferred values.
+for (const { manifest, hasCode, path } of fsSources) {
+  for (const error of validateSourceTypeFields(manifest, { implemented: hasCode })) {
     warn(`${path}/manifest.json: ${error}`);
   }
 }
@@ -170,13 +170,13 @@ for (const { manifest, hasCode, path } of fsConnectors) {
 for (const [id, regEntry] of registryById) {
   const fsEntry = fsById.get(id);
   if (!fsEntry) continue;
-  for (const field of ['category', ...Object.keys(CONNECTOR_TYPE_FIELDS)]) {
+  for (const field of ['category', ...Object.keys(SOURCE_TYPE_FIELDS)]) {
     if (regEntry[field] !== fsEntry.manifest[field]) {
       warn(`${id}: registry ${field} out of sync with manifest`);
       if (fix) regEntry[field] = fsEntry.manifest[field];
     }
   }
-  // `available: false` temporarily hides a built connector that needs user input
+  // `available: false` temporarily hides a built source that needs user input
   // (config or login) we can't collect yet. Absent = available. Only mirror the
   // explicit false so the registry stays clean.
   const available = fsEntry.manifest.available;
@@ -205,7 +205,7 @@ for (const [id, fsEntry] of fsById) {
   if (!registryById.has(id)) {
     warn(`Manifest "${id}" at ${fsEntry.path} not found in registry`);
     if (fix) {
-      registry.connectors.push({
+      registry.sources.push({
         ...fsEntry.manifest,
         path: fsEntry.path,
         has_code: fsEntry.hasCode,
@@ -215,8 +215,8 @@ for (const [id, fsEntry] of fsById) {
   }
 }
 
-// --- Check 6b: categories list matches connectors actually present ---
-const actualCategories = [...new Set(registry.connectors.map((c) => c.category))].toSorted();
+// --- Check 6b: categories list matches sources actually present ---
+const actualCategories = [...new Set(registry.sources.map((c) => c.category))].toSorted();
 if (JSON.stringify(registry.categories) !== JSON.stringify(actualCategories)) {
   const phantom = (registry.categories ?? []).filter((c) => !actualCategories.includes(c));
   const suffix = phantom.length > 0 ? ` (phantom: ${phantom.join(', ')})` : '';
@@ -224,24 +224,24 @@ if (JSON.stringify(registry.categories) !== JSON.stringify(actualCategories)) {
   if (fix) registry.categories = actualCategories;
 }
 
-// --- Check 6: connector_count ---
+// --- Check 6: source_count ---
 if (fix) {
-  // Sort connectors alphabetically by id
-  registry.connectors.sort((a, b) => a.id.localeCompare(b.id));
-  registry.connector_count = registry.connectors.length;
+  // Sort sources alphabetically by id
+  registry.sources.sort((a, b) => a.id.localeCompare(b.id));
+  registry.source_count = registry.sources.length;
   registry.updated_at = new Date().toISOString();
 }
 
-const expectedCount = registry.connectors.length;
-if (registry.connector_count !== expectedCount) {
-  warn(`connector_count is ${registry.connector_count} but there are ${expectedCount} entries`);
-  if (fix) registry.connector_count = expectedCount;
+const expectedCount = registry.sources.length;
+if (registry.source_count !== expectedCount) {
+  warn(`source_count is ${registry.source_count} but there are ${expectedCount} entries`);
+  if (fix) registry.source_count = expectedCount;
 }
 
 // --- Output ---
 if (issues.length === 0) {
   console.log(
-    `✓ Registry is valid (${registry.connectors.length} connectors, ${fsConnectors.filter((c) => c.hasCode).length} implemented)`,
+    `✓ Registry is valid (${registry.sources.length} sources, ${fsSources.filter((c) => c.hasCode).length} implemented)`,
   );
 } else {
   console.log(`Found ${issues.length} issue(s):\n`);

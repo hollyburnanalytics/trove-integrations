@@ -11,7 +11,7 @@ import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
  * Auth is an OAuth2 *password* grant against `POST /Authenticate` with the
  * fixed public client id `Premier.ExternalAPI` plus the username/password of an
  * **API user created inside the customer's Premier tenant** — the vendor's
- * documented integration pattern (the credential identifies the tenant; the
+ * documented API access pattern (the credential identifies the tenant; the
  * host is shared). The SDK's declarative `auth` block only speaks
  * client-credentials, so the mint is hand-rolled below: secrets via
  * `ctx.requireSecret('JONAS_USERNAME'/'JONAS_PASSWORD')`, token cached

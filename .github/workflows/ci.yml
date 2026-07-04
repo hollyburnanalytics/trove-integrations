@@ -26,7 +26,7 @@ jobs:
       - name: Test with coverage
         run: bun run test:coverage
 
-      - name: Typecheck — MCP servers (.ts) and connectors (.mjs, checkJs)
+      - name: Typecheck — toolkits (.ts) and sources (.mjs, checkJs)
         run: bun run typecheck
 
       - name: Validate registry

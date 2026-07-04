@@ -18,7 +18,7 @@ function makeContext() {
   };
 }
 
-describe('lennys-newsletter connector', () => {
+describe('lennys-newsletter source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

@@ -9,7 +9,7 @@ mock.module('../../lib/feeds.mjs', () => ({
 import { syncFeedArticles } from '../../lib/feeds.mjs';
 import { sync } from './index.mjs';
 
-describe('quanta-magazine connector', () => {
+describe('quanta-magazine source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

@@ -1,5 +1,5 @@
 /**
- * BBC News Connector
+ * BBC News source
  *
  * Fetches headlines and summaries from BBC News public RSS feeds.
  * No auth required — RSS feeds are open.

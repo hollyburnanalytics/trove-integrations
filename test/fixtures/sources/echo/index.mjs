@@ -1,6 +1,6 @@
 /**
- * Fixture connector: emits two documents, exercising ctx.log and ctx.progress.
- * Used by the harness contract tests; not a real connector.
+ * Fixture source: emits two documents, exercising ctx.log and ctx.progress.
+ * Used by the harness contract tests; not a real source.
  */
 export async function sync(context) {
   context.log.info('echo: starting');

@@ -1,19 +1,19 @@
 #!/usr/bin/env bun
 
 /**
- * Live connector tester — calls sync(ctx) on each implemented connector against
- * the real source and reports which ones return real data vs fail.
+ * Live source tester — calls sync(ctx) on each implemented source adapter
+ * against the real upstream and reports which ones return real data vs fail.
  *
- * Connectors are discovered automatically from registry.json (every entry with
- * status "implemented" and has_code), so new connectors are covered without
- * editing this file. Browser connectors are skipped (they need cookies); a few
- * connectors that require user-supplied config get sensible test defaults from
+ * Sources are discovered automatically from registry.json (every entry with
+ * status "implemented" and has_code), so new sources are covered without
+ * editing this file. Browser sources are skipped (they need cookies); a few
+ * sources that require user-supplied config get sensible test defaults from
  * the OVERRIDES table below.
  *
  * Usage:
- *   bun scripts/test-connectors.mjs             # test all implemented connectors
- *   bun scripts/test-connectors.mjs --fast      # skip slow sitemap/listing scrapers
- *   bun scripts/test-connectors.mjs guardian    # test connectors matching a substring
+ *   bun scripts/test-sources.mjs             # test all implemented sources
+ *   bun scripts/test-sources.mjs --fast      # skip slow sitemap/listing scrapers
+ *   bun scripts/test-sources.mjs guardian    # test sources matching a substring
  */
 
 import { readFileSync } from 'node:fs';
@@ -21,30 +21,30 @@ import { readFileSync } from 'node:fs';
 const ROOT = new URL('..', import.meta.url);
 
 /**
- * Per-connector test overrides, keyed by connector id:
- *   - config: test config for connectors that require user input
+ * Per-source test overrides, keyed by source id:
+ *   - config: test config for sources that require user input
  *   - timeout: override the auto-detected timeout (ms)
- *   - skip: reason string to skip the connector entirely
+ *   - skip: reason string to skip the source entirely
  */
 const OVERRIDES = {
-  // Config-required connectors — supply representative test inputs.
+  // Config-required sources — supply representative test inputs.
   'rss-feeds': { config: { feeds: ['https://hnrss.org/frontpage'] } },
   'financial-times-headlines': { config: { sections: ['home'] } },
   'sec-filings': { config: { tickers: ['AAPL'] }, timeout: 120_000 },
-  // Generic connectors with no single source to test against.
-  'sitemap-blog': { skip: 'generic connector — needs user-provided sitemaps' },
+  // Generic sources with no single upstream to test against.
+  'sitemap-blog': { skip: 'generic source — needs user-provided sitemaps' },
 };
 
 const DEFAULT_TIMEOUT = 30_000;
 const SCRAPER_TIMEOUT = 90_000;
 
 /**
- * Load implemented connectors from the registry, enriching each with whether it
- * is a (slow) scraper and any per-connector overrides.
+ * Load implemented sources from the registry, enriching each with whether it
+ * is a (slow) scraper and any per-source overrides.
  */
-function discoverConnectors() {
+function discoverSources() {
   const registry = JSON.parse(readFileSync(new URL('registry.json', ROOT), 'utf8'));
-  return registry.connectors
+  return registry.sources
     .filter((entry) => entry.status === 'implemented' && entry.has_code)
     .map((entry) => {
       const override = OVERRIDES[entry.id] || {};
@@ -63,8 +63,8 @@ function discoverConnectors() {
 }
 
 /**
- * Heuristically classify a connector as a slow scraper by checking whether its
- * source uses the sitemap/listing scraping helpers.
+ * Heuristically classify a source as a slow scraper by checking whether its
+ * module uses the sitemap/listing scraping helpers.
  */
 function isScraper(path) {
   try {
@@ -126,7 +126,7 @@ function withTimeout(promise, ms) {
   });
 }
 
-async function testConnector(entry, now) {
+async function testSource(entry, now) {
   const start = now();
   try {
     const module = await import(new URL(`${entry.path}/index.mjs`, ROOT).href);
@@ -162,17 +162,17 @@ const cliArguments = process.argv.slice(2);
 const fastMode = cliArguments.includes('--fast');
 const filterPath = cliArguments.find((argument) => !argument.startsWith('--'));
 
-let toTest = discoverConnectors();
+let toTest = discoverSources();
 if (filterPath) {
-  toTest = toTest.filter((connector) => connector.path.includes(filterPath));
+  toTest = toTest.filter((source) => source.path.includes(filterPath));
   if (toTest.length === 0) {
-    console.error(`No connector matching "${filterPath}"`);
+    console.error(`No source matching "${filterPath}"`);
     process.exit(1);
   }
 }
 
 console.log(
-  `\nTesting ${toTest.length} connectors${fastMode ? ' (fast mode — skipping scrapers)' : ''}...\n`,
+  `\nTesting ${toTest.length} sources${fastMode ? ' (fast mode — skipping scrapers)' : ''}...\n`,
 );
 
 const results = [];
@@ -186,7 +186,7 @@ for (const entry of toTest) {
   }
 
   process.stdout.write(`TEST  ${entry.path}...`);
-  const result = await testConnector(entry, now);
+  const result = await testSource(entry, now);
   results.push({ path: entry.path, ...result });
 
   console.log(
@@ -205,7 +205,7 @@ if (failed > 0 || timedOut > 0) {
 }
 
 /**
- * Decide whether a connector should be skipped this run, and why.
+ * Decide whether a source should be skipped this run, and why.
  */
 function resolveSkip(entry, fast) {
   if (entry.skip) return entry.skip;
@@ -219,7 +219,7 @@ function printSummary(rows) {
   console.log('SUMMARY');
   console.log('='.repeat(90));
   console.log(
-    `${'Status'.padEnd(8)}${'Connector'.padEnd(35)}${'Docs'.padEnd(8)}${'Time'.padEnd(8)}Error`,
+    `${'Status'.padEnd(8)}${'Source'.padEnd(35)}${'Docs'.padEnd(8)}${'Time'.padEnd(8)}Error`,
   );
   console.log('-'.repeat(90));
 

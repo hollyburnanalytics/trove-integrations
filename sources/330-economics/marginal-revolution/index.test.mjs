@@ -18,7 +18,7 @@ function makeContext() {
   };
 }
 
-describe('marginal-revolution connector', () => {
+describe('marginal-revolution source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

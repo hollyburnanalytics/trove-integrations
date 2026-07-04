@@ -18,7 +18,7 @@ function makeContext() {
   };
 }
 
-describe('not-boring connector', () => {
+describe('not-boring source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

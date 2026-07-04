@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:tes
 import { sync } from './index.mjs';
 
 /**
- * Every test mocks `fetch` — the network is never touched. The connector runs
+ * Every test mocks `fetch` — the network is never touched. The source runs
  * the OAuth refresh-token grant, resolves the user id, then pages bookmarks;
  * the mock answers each of those three endpoints.
  */
@@ -69,7 +69,7 @@ function installFetch({ tokenOk = true, tokenStatus = 200, pages = [] } = {}) {
   return calls;
 }
 
-describe('x-bookmarks connector', () => {
+describe('x-bookmarks source', () => {
   beforeEach(() => {
     globalThis.fetch = mock();
   });

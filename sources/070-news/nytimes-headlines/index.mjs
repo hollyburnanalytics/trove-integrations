@@ -1,5 +1,5 @@
 /**
- * New York Times Connector
+ * New York Times source
  *
  * Fetches headlines and summaries from NYT public RSS feeds.
  * No auth required — the RSS feeds provide headlines and summaries only.

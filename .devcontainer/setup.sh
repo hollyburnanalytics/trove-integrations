@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== Trove Connectors devcontainer setup ==="
+echo "=== Trove Toolkits & Sources devcontainer setup ==="
 
 # Install bun if not already available (pre-installed on claude.ai/code)
 if ! command -v bun &>/dev/null; then
