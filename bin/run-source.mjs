@@ -1,31 +1,31 @@
 #!/usr/bin/env bun
 /**
- * Headless connector runner — exercise a connector standalone.
+ * Headless source runner — exercise a source adapter standalone.
  *
- * Runs a connector through the same `context` contract as the production
+ * Runs a source through the same `context` contract as the production
  * runtime (via lib/harness.mjs), streaming its logs and progress to the
  * terminal and printing the resulting documents/cursor/stats. This is the loop
- * for reproducing and debugging connector failures locally.
+ * for reproducing and debugging source failures locally.
  *
  * Usage:
- *   bun run connector <connector-dir> [options]
- *   (connector-dir is relative to the repo root, e.g. sources/070-news/hacker-news)
+ *   bun run source <source-dir> [options]
+ *   (source-dir is relative to the repo root, e.g. sources/070-news/hacker-news)
  *
  * Options:
  *   --method <sync|query>   Method to invoke (default: sync)
  *   --timeout <ms>          Hard-timeout budget (default: 120000)
  *   --cursor <json>         Resume cursor, as a JSON value
- *   --config <key=value>    Connector config entry (repeatable)
+ *   --config <key=value>    Source config entry (repeatable)
  *   --json                  Print the full result as JSON instead of a summary
  *
  * Examples:
- *   bun run connector sources/500-science/arxiv-papers --timeout 120000
- *   bun run connector sources/070-news/hacker-news --json
+ *   bun run source sources/500-science/arxiv-papers --timeout 120000
+ *   bun run source sources/070-news/hacker-news --json
  */
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { runConnector } from '../sources/lib/harness.mjs';
+import { runSource } from '../sources/lib/harness.mjs';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 
@@ -37,7 +37,7 @@ function parseArguments(argv) {
     cursor: undefined,
     config: {},
     json: false,
-    connectorPath: undefined,
+    sourcePath: undefined,
   };
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index];
@@ -65,22 +65,20 @@ function parseArguments(argv) {
       }
       default: {
         if (argument.startsWith('--')) throw new Error(`Unknown option: ${argument}`);
-        options.connectorPath = argument;
+        options.sourcePath = argument;
       }
     }
   }
-  if (!options.connectorPath) throw new Error('Usage: run-connector <connector-dir> [options]');
+  if (!options.sourcePath) throw new Error('Usage: run-source <source-dir> [options]');
   if (!['sync', 'query'].includes(options.method)) {
     throw new Error(`--method must be sync or query, got ${options.method}`);
   }
   return options;
 }
 
-/** Read a connector's manifest.json, or {} if absent. */
-function readManifest(connectorPath) {
-  const abs = path.isAbsolute(connectorPath)
-    ? connectorPath
-    : path.resolve(process.cwd(), connectorPath);
+/** Read a source's manifest.json, or {} if absent. */
+function readManifest(sourcePath) {
+  const abs = path.isAbsolute(sourcePath) ? sourcePath : path.resolve(process.cwd(), sourcePath);
   const manifestPath = path.join(abs, 'manifest.json');
   return existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : {};
 }
@@ -104,17 +102,17 @@ function logLine(level, message) {
 
 async function main() {
   const options = parseArguments(process.argv.slice(2));
-  const manifest = readManifest(options.connectorPath);
+  const manifest = readManifest(options.sourcePath);
 
   logLine(
     'info',
-    `running ${manifest.id ?? options.connectorPath}.${options.method}() (timeout ${options.timeoutMs}ms)`,
+    `running ${manifest.id ?? options.sourcePath}.${options.method}() (timeout ${options.timeoutMs}ms)`,
   );
   const startedAt = Date.now();
 
   try {
-    const result = await runConnector({
-      connectorPath: options.connectorPath,
+    const result = await runSource({
+      sourcePath: options.sourcePath,
       method: /** @type {'sync' | 'query'} */ (options.method),
       config: options.config,
       cursor: options.cursor,

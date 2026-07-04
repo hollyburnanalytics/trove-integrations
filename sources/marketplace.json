@@ -1,6 +1,6 @@
 {
-  "id": "hollyburnanalytics/trove-connectors",
+  "id": "hollyburnanalytics/trove-integrations",
   "name": "Trove",
-  "description": "The official Trove connector marketplace.",
+  "description": "The official catalog of Trove sources.",
   "author": "Hollyburn Analytics Inc."
 }

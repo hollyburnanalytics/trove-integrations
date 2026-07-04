@@ -1,12 +1,12 @@
 /**
- * Typed watermark values for connector cursors.
+ * Typed watermark values for source-adapter cursors.
  *
- * The cloud stores `sources.cursor` as an opaque JSON string; these helpers give
- * every connector a single, tagged shape to read and write. See
- * docs/connector-taxonomy.md §8.3 for the full union.
+ * The cloud stores `feeds.cursor` as an opaque JSON string; these helpers give
+ * every source adapter a single, tagged shape to read and write. See
+ * docs/source-adapter-taxonomy.md §4.3 for the full union.
  *
  * MVP implements three strategies: `date`, `idSet` (bounded), and `none`
- * (no cursor at all — the connector returns `undefined`).
+ * (no cursor at all — the source adapter returns `undefined`).
  */
 
 /**
@@ -19,7 +19,7 @@ export const DEFAULT_ID_SET_MAX = 10_000;
 /**
  * Read a `date` watermark as a `Date`, or `undefined` when absent/unparseable.
  *
- * @param {unknown} cursor - the connector's previous cursor (`ctx.cursor`)
+ * @param {unknown} cursor - the source adapter's previous cursor (`ctx.cursor`)
  * @returns {Date | undefined}
  */
 export function readDateWatermark(cursor) {
@@ -82,7 +82,7 @@ export function advanceDateWatermark({ previous, maxIso, anyFailed, inclusive = 
 /**
  * Read an `idSet` watermark as a string array (empty when absent).
  *
- * @param {unknown} cursor - the connector's previous cursor (`ctx.cursor`)
+ * @param {unknown} cursor - the source adapter's previous cursor (`ctx.cursor`)
  * @returns {string[]}
  */
 export function readIdSet(cursor) {

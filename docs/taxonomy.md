@@ -1,17 +1,19 @@
-# Trove integration taxonomy
+# Trove toolkit & source taxonomy
 
-This repo holds **Trove integrations** — the things that connect Trove (and the
-agent) to the outside world. There are two **kinds**, plus two orthogonal
-modifiers. It's a *map for naming and organizing*, not a runtime spec: the two
-kinds keep their own, deliberately separate engines (see the warning at the end).
+This repo holds **Trove toolkits and sources** — the things that connect Trove
+(and the agent) to the outside world. There are two **kinds**, plus two
+orthogonal modifiers. It's a *map for naming and organizing*, not a runtime
+spec: the two kinds keep their own, deliberately separate engines (see the
+warning at the end).
 
 ## Kinds
 
-- **Tool** (`mcp/`) — the agent **calls it directly**, live, to read or act.
-  Synchronous, deployed as an MCP server. *(an `@ontrove/mcp` `defineMcpServer`)*
+- **Toolkit** (`mcp/`) — a named bundle of tools the agent **calls directly**,
+  live, to read or act. Synchronous; every toolkit runs as a full MCP server on
+  Trove's cloud. *(an `@ontrove/mcp` `defineMcpServer`)*
 - **Source** (`sources/`) — fills the searchable **knowledge base**. The agent
-  reads it *indirectly* via `trove_search`. Stateful, runs on a harness. *(the
-  classic "connector": a scraper / feed / API poller)*
+  reads it *indirectly* via `trove_search`. Stateful, runs on a harness.
+  *(implemented by a source adapter: a scraper / feed / API poller)*
 
 ## Modifiers (apply to both kinds)
 
@@ -41,17 +43,17 @@ is just "declares `trove:ingest`."
 
 This page is a *conceptual map*, not the on-disk schema — the two kinds carry
 deliberately different manifests. For the authoritative, validator-enforced
-**source** schema, see [`connector-taxonomy.md`](connector-taxonomy.md) §4.
+**source** schema, see [`source-adapter-taxonomy.md`](source-adapter-taxonomy.md) §4.
 
 - **Source** (`sources/**/manifest.json`) — `id`, `name`, `description`, `icon`,
   `version`, `category`, `kind` (e.g. `scheduled-sync`), `transport`, `watermark`,
   `documentSemantics`, `schedule`, `status`, optional `available`.
-- **Tool** (`mcp/**/manifest.json`) — `id`, `name`, `description`, `icon`,
+- **Toolkit** (`mcp/**/manifest.json`) — `id`, `name`, `description`, `icon`,
   `version`, `sdk`, `tools[]`, `secrets[]`, `egress[]`, `scopes[]`, `visibility`.
 
-The Source-vs-Tool distinction comes from the directory and manifest shape, not a
-literal `"kind": "source" | "tool"` field; the `trigger` and `location` axes above
-are descriptive, not manifest keys.
+The Source-vs-Toolkit distinction comes from the directory and manifest shape,
+not a literal `"kind": "source" | "toolkit"` field; the `trigger` and `location`
+axes above are descriptive, not manifest keys.
 
 ## ⚠️ Keep the runtimes separate
 

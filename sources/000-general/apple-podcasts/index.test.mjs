@@ -22,7 +22,7 @@ function daysAgoIso(days) {
 
 /**
  * Build a minimal MTLibrary.sqlite mirroring the Core Data schema the
- * connector queries: ZMTPODCAST (shows) and ZMTEPISODE (episodes).
+ * source queries: ZMTPODCAST (shows) and ZMTEPISODE (episodes).
  */
 function makeLibrary(root, { podcasts = [], episodes = [] } = {}) {
   mkdirSync(path.join(root, 'Documents'), { recursive: true });
@@ -59,7 +59,7 @@ function makeLibrary(root, { podcasts = [], episodes = [] } = {}) {
   database.close();
 }
 
-describe('apple-podcasts connector', () => {
+describe('apple-podcasts source', () => {
   let root;
   let originalHome;
 

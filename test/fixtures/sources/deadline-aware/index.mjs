@@ -1,7 +1,7 @@
 /**
- * Fixture connector that honours the soft deadline: if the deadline has already
+ * Fixture source that honours the soft deadline: if the deadline has already
  * passed it stops immediately with no documents (the time-budgeted-batch
- * contract every scraping connector follows).
+ * contract every scraping source adapter follows).
  */
 export async function sync(context) {
   if (typeof context.deadline === 'number' && Date.now() >= context.deadline) {

@@ -10,11 +10,11 @@ import { advanceDateWatermark, readDateWatermark } from './watermark.mjs';
 
 /**
  * Build a TroveDocument from a parsed feed item, the standard way every
- * multi-feed connector wants it: stable ID, entity-decoded title, body as
+ * multi-feed source adapter wants it: stable ID, entity-decoded title, body as
  * plain text, and a safe date.
  *
  * Uses the item's `description` (the feed excerpt/summary) as the body — NOT
- * `content:encoded`. Headline connectors (BBC/FT/Guardian/NYT) intentionally
+ * `content:encoded`. Headline source adapters (BBC/FT/Guardian/NYT) intentionally
  * store only the publisher-provided summary; full-text blog feeds use
  * `syncRSS()` instead, which does prefer the full body.
  *
@@ -89,7 +89,7 @@ function collectFeedItems(items, { feed, seenUrls, lastDate, toDocument }) {
  *   `parseRSS`. Items must expose `link`/`guid` and `pubDate`.
  * @param {string} [options.label] - noun for log/progress lines (e.g. `'sections'`)
  * @param {string} [options.emptyWarning] - when `feeds` is empty, warn with this
- *   and return an empty result instead of running (for configurable connectors)
+ *   and return an empty result instead of running (for configurable source adapters)
  * @returns {Promise<{documents: object[], cursor: object|undefined, stats: object}>}
  */
 export async function syncFeeds(

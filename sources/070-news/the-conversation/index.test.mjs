@@ -18,7 +18,7 @@ function makeContext() {
   };
 }
 
-describe('the-conversation connector', () => {
+describe('the-conversation source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

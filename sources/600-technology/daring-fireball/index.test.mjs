@@ -7,7 +7,7 @@ mock.module('../../lib/feeds.mjs', () => ({ syncRSS: mock() }));
 import { syncRSS } from '../../lib/feeds.mjs';
 import { sync } from './index.mjs';
 
-describe('daring-fireball connector', () => {
+describe('daring-fireball source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

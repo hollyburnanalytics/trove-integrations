@@ -5,7 +5,7 @@ import { stableId } from '../../lib/feeds.mjs';
 import { advanceDateWatermark, readDateWatermark } from '../../lib/watermark.mjs';
 
 /**
- * Apple Podcasts connector: the episodes of every show the user follows in the
+ * Apple Podcasts source: the episodes of every show the user follows in the
  * macOS Podcasts app, emitted as audio documents for transcription.
  *
  * The Podcasts app's library (a Core Data SQLite store in its group container)
@@ -51,8 +51,8 @@ function appleDateToIso(coreDataSeconds) {
  * failures (no Podcasts data on this Mac; macOS denied access to another
  * app's data) into actionable errors.
  *
- * Bun and Node ship different built-in SQLite modules with the same read API
- * (`.prepare(sql).all(params)` + `.close()`), so the connector runs under either
+ * Bun and Node each ship their own SQLite module with the same read API
+ * (`.prepare(sql).all(params)` + `.close()`), so the source runs under either
  * runtime — `bun:sqlite` under Bun, `node:sqlite` under Node.
  *
  * @param {string} databasePath

@@ -25,7 +25,7 @@ const HN_RESPONSE = {
   ],
 };
 
-describe('hacker-news connector', () => {
+describe('hacker-news source', () => {
   beforeEach(() => {
     globalThis.fetch = mock();
   });

@@ -18,7 +18,7 @@ function makeContext() {
   };
 }
 
-describe('benedict-evans connector', () => {
+describe('benedict-evans source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

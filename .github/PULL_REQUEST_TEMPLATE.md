@@ -4,7 +4,7 @@
 
 ## Type
 
-- [ ] New connector
+- [ ] New source or toolkit
 - [ ] Bug fix
 - [ ] Refactor / chore
 - [ ] Docs
@@ -15,5 +15,5 @@
 - [ ] `bun run lint:sonar` passes
 - [ ] `bun run test` passes (fetches mocked — no network in tests)
 - [ ] `bun run validate` passes (registry consistent)
-- [ ] New/changed connectors return the full `{ documents, cursor, stats }` envelope
+- [ ] New/changed sources return the full `{ documents, cursor, stats }` envelope
 - [ ] IDs are stable across syncs

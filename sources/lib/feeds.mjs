@@ -1,5 +1,5 @@
 /**
- * Shared utilities for feed connectors: HTTP fetch, RSS/Atom parsing, and a
+ * Shared utilities for feed source adapters: HTTP fetch, RSS/Atom parsing, and a
  * complete `syncRSS()` sync. Feed bodies are stored as plain text (decoded,
  * tags stripped) — we deliberately do not try to reconstruct rich Markdown.
  */
@@ -45,7 +45,7 @@ const FETCH_TIMEOUT_MS = 20_000;
 /**
  * Whether the host-provided soft deadline has passed. The host sets
  * `context.deadline` to an absolute epoch-ms timestamp a safe margin before it
- * hard-kills the run; paged connectors check it so a large first run splits
+ * hard-kills the run; paged source adapters check it so a large first run splits
  * across runs (fetch what fits, advance the cursor, resume next run). An absent
  * deadline means "unbounded".
  */

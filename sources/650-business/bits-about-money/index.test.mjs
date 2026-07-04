@@ -18,7 +18,7 @@ function makeContext() {
   };
 }
 
-describe('bits-about-money connector', () => {
+describe('bits-about-money source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

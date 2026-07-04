@@ -21,7 +21,7 @@ function optionsFor(config) {
   return syncFeeds.mock.calls.at(-1)[1];
 }
 
-describe('bbc-news connector', () => {
+describe('bbc-news source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

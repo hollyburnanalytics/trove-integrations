@@ -3,7 +3,7 @@
 /**
  * One-time X (Twitter) OAuth 2.0 authorize helper — Authorization Code + PKCE.
  *
- * The `x` MCP server's `get_bookmarks` tool and the `x-bookmarks` connector both
+ * The `x` toolkit's `get_bookmarks` tool and the `x-bookmarks` source both
  * read your bookmarks via OAuth 2.0 **user-context** (scope `bookmark.read`),
  * which needs a long-lived refresh token. This script walks the interactive
  * authorize flow once and prints that refresh token plus the commands to store
@@ -185,7 +185,7 @@ async function main() {
   if (clientSecret) stdout.write('   trove secret set x X_OAUTH_CLIENT_SECRET --from-stdin\n');
   stdout.write('   trove secret set x X_OAUTH_REFRESH_TOKEN --from-stdin\n');
   stdout.write(
-    '\n   (The x-bookmarks connector reads the same X_OAUTH_CLIENT_ID / ' +
+    '\n   (The x-bookmarks source reads the same X_OAUTH_CLIENT_ID / ' +
       'X_OAUTH_CLIENT_SECRET / X_OAUTH_REFRESH_TOKEN via ctx.credentials.)\n' +
       '\n   Pass the token over stdin rather than argv so it stays out of your shell history,\n' +
       '   e.g.:  printf %s "<refresh-token>" | trove secret set x X_OAUTH_REFRESH_TOKEN --from-stdin\n',

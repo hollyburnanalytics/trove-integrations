@@ -6,7 +6,7 @@ export default [
     ignores: [
       'node_modules/**',
       'coverage/**',
-      // Deliberately malformed connectors used to test the harness's validation.
+      // Deliberately malformed source adapters used to test the harness's validation.
       'test/fixtures/**',
     ],
   },

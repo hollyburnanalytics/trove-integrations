@@ -20,7 +20,7 @@ import { deadlineReached, htmlToText, safeDate, stableId } from '../../lib/feeds
  * NOTE on refresh-token rotation: X returns a NEW `refresh_token` on every grant
  * and invalidates the old one. Production-grade persistence of that rotated token
  * must be owned by the harness/keychain (it re-supplies `ctx.credentials` next
- * run). This connector deliberately does NOT write the rotated token into the
+ * run). This source deliberately does NOT write the rotated token into the
  * cursor — credentials must never live in cursor state — and uses the freshly
  * minted access token only for the duration of the current run.
  */
@@ -46,9 +46,9 @@ function authHeaders(accessToken) {
 
 /**
  * Read the previous `idSet` watermark as a (newest-first) array of tweet ids.
- * This connector stores the set under `value` (an array), matching the
+ * This source stores the set under `value` (an array), matching the
  * bookmarks contract — distinct from `lib/watermark.mjs`'s `{ values, max }`
- * payload used by other connectors.
+ * payload used by other sources.
  */
 function readSeenIds(cursor) {
   return cursor?.type === 'idSet' && Array.isArray(cursor.value) ? cursor.value : [];

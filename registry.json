@@ -1,7 +1,7 @@
 {
   "version": 1,
   "updated_at": "2026-06-29T14:48:17.513Z",
-  "connector_count": 24,
+  "source_count": 24,
   "categories": [
     "000-general",
     "070-news",
@@ -11,7 +11,7 @@
     "600-technology",
     "650-business"
   ],
-  "connectors": [
+  "sources": [
     {
       "id": "apple-podcasts",
       "name": "Apple Podcasts",
@@ -520,7 +520,7 @@
     {
       "id": "x-bookmarks",
       "name": "X Bookmarks",
-      "description": "Your saved X (Twitter) bookmarks, synced into Trove. Reads GET /2/users/:id/bookmarks (your ~800 most recent, newest-first) via OAuth 2.0 user-context with the bookmark.read scope. Reads three credentials from ctx.credentials: X_OAUTH_CLIENT_ID, X_OAUTH_REFRESH_TOKEN, and (for a confidential client) the optional X_OAUTH_CLIENT_SECRET. Currently unavailable: it needs a one-time OAuth authorize step (scripts/x-authorize.mjs) plus rotating-refresh-token management we can't collect through the app yet.",
+      "description": "Your saved X (Twitter) bookmarks, synced into Trove (your ~800 most recent, newest-first). Not yet available: X sign-in for this source can't be completed in the app yet.",
       "icon": "🔖",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",

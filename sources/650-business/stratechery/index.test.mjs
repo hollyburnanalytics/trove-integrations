@@ -18,7 +18,7 @@ function makeContext() {
   };
 }
 
-describe('stratechery connector', () => {
+describe('stratechery source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

@@ -57,7 +57,7 @@ function mockFetchForSync({ submissions = SUBMISSIONS_RESPONSE, html = FILING_HT
   });
 }
 
-describe('sec-filings connector', () => {
+describe('sec-filings source', () => {
   beforeEach(() => {
     globalThis.fetch = mock();
   });

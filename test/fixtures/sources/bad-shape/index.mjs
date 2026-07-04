@@ -1,5 +1,5 @@
 /**
- * Fixture connector returning an invalid shape. `config.mode` selects which
+ * Fixture source returning an invalid shape. `config.mode` selects which
  * contract violation to produce, so one fixture covers several invalid cases.
  */
 export async function sync(context) {

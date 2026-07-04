@@ -1,5 +1,5 @@
 /**
- * SEC Filings Connector
+ * SEC Filings source
  *
  * Fetches 10-K, 10-Q, 20-F, S-1, and F-1 filings from SEC EDGAR for tracked
  * companies. No API key needed — EDGAR is free and public.

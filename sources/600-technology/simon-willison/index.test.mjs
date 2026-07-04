@@ -7,7 +7,7 @@ mock.module('../../lib/feeds.mjs', () => ({ syncRSS: mock() }));
 import { syncRSS } from '../../lib/feeds.mjs';
 import { sync } from './index.mjs';
 
-describe('simon-willison connector', () => {
+describe('simon-willison source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 

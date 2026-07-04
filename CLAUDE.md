@@ -1,20 +1,21 @@
-# Trove Integrations
+# Trove Toolkits & Sources
 
 ## Project Overview
 
-This repo holds **Trove integrations**, of two kinds (see
-[`docs/integration-taxonomy.md`](docs/integration-taxonomy.md)):
+This repo holds **Trove toolkits and sources** (see
+[`docs/taxonomy.md`](docs/taxonomy.md)):
 
-- **Tools** (`mcp/`) — MCP servers the agent calls live; **the current focus of
+- **Toolkits** (`mcp/`) — named bundles of tools the agent calls live (every
+  toolkit runs as a full MCP server on Trove's cloud); **the current focus of
   the repo.** Built and documented in [`mcp/README.md`](mcp/README.md).
-- **Sources** (`sources/`) — data connectors that fill the knowledge base. **This
-  guide covers Sources;** for Tools, see [`mcp/README.md`](mcp/README.md).
+- **Sources** (`sources/`) — source adapters that fill the knowledge base. **This
+  guide covers Sources;** for Toolkits, see [`mcp/README.md`](mcp/README.md).
 
-A **source** is a small, self-contained module that fetches data from an external
-source and returns structured documents. Each lives in
-`sources/{category}/{connector-id}/` with an `index.mjs` and `manifest.json`.
+A **source** is a small, self-contained module (a source adapter) that fetches
+data from an external system and returns structured documents. Each lives in
+`sources/{category}/{source-id}/` with an `index.mjs` and `manifest.json`.
 
-Sources are loaded by an external harness that calls `sync(ctx)` and handles storage, scheduling, and auth flows. The connector's only job is: given a context, fetch data and return documents.
+Sources are loaded by an external harness that calls `sync(ctx)` and handles storage, scheduling, and auth flows. The source adapter's only job is: given a context, fetch data and return documents.
 
 ## Dev Commands
 
@@ -27,7 +28,7 @@ bun run format:check  # Check formatting without fixing
 bun run test          # Run tests
 bun run test:watch    # Run tests in watch mode
 bun run test:coverage # Run tests with coverage report
-bun run typecheck     # Typecheck both halves (MCP servers + connectors)
+bun run typecheck     # Typecheck both halves (toolkits + sources)
 bun run check         # Full check: lint + lint:sonar + test with coverage + typecheck
 bun run validate      # Validate registry.json consistency
 ```
@@ -38,12 +39,12 @@ Each file kind is covered by a deliberate set of tools (so nothing escapes a gat
 
 | Surface | Format + lint | Idiom lint | Type check | Tests |
 |---------|:---:|:---:|:---:|:---:|
-| `mcp/**/*.ts` (servers) | Biome | — | `tsc` strict (`mcp/tsconfig.json`) | `server.test.mjs` (mock `fetch` → real SDK path) |
+| `mcp/**/*.ts` (toolkits) | Biome | — | `tsc` strict (`mcp/tsconfig.json`) | `server.test.mjs` (mock `fetch` → real SDK path) |
 | `sources/**`, `scripts/**`, `bin/**` (`.mjs`) | Biome | ESLint (SonarJS + Unicorn) | `tsc --checkJs` (`tsconfig.sources.json`) | co-located `*.test.mjs` |
 
-Unicorn's JS-idiom rules run on the hand-written `.mjs` connectors; the `.ts`
-servers are covered by Biome + strict `tsc` instead. Both halves are type-checked
-and the connector half is checked via JSDoc/inference (`checkJs`).
+Unicorn's JS-idiom rules run on the hand-written `.mjs` sources; the `.ts`
+toolkits are covered by Biome + strict `tsc` instead. Both halves are type-checked
+and the source half is checked via JSDoc/inference (`checkJs`).
 
 ## Environment
 
@@ -58,13 +59,13 @@ Dependencies are auto-installed by the devcontainer (`postCreateCommand` + `post
 ## Architecture
 
 ```
-sources/{category}/{connector-id}/
+sources/{category}/{source-id}/
   manifest.json    # metadata, auth, schedule, config schema
   index.mjs        # exports async function sync(ctx) → { documents, cursor, stats }
 ```
 
 ### Categories
-Connectors are filed by **subject**, Dewey-decimal style — the folder name *is* the
+Sources are filed by **subject**, Dewey-decimal style — the folder name *is* the
 manifest `category`, and the number gives stable ordering with gaps to grow into:
 
 | Folder | Subject |
@@ -78,26 +79,26 @@ manifest `category`, and the number gives stable ordering with gaps to grow into
 | `650-business` | business, startups, finance |
 
 File by *what the content is about*, not by format (a blog, a news feed, and a filing on
-the same topic share a folder). Add a new class only when a connector genuinely needs one;
+the same topic share a folder). Add a new class only when a source genuinely needs one;
 pick a Dewey number that sorts it sensibly.
 
-### Marketplace identity (`sources/marketplace.json`)
+### Catalog identity (`sources/marketplace.json`)
 
-`sources/` is a **marketplace** — it declares its identity in `sources/marketplace.json`
-(`"id": "hollyburnanalytics/trove-connectors"`). A connector's stable cloud identity is
-**`{marketplace.id}/{connector.id}`** — the **`category` is *not* part of identity**, so a
-connector can be re-filed into a different Dewey folder without orphaning its indexed
+`sources/` is a **catalog** — it declares its identity in `sources/marketplace.json`
+(`"id": "hollyburnanalytics/trove-integrations"`). A source's stable cloud identity is
+**`{catalog.id}/{source.id}`** — the **`category` is *not* part of identity**, so a
+source can be re-filed into a different Dewey folder without orphaning its indexed
 documents. Two consequences, both enforced by `bun run validate`:
 
-- A connector's **`id` must be unique across the whole marketplace** (not just within its
+- A source's **`id` must be unique across the whole catalog** (not just within its
   category), because it is the identity slug.
-- A connector's `id` is its **permanent identity** — renaming it re-registers it as a new
-  connector in the cloud. Treat `id` like the pinned marketplace name: don't change it.
+- A source's `id` is its **permanent identity** — renaming it re-registers it as a new
+  source in the cloud. Treat `id` like the pinned catalog name: don't change it.
 
-### Connector Type System
+### Source Type System
 
 Every manifest declares four orthogonal type fields (enforced by
-`scripts/validate-registry.mjs`). See **`docs/connector-taxonomy.md`** for the full
+`scripts/validate-registry.mjs`). See **`docs/source-adapter-taxonomy.md`** for the full
 formalization and the MVP scope decision.
 
 - **`kind`** — execution contract: `scheduled-sync` (only built kind) · `on-demand-fetch` · `on-demand-query` (reserved).
@@ -105,16 +106,16 @@ formalization and the MVP scope decision.
 - **`watermark`** — resume strategy: `date` · `idSet` · `none` (built) · `highWaterId` · `opaqueToken` · `snapshot` · `mtime` · `rowid` (reserved).
 - **`documentSemantics`** — `append` (built) · `upsert` (reserved).
 
-Implemented connectors must stay within the **MVP cut** (`scheduled-sync` / `append` /
+Implemented sources must stay within the **MVP cut** (`scheduled-sync` / `append` /
 watermark ∈ {`date`, `idSet`, `none`} / transport ∈ {`feed`, `scrape`, `api`, `browser`, `local`}).
 Stubs may declare reserved values to encode where a shape is headed.
 
-### `available` — temporarily hide a built connector
+### `available` — temporarily hide a built source
 
-A connector is offered to users unless its manifest sets **`"available": false`**. We use
-this to disable connectors that are implemented but **need user input we can't collect yet**
+A source is offered to users unless its manifest sets **`"available": false`**. We use
+this to hide sources that are implemented but **need user input we can't collect yet**
 — a config list (`config.feeds`/`channels`/`tickers`/…) or a browser login. They stay in the
-repo and tests; the app just doesn't surface them. Remove the flag to re-enable once the
+repo and tests; the app just doesn't surface them. Remove the flag to offer them again once the
 config/auth UI exists. Absent = available. (Currently off: rss-feeds, sec-filings, x-bookmarks.)
 
 ### Helpers by transport
@@ -137,7 +138,7 @@ excerpt via `syncRSS()`.
 The harness provides:
 - `ctx.log` — `{ info(), warn(), error() }` logger (lines go to stderr)
 - `ctx.progress(count, message)` — update sync progress
-- `ctx.config` — connector **preferences** from the manifest (feed URLs, sections — NO secrets)
+- `ctx.config` — source **preferences** from the manifest (feed URLs, sections — NO secrets)
 - `ctx.credentials` — secrets sourced from the macOS Keychain (API keys, tokens); kept separate from `config` and never stored in the cloud
 - `ctx.cursor` — previous cursor value (`undefined` on first sync)
 
@@ -146,7 +147,7 @@ The harness provides:
 ```javascript
 {
   documents: [{ id, title, text, url, author, date, tags? }],
-  cursor: { type: 'date', value } | undefined,  // typed Watermark value — see docs/connector-taxonomy.md §4.3
+  cursor: { type: 'date', value } | undefined,  // typed Watermark value — see docs/source-adapter-taxonomy.md §4.3
   stats: { fetched, skipped? }
 }
 ```
@@ -155,7 +156,7 @@ The harness provides:
 
 **Use these instead of writing from scratch:**
 
-- `syncRSS(ctx, { feedUrl, idPrefix, defaultAuthor })` — complete RSS/Atom sync with cursor support. Returns the full `{ documents, cursor, stats }` envelope. Most RSS connectors are 8 lines.
+- `syncRSS(ctx, { feedUrl, idPrefix, defaultAuthor })` — complete RSS/Atom sync with cursor support. Returns the full `{ documents, cursor, stats }` envelope. Most RSS sources are 8 lines.
 - `parseRSS(xml)` — parse RSS `<item>` or Atom `<entry>` XML into `[{ title, link, description, content, pubDate, author, guid, categories }]`.
 - `htmlToText(html)` — reduce an HTML (or already-plain) fragment to clean plain text (decode entities, strip tags). Used to store feed bodies.
 - `syncFeedArticles(ctx, { feedUrl, idPrefix, defaultAuthor, articleSelector })` — for **CC/public-domain** feeds that carry only excerpts: fetch each new article page, extract `articleSelector`'s text, store the full body. Oldest-first, deadline-bounded, resumes via the `date` watermark.
@@ -163,7 +164,7 @@ The harness provides:
 - `fetchPage(url)` — fetch with our honest bot UA + timeout + size cap, throws on non-200.
 - `decodeHtmlEntities(text)` / `safeDate(str)` / `stableId(prefix, input)` — small text/date/id helpers.
 
-## Creating a New Connector
+## Creating a New Source
 
 ### Step 1: Determine the type
 
@@ -173,14 +174,14 @@ The harness provides:
 ### Step 2: Create the files
 
 ```bash
-mkdir -p sources/{category}/{connector-id}
+mkdir -p sources/{category}/{source-id}
 ```
 
 **manifest.json:**
 ```json
 {
-  "id": "my-connector",
-  "name": "My Connector",
+  "id": "my-source",
+  "name": "My Source",
   "description": "What this source provides",
   "icon": "📄",
   "version": "0.1.0",
@@ -215,13 +216,13 @@ export async function sync(ctx) {
 
 ### Step 3: Add to registry
 
-Run `bun scripts/validate-registry.mjs --fix` to auto-add the connector to `registry.json`.
+Run `bun scripts/validate-registry.mjs --fix` to auto-add the source to `registry.json`.
 
 ### Step 4: Test
 
 **Unit tests** (always works, uses mocks):
 ```bash
-bun run test sources/{category}/{connector-id}/
+bun run test sources/{category}/{source-id}/
 ```
 
 **Live smoke test** (works in and out of the devcontainer — `bun`'s `fetch` inherits the proxy):
@@ -233,7 +234,7 @@ const ctx = {
   config: {},
   cursor: undefined,
 };
-import('./sources/{category}/{connector-id}/index.mjs')
+import('./sources/{category}/{source-id}/index.mjs')
   .then(m => m.sync(ctx))
   .then(r => {
     console.log(r.stats.fetched + ' docs');
@@ -243,7 +244,7 @@ import('./sources/{category}/{connector-id}/index.mjs')
 "
 ```
 
-## Connector Patterns (Copy-Paste)
+## Source Patterns (Copy-Paste)
 
 ### RSS/Atom Feed (simplest — 8 lines)
 ```javascript
@@ -283,7 +284,7 @@ export async function sync(ctx) {
 
 ## Linting
 
-This project uses complementary tools, applied per file kind (see the toolchain matrix above): **Biome** lints + formats everything; **ESLint (SonarJS + Unicorn)** adds JS-idiom rules to the hand-written `.mjs` connectors; `tsc` type-checks both halves. All new and modified code must pass every gate that applies to it.
+This project uses complementary tools, applied per file kind (see the toolchain matrix above): **Biome** lints + formats everything; **ESLint (SonarJS + Unicorn)** adds JS-idiom rules to the hand-written `.mjs` sources; `tsc` type-checks both halves. All new and modified code must pass every gate that applies to it.
 
 **Biome** (`bun run lint`) — formatting and core lint rules for all `.ts`/`.mjs` (configured in `biome.json`).
 
@@ -296,7 +297,7 @@ All rules from both ESLint plugins are enabled at their recommended (strictest) 
 
 ## Rules
 
-- Every connector must export `async function sync(ctx)`.
+- Every source must export `async function sync(ctx)`.
 - Always return `{ documents, cursor, stats }` — never a bare array.
 - Use shared helpers when possible — don't rewrite RSS parsing.
 - IDs must be stable across syncs (same content → same ID).
@@ -304,7 +305,7 @@ All rules from both ESLint plugins are enabled at their recommended (strictest) 
 - `delayMs` between requests to avoid hammering sources (200-500ms).
 - Log progress: `ctx.log.info()` for milestones, `ctx.log.warn()` for recoverable errors.
 - Throw on fatal errors (auth expired, source unreachable). Warn on per-item failures.
-- Run `bun scripts/validate-registry.mjs --fix` after adding/modifying connectors.
+- Run `bun scripts/validate-registry.mjs --fix` after adding/modifying sources.
 - All code must pass `bun run lint` and `bun run lint:sonar` with zero errors.
 
 ## Validation

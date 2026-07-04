@@ -1,8 +1,8 @@
-# Trove MCP servers (Tools)
+# Trove toolkits
 
-The **Tool** half of Trove integrations (see
-[`../docs/integration-taxonomy.md`](../docs/integration-taxonomy.md)). Each
-subdirectory is a self-contained **hosted MCP server** — a `manifest.json`
+The **Toolkit** half of the repo (see [`../docs/taxonomy.md`](../docs/taxonomy.md)).
+Every toolkit runs as a full MCP server on Trove's cloud; each subdirectory is
+one — a `manifest.json`
 (identity, egress allowlist, declared secrets) plus a `server.ts` built on the
 `@ontrove/mcp` SDK (`defineMcpServer`, Zod input/output schemas, `ToolError`, the
 `ctx` capability object). They run as sandboxed servers behind the single Trove
@@ -22,7 +22,7 @@ in their manifest `egress`.
 ## Catalog
 
 ### Knowledge & research
-| Server | Tools | Source | Auth |
+| Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `arxiv` | `search_papers`, `get_paper` | export.arxiv.org | — |
 | `semantic-scholar` | `search_papers`, `get_paper`, `get_paper_citations`, `get_paper_references` | api.semanticscholar.org | — |
@@ -38,7 +38,7 @@ in their manifest `egress`.
 | `the-met` | `search_objects`, `get_object` | collectionapi.metmuseum.org | — |
 
 ### Government & civic
-| Server | Tools | Source | Auth |
+| Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `sec-edgar` | `search_filings`, `company_filings` | SEC EDGAR (efts/data/www.sec.gov) | — |
 | `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — |
@@ -48,7 +48,7 @@ in their manifest `egress`.
 | `orgbook-bc` | `search_entities`, `get_entity`, `get_entity_history` | orgbook.gov.bc.ca (BC Corporate Registry mirror) | — ◊|
 
 ### Geo, weather & time
-| Server | Tools | Source | Auth |
+| Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `mapbox` | `isochrone`, `geocode`, `directions` | api.mapbox.com | **`MAPBOX_TOKEN`** |
 | `open-meteo` | `geocode_place`, `forecast`, `historical` (back to 1940), `air_quality` | open-meteo.com | — |
@@ -56,32 +56,32 @@ in their manifest `egress`.
 | `holidays` | `public_holidays`, `next_holidays` | date.nager.at | — |
 
 ### Economy & health
-| Server | Tools | Source | Auth |
+| Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `fred` | `search_series`, `get_observations` | api.stlouisfed.org (St. Louis Fed) | **`FRED_API_KEY`** |
 | `openfda` | `search_drug_labels`, `search_recalls` | api.fda.gov | — |
 
 ### Business ops
-| Server | Tools | Source | Auth |
+| Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `jonas-premier` | `list_companies`, `search_jobs`, `get_job_transactions`, `get_job_estimate`, `search_vendors`, `get_ap_invoices`, `get_ap_payments`, `get_gl_accounts`, `get_subcontracts`, `get_subcontract_change_orders` | api.jonas-premier.com (Premier Construction Software External API) | **`JONAS_USERNAME` + `JONAS_PASSWORD`** ¶|
 
 ### Social
-| Server | Tools | Source | Auth |
+| Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `x` | `get_user_tweets`, `get_tweet`, `get_post_replies`, `search_posts`, `count_posts`, `resolve_user`, `get_bookmarks` | api.x.com (X API v2) | **`X_BEARER_TOKEN`** (reads) · **`X_OAUTH_CLIENT_ID` + `X_OAUTH_REFRESH_TOKEN`** (+ optional `X_OAUTH_CLIENT_SECRET`) for `get_bookmarks` |
 
 ### Personal / niche
-| Server | Tools | Source | Auth |
+| Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `ebay` | `search_items`, `get_item` | api.ebay.com (Browse API) | **`EBAY_CLIENT_ID` + `EBAY_CLIENT_SECRET`** |
 
 ### Actions (mutating)
-| Server | Tools | Source | Auth |
+| Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `resend` | `send_email` | api.resend.com | **`RESEND_API_KEY` + `RECIPIENT_EMAIL`** ※|
 
-※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted connectors are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
+※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted MCP servers are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
 
 ◊ `orgbook-bc` — **verify BC-registered legal entities** in the province's public
 registry (OrgBook BC, the verifiable-credential mirror of the BC Corporate

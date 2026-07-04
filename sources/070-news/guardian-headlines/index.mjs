@@ -1,5 +1,5 @@
 /**
- * The Guardian Connector
+ * The Guardian source
  *
  * Fetches headlines and summaries from The Guardian's public RSS feeds.
  * No auth required — RSS feeds are open.
