@@ -44,9 +44,10 @@ export function fetchMock(responder) {
  * @param {string} tool - The tool name to invoke.
  * @param {object} args - The tool arguments.
  * @param {object|Function} [responder] - A `fetchMock` responder (omit for arg-validation tests).
+ * @param {string[]} [scopes] - Granted scopes for this call (e.g. `['trove:ingest']` to enable `ctx.trove`).
  * @returns {Promise<object>} The `McpToolCallResult`.
  */
-export async function callTool(server, tool, arguments_, responder) {
+export async function callTool(server, tool, arguments_, responder, scopes = []) {
   const saved = globalThis.fetch;
   globalThis.fetch = fetchMock(
     responder ??
@@ -61,7 +62,7 @@ export async function callTool(server, tool, arguments_, responder) {
       ctxToken: 'test-ctx-token',
       callbackBase: 'https://callback.test',
       userId: 'test-user',
-      scopes: [],
+      scopes,
     });
   } finally {
     globalThis.fetch = saved;
