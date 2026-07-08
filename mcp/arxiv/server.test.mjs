@@ -244,6 +244,22 @@ describe('arxiv MCP server', () => {
       expect(result.result.structured.sections[0].kind).toBe('results');
     });
 
+    it('lists available sections when the requested kind is absent', async () => {
+      const result = await callTool(
+        server,
+        'get_paper_content',
+        { id: '2510.20005', section: 'methods' },
+        paperResponder({ arxivHtml: { text: htmlDocument() } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.sections).toEqual([]);
+      expect(result.result.structured.availableSections.map((s) => s.kind)).toEqual([
+        'introduction',
+        'results',
+      ]);
+      expect(result.result.text).toMatch(/no section is classified as "methods"/i);
+    });
+
     it('falls back to ar5iv when arXiv HTML is missing', async () => {
       const result = await callTool(
         server,

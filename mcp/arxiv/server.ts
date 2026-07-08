@@ -707,6 +707,7 @@ export default defineMcpServer({
         htmlAvailable: z.boolean(),
         abstract: z.string(),
         sections: z.array(z.object({ title: z.string(), kind: z.string(), text: z.string() })),
+        availableSections: z.array(z.object({ title: z.string(), kind: z.string() })),
         references: z.array(z.string()),
         citedArxivIds: z.array(z.string()),
         truncated: z.boolean(),
@@ -729,6 +730,7 @@ export default defineMcpServer({
               htmlAvailable: false,
               abstract: paper.summary,
               sections: [],
+              availableSections: [],
               references: [],
               citedArxivIds: [],
               truncated: false,
@@ -737,8 +739,30 @@ export default defineMcpServer({
         }
 
         const content = parseHtmlContent(html);
+        const availableSections = content.sections.map((s) => ({ title: s.title, kind: s.kind }));
         let sections = content.sections;
         if (section) sections = sections.filter((s) => s.kind === section);
+
+        // A requested section the paper doesn't have (common — not every paper
+        // uses canonical headings): return the sections it DOES have so the
+        // caller can re-request, rather than an empty, silent result.
+        if (section && sections.length === 0 && content.sections.length > 0) {
+          const list = availableSections.map((s) => `${s.title} (${s.kind})`).join('; ');
+          return {
+            text: `${paper.id} — ${paper.title}\nNo section is classified as "${section}". Available sections: ${list}. Re-run with one of those kinds, or omit "section" for the whole paper.`,
+            structured: {
+              id: paper.id,
+              title: paper.title,
+              htmlAvailable: true,
+              abstract: content.abstract || paper.summary,
+              sections: [],
+              availableSections,
+              references: content.references,
+              citedArxivIds: content.citedArxivIds,
+              truncated: false,
+            },
+          };
+        }
 
         // Budget the total body text across the selected sections.
         let remaining = maxChars;
@@ -772,6 +796,7 @@ export default defineMcpServer({
             htmlAvailable: true,
             abstract: content.abstract || paper.summary,
             sections: kept,
+            availableSections,
             references: content.references,
             citedArxivIds: content.citedArxivIds,
             truncated,
