@@ -1,12 +1,12 @@
 {
   "id": "arxiv",
   "name": "arXiv",
-  "description": "Search and fetch scientific papers from the public arXiv.org preprint server.",
+  "description": "Search, read, and save scientific papers from the public arXiv.org preprint server — full-text sections, references, date and field filters, and one-tool save into your Trove knowledge base.",
   "icon": "📚",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "sdk": "@ontrove/mcp@^0.1",
   "secrets": [],
-  "egress": ["export.arxiv.org"],
-  "scopes": [],
+  "egress": ["export.arxiv.org", "arxiv.org", "ar5iv.labs.arxiv.org"],
+  "scopes": ["trove:ingest"],
   "visibility": "public"
 }

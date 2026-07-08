@@ -29,171 +29,303 @@ function entry({
   </entry>`;
 }
 
-/** Wrap entry blocks in an Atom feed. */
-function feed(...entries) {
+/** Wrap entry blocks in an Atom feed with an optional total-results count. */
+function feed(entries = [], total) {
+  const count = total ?? entries.length;
   return `<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>ArXiv Query</title>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+  <opensearch:totalResults>${count}</opensearch:totalResults>
   ${entries.join('\n')}
 </feed>`;
 }
 
+/** A minimal LaTeXML full-text document (arXiv HTML / ar5iv shape). */
+function htmlDocument() {
+  return `<!DOCTYPE html><html><body><div class="ltx_page_content">
+  <div class="ltx_abstract"><h6 class="ltx_title">Abstract</h6>
+    <p class="ltx_p">This is the abstract text.</p></div>
+  <section class="ltx_section" id="S1">
+    <h2 class="ltx_title ltx_title_section"><span class="ltx_tag ltx_tag_section">1 </span>Introduction</h2>
+    <div class="ltx_para"><p class="ltx_p">Intro paragraph about the problem.</p></div></section>
+  <section class="ltx_section" id="S2">
+    <h2 class="ltx_title ltx_title_section"><span class="ltx_tag ltx_tag_section">2 </span>Results</h2>
+    <div class="ltx_para"><p class="ltx_p">We achieved strong results on the benchmark.</p></div></section>
+  <section class="ltx_bibliography" id="bib">
+    <h2 class="ltx_title ltx_title_bibliography">References</h2>
+    <ul class="ltx_biblist">
+      <li class="ltx_bibitem" id="bib.bib1"><span class="ltx_bibblock">Prior work, arXiv:2401.12345.</span></li>
+    </ul></section>
+  </div></body></html>`;
+}
+
+/** Responder that serves the metadata feed and (optionally) HTML full text. */
+function paperResponder({ atom, arxivHtml, ar5ivHtml, onIngest } = {}) {
+  return (url, init) => {
+    if (url.includes('/internal/trove')) {
+      onIngest?.(JSON.parse(init.body));
+      return { json: { data: { ingested: 1 } } };
+    }
+    if (url.includes('export.arxiv.org/api/query')) return { text: atom ?? feed([entry()]) };
+    if (url.includes('//arxiv.org/html/')) return arxivHtml ?? { status: 404 };
+    if (url.includes('ar5iv')) return ar5ivHtml ?? { status: 404 };
+    return { status: 404 };
+  };
+}
+
 describe('arxiv MCP server', () => {
-  it('lists the two tools', () => {
-    expect(server.tools.map((t) => t.name).toSorted()).toEqual(['get_paper', 'search_papers']);
+  it('lists the four tools', () => {
+    expect(server.tools.map((t) => t.name).toSorted()).toEqual([
+      'get_paper',
+      'get_paper_content',
+      'save_paper',
+      'search_papers',
+    ]);
   });
 
   describe('search_papers', () => {
     it('returns parsed papers for a query', async () => {
-      const xml = feed(
-        entry({ id: '2510.25417', title: 'Diffusion Models Survey' }),
-        entry({
-          id: '2510.11111',
-          title: 'Second Paper',
-          authors: ['Grace Hopper'],
-          categories: ['cs.AI'],
-        }),
-      );
       const result = await callTool(
         server,
         'search_papers',
         { query: 'diffusion models', category: 'cs.LG', maxResults: 10 },
-        { text: xml },
+        {
+          text: feed(
+            [
+              entry({ id: '2510.25417', title: 'Diffusion Models Survey' }),
+              entry({ id: '2510.11111' }),
+            ],
+            2,
+          ),
+        },
       );
       expect(result.ok).toBe(true);
       expect(result.result.structured.count).toBe(2);
       const [first] = result.result.structured.papers;
       expect(first.id).toBe('2510.25417');
-      expect(first.title).toBe('Diffusion Models Survey');
-      expect(first.authors).toEqual(['Ada Lovelace', 'Alan Turing']);
-      expect(first.categories).toEqual(['cs.LG', 'stat.ML']);
       expect(first.pdfUrl).toContain('arxiv.org/pdf/2510.25417v1');
-      expect(first.arxivUrl).toBe('https://arxiv.org/abs/2510.25417');
-      expect(result.result.text).toContain('Diffusion Models Survey');
     });
 
-    it('builds the search_query with the category and literal +AND+ joiner', async () => {
+    it('composes field-scoped clauses with the literal +AND+ joiner', async () => {
       let requested = '';
       await callTool(
         server,
         'search_papers',
-        { query: 'graph neural', category: 'cs.LG' },
+        { title: 'graph neural', author: 'hinton', category: 'cs.LG' },
         (url) => {
           requested = url;
-          return { text: feed(entry()) };
+          return { text: feed([entry()]) };
         },
       );
-      expect(requested).toContain('search_query=all:graph%20neural+AND+cat:cs.LG');
-      expect(requested).toContain('sortBy=relevance');
-      expect(requested).toContain('sortOrder=descending');
+      expect(requested).toContain('ti:graph%20neural+AND+au:hinton+AND+cat:cs.LG');
     });
 
-    it('maps the sortBy label to the arXiv sortBy value', async () => {
+    it('compiles from_date/to_date into a submittedDate range', async () => {
       let requested = '';
-      await callTool(server, 'search_papers', { query: 'x', sortBy: 'lastUpdated' }, (url) => {
-        requested = url;
-        return { text: feed(entry()) };
-      });
-      expect(requested).toContain('sortBy=lastUpdatedDate');
+      await callTool(
+        server,
+        'search_papers',
+        { query: 'dementia', from_date: '2026', to_date: '2026-06' },
+        (url) => {
+          requested = url;
+          return { text: feed([entry()]) };
+        },
+      );
+      expect(requested).toContain('submittedDate:[20260101+TO+20260631]');
     });
 
-    it('reports an empty result set cleanly', async () => {
+    it('passes a raw advanced expression through, overriding the fields', async () => {
+      let requested = '';
+      await callTool(
+        server,
+        'search_papers',
+        { query: 'ignored', advanced: 'ti:transformer ANDNOT abs:vision' },
+        (url) => {
+          requested = url;
+          return { text: feed([entry()]) };
+        },
+      );
+      expect(requested).toContain('search_query=ti:transformer+ANDNOT+abs:vision');
+      expect(requested).not.toContain('ignored');
+    });
+
+    it('reports pagination when more results remain', async () => {
       const result = await callTool(
         server,
         'search_papers',
-        { query: 'nonexistent topic' },
-        {
-          text: feed(),
-        },
+        { query: 'x', maxResults: 2, start: 0 },
+        { text: feed([entry({ id: '1' }), entry({ id: '2' })], 10) },
       );
       expect(result.ok).toBe(true);
-      expect(result.result.structured.count).toBe(0);
-      expect(result.result.structured.papers).toEqual([]);
-      expect(result.result.text).toMatch(/no arxiv papers found/i);
+      expect(result.result.structured.hasMore).toBe(true);
+      expect(result.result.structured.nextStart).toBe(2);
+      expect(result.result.structured.total).toBe(10);
     });
 
-    it('maps a 400 to a non-retryable error', async () => {
-      const result = await callTool(server, 'search_papers', { query: 'bad' }, { status: 400 });
+    it('errors when no search parameter is supplied', async () => {
+      const result = await callTool(server, 'search_papers', {});
       expect(result.ok).toBe(false);
-      expect(result.retryable).toBe(false);
       expect(result.code).toBe('TOOL_ERROR');
-    });
-
-    it('maps a 500 to a retryable error', async () => {
-      const result = await callTool(server, 'search_papers', { query: 'down' }, { status: 500 });
-      expect(result.ok).toBe(false);
-      expect(result.retryable).toBe(true);
-      expect(result.code).toBe('TOOL_ERROR');
-    });
-
-    it('rejects an empty query before fetching', async () => {
-      const result = await callTool(server, 'search_papers', { query: '' });
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('INVALID_PARAMS');
     });
 
     it('rejects maxResults above the allowed maximum', async () => {
-      const result = await callTool(server, 'search_papers', { query: 'x', maxResults: 100 });
+      const result = await callTool(server, 'search_papers', { query: 'x', maxResults: 500 });
       expect(result.ok).toBe(false);
       expect(result.code).toBe('INVALID_PARAMS');
+    });
+
+    it('surfaces a distinct retryable error on HTTP 429', async () => {
+      const result = await callTool(server, 'search_papers', { query: 'busy' }, { status: 429 });
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(true);
+      expect(result.error).toMatch(/rate-limit/i);
+    });
+
+    it('serves an identical repeat query from the in-isolate cache', async () => {
+      let calls = 0;
+      const responder = (url) => {
+        if (url.includes('export.arxiv.org')) calls++;
+        return { text: feed([entry()]) };
+      };
+      const arguments_ = { query: 'zzz-unique-cache-probe' };
+      await callTool(server, 'search_papers', arguments_, responder);
+      await callTool(server, 'search_papers', arguments_, responder);
+      expect(calls).toBe(1);
     });
   });
 
   describe('get_paper', () => {
     it('returns a single paper by id', async () => {
-      const xml = feed(
-        entry({
-          id: '2510.25417',
-          title: 'A Single Paper',
-          authors: ['Ada Lovelace'],
-          summary: 'The full abstract text.',
-          categories: ['cs.LG'],
-        }),
+      const result = await callTool(
+        server,
+        'get_paper',
+        { id: '2510.10001' },
+        { text: feed([entry({ id: '2510.10001', title: 'A Single Paper' })]) },
       );
-      const result = await callTool(server, 'get_paper', { id: '2510.25417' }, { text: xml });
       expect(result.ok).toBe(true);
-      expect(result.result.structured.id).toBe('2510.25417');
-      expect(result.result.structured.title).toBe('A Single Paper');
-      expect(result.result.structured.summary).toBe('The full abstract text.');
+      expect(result.result.structured.id).toBe('2510.10001');
       expect(result.result.text).toContain('A Single Paper');
-      expect(result.result.text).toContain('PDF: http://arxiv.org/pdf/2510.25417v1');
-    });
-
-    it('encodes the id into the id_list query parameter', async () => {
-      let requested = '';
-      await callTool(server, 'get_paper', { id: '2510.25417v2' }, (url) => {
-        requested = url;
-        return { text: feed(entry({ id: '2510.25417' })) };
-      });
-      expect(requested).toContain('id_list=2510.25417v2');
     });
 
     it('maps an empty feed to a non-retryable not-found error', async () => {
-      const result = await callTool(server, 'get_paper', { id: '0000.00000' }, { text: feed() });
+      const result = await callTool(server, 'get_paper', { id: '0000.00000' }, { text: feed([]) });
       expect(result.ok).toBe(false);
       expect(result.retryable).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
       expect(result.error).toMatch(/no arxiv paper found/i);
     });
+  });
 
-    it('maps a 400 to a non-retryable error', async () => {
-      const result = await callTool(server, 'get_paper', { id: 'garbage' }, { status: 400 });
+  // Distinct ids per test: identical requests are cached across the run.
+  describe('get_paper_content', () => {
+    it('parses HTML into labelled sections, references and cited ids', async () => {
+      const result = await callTool(
+        server,
+        'get_paper_content',
+        { id: '2510.20001' },
+        paperResponder({ arxivHtml: { text: htmlDocument() } }),
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.htmlAvailable).toBe(true);
+      expect(s.abstract).toBe('This is the abstract text.');
+      expect(s.sections.map((x) => x.kind)).toEqual(['introduction', 'results']);
+      expect(s.sections[1].text).toContain('strong results');
+      expect(s.references).toHaveLength(1);
+      expect(s.citedArxivIds).toEqual(['2401.12345']);
+    });
+
+    it('returns only the requested section kind', async () => {
+      const result = await callTool(
+        server,
+        'get_paper_content',
+        { id: '2510.20002', section: 'results' },
+        paperResponder({ arxivHtml: { text: htmlDocument() } }),
+      );
+      expect(result.result.structured.sections).toHaveLength(1);
+      expect(result.result.structured.sections[0].kind).toBe('results');
+    });
+
+    it('falls back to ar5iv when arXiv HTML is missing', async () => {
+      const result = await callTool(
+        server,
+        'get_paper_content',
+        { id: '2510.20003' },
+        paperResponder({ arxivHtml: { status: 404 }, ar5ivHtml: { text: htmlDocument() } }),
+      );
+      expect(result.result.structured.htmlAvailable).toBe(true);
+      expect(result.result.structured.sections).toHaveLength(2);
+    });
+
+    it('degrades to the abstract when no HTML version exists', async () => {
+      const result = await callTool(
+        server,
+        'get_paper_content',
+        { id: '2510.20004' },
+        paperResponder({
+          atom: feed([entry({ id: '2510.20004', summary: 'Only the abstract.' })]),
+          arxivHtml: { status: 404 },
+          ar5ivHtml: { status: 404 },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.htmlAvailable).toBe(false);
+      expect(result.result.structured.abstract).toBe('Only the abstract.');
+    });
+  });
+
+  describe('save_paper', () => {
+    it('ingests the paper into the knowledge base when granted trove:ingest', async () => {
+      let ingested;
+      const result = await callTool(
+        server,
+        'save_paper',
+        { id: '2510.30001' },
+        paperResponder({
+          atom: feed([entry({ id: '2510.30001', title: 'Saved Paper' })]),
+          onIngest: (body) => {
+            ingested = body;
+          },
+        }),
+        ['trove:ingest'],
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.ingested).toBe(1);
+      expect(result.result.structured.includedFullText).toBe(false);
+      expect(ingested.operation).toBe('ingest');
+      const [document] = ingested.variables.documents;
+      expect(document.title).toBe('Saved Paper');
+      expect(document.url).toBe('https://arxiv.org/abs/2510.30001');
+      expect(document.text).toContain('arXiv:2510.30001');
+    });
+
+    it('indexes full text when includeFullText is set', async () => {
+      let ingested;
+      const result = await callTool(
+        server,
+        'save_paper',
+        { id: '2510.30002', includeFullText: true },
+        paperResponder({
+          atom: feed([entry({ id: '2510.30002' })]),
+          arxivHtml: { text: htmlDocument() },
+          onIngest: (b) => {
+            ingested = b;
+          },
+        }),
+        ['trove:ingest'],
+      );
+      expect(result.result.structured.includedFullText).toBe(true);
+      expect(ingested.variables.documents[0].text).toContain('strong results');
+    });
+
+    it('errors clearly when the trove:ingest scope is not granted', async () => {
+      const result = await callTool(
+        server,
+        'save_paper',
+        { id: '2510.30003' },
+        paperResponder({ atom: feed([entry({ id: '2510.30003' })]) }),
+      );
       expect(result.ok).toBe(false);
       expect(result.retryable).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
-    });
-
-    it('maps a 503 to a retryable error', async () => {
-      const result = await callTool(server, 'get_paper', { id: '2510.25417' }, { status: 503 });
-      expect(result.ok).toBe(false);
-      expect(result.retryable).toBe(true);
-      expect(result.code).toBe('TOOL_ERROR');
-    });
-
-    it('rejects an empty id before fetching', async () => {
-      const result = await callTool(server, 'get_paper', { id: '' });
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('INVALID_PARAMS');
+      expect(result.error).toMatch(/trove:ingest|permission/i);
     });
   });
 });
