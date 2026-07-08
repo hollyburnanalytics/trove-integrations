@@ -13,10 +13,11 @@ import { type GetJsonOptions, getJson } from '../lib/http.ts';
  */
 
 /**
- * SEC-required descriptive User-Agent (their fair-access policy). The SEC asks
- * for a real contact address; replace the constant below with your own before deploying.
+ * SEC-required descriptive User-Agent (their fair-access policy). SEC blocks
+ * non-deliverable contacts — including GitHub `noreply` addresses — with a 403,
+ * so this must stay a real, monitored operator inbox.
  */
-const CONTACT_EMAIL = 'trove-integrations@users.noreply.github.com';
+const CONTACT_EMAIL = 'sec-edgar@ontrove.sh';
 const USER_AGENT = `Trove MCP (${CONTACT_EMAIL})`;
 
 /**
