@@ -3,7 +3,7 @@
   "name": "SEC EDGAR",
   "description": "Full-text search of U.S. SEC filings and a company's recent filings via the public EDGAR APIs. No key required.",
   "icon": "🏛️",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "sdk": "@ontrove/mcp@^0.1",
   "secrets": [],
   "egress": ["efts.sec.gov", "www.sec.gov", "data.sec.gov"],
