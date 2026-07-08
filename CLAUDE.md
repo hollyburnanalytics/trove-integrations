@@ -82,9 +82,9 @@ File by *what the content is about*, not by format (a blog, a news feed, and a f
 the same topic share a folder). Add a new class only when a source genuinely needs one;
 pick a Dewey number that sorts it sensibly.
 
-### Catalog identity (`sources/marketplace.json`)
+### Catalog identity (`sources/catalog.json`)
 
-`sources/` is a **catalog** — it declares its identity in `sources/marketplace.json`
+`sources/` is a **catalog** — it declares its identity in `sources/catalog.json`
 (`"id": "hollyburnanalytics/trove-integrations"`). A source's stable cloud identity is
 **`{catalog.id}/{source.id}`** — the **`category` is *not* part of identity**, so a
 source can be re-filed into a different Dewey folder without orphaning its indexed

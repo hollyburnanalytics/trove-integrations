@@ -28,7 +28,7 @@ const { join } = path;
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const REGISTRY_PATH = join(ROOT, 'registry.json');
-const CATALOG_PATH = join(ROOT, 'sources', 'marketplace.json');
+const CATALOG_PATH = join(ROOT, 'sources', 'catalog.json');
 // Dewey-style subject classification (folder name = manifest `category`).
 const CATEGORIES = [
   '000-general',
@@ -93,10 +93,10 @@ if (existsSync(CATALOG_PATH)) {
   if (typeof catalog.id === 'string' && catalog.id.trim() !== '') {
     ok(`Catalog id: ${catalog.id}`);
   } else {
-    warn('sources/marketplace.json must declare a non-empty string "id"');
+    warn('sources/catalog.json must declare a non-empty string "id"');
   }
 } else {
-  warn('sources/marketplace.json is missing (declares the catalog identity)');
+  warn('sources/catalog.json is missing (declares the catalog identity)');
 }
 
 const idCounts = new Map();
