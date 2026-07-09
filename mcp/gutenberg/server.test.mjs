@@ -202,6 +202,17 @@ describe('gutenberg MCP server', () => {
       expect(result.result.structured.readingMinutes).toBeNull();
     });
 
+    it('still returns metadata when the text fetch fails outright (network error)', async () => {
+      const result = await callTool(server, 'get_book', { bookId: 84 }, (url) => {
+        if (url.includes('gutendex.com')) return { json: FRANKENSTEIN };
+        throw new Error('network down');
+      });
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.title).toContain('Frankenstein');
+      expect(result.result.structured.wordCount).toBeNull();
+      expect(result.result.structured.readingMinutes).toBeNull();
+    });
+
     it('maps a Gutendex 404 to a non-retryable error', async () => {
       const result = await callTool(
         server,
