@@ -3,7 +3,7 @@
   "name": "SEC EDGAR",
   "description": "SEC filings and financials: structured XBRL income statement / balance sheet / cash flow, any XBRL concept's history, full-text filing search, and a company's filing list. No key required.",
   "icon": "🏛️",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "sdk": "@ontrove/mcp@^0.1",
   "secrets": [],
   "egress": ["efts.sec.gov", "www.sec.gov", "data.sec.gov"],
