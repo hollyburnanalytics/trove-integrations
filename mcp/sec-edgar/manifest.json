@@ -1,9 +1,9 @@
 {
   "id": "sec-edgar",
   "name": "SEC EDGAR",
-  "description": "Full-text search of U.S. SEC filings and a company's recent filings via the public EDGAR APIs. No key required.",
+  "description": "SEC filings and financials: structured XBRL income statement / balance sheet / cash flow, any XBRL concept's history, full-text filing search, and a company's filing list. No key required.",
   "icon": "🏛️",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "sdk": "@ontrove/mcp@^0.1",
   "secrets": [],
   "egress": ["efts.sec.gov", "www.sec.gov", "data.sec.gov"],
