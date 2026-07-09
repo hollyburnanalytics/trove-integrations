@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { xmlBlocks, xmlFlag, xmlNumber, xmlValue } from './client.ts';
+import { normalizeAccession, xmlBlocks, xmlFlag, xmlNumber, xmlValue } from './client.ts';
 import { filingHtmlToText, findInText, pickPrimaryDocument } from './documents.ts';
 import { parseOwnershipXml, summarizeOpenMarket } from './ownership.ts';
 import { aggregateHoldings, parseCoverPage, parseInfoTable } from './thirteenf.ts';
@@ -34,6 +34,16 @@ describe('xml helpers', () => {
   it('reads SEC boolean flags', () => {
     expect(xmlFlag(xml, 'f')).toBe(true);
     expect(xmlFlag(xml, 'missing')).toBe(false);
+  });
+});
+
+describe('normalizeAccession', () => {
+  it('inserts dashes into a bare 18-digit accession', () => {
+    expect(normalizeAccession('000032019325000079')).toBe('0000320193-25-000079');
+  });
+
+  it('leaves a dashed accession untouched', () => {
+    expect(normalizeAccession('0000320193-25-000079')).toBe('0000320193-25-000079');
   });
 });
 

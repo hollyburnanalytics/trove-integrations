@@ -11,5 +11,5 @@
     "types": [],
     "noEmit": true
   },
-  "include": ["*/server.ts", "*/*.ts"]
+  "include": ["**/*.ts"]
 }
