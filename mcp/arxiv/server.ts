@@ -428,15 +428,38 @@ const SORT_BY = {
   submitted: 'submittedDate',
 } as const;
 
+function invalidDate(input: string): ToolError {
+  return new ToolError(`Could not parse the date "${input}". Use YYYY, YYYY-MM, or YYYY-MM-DD.`, {
+    retryable: false,
+  });
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
 /** Normalize a date input ("2026", "2026-03", "20260315") to arXiv's YYYYMMDD. */
 function toArxivDate(input: string, end: boolean): string {
   const digits = input.replace(/[^0-9]/g, '');
-  if (digits.length === 4) return `${digits}${end ? '1231' : '0101'}`;
-  if (digits.length === 6) return `${digits}${end ? '31' : '01'}`;
-  if (digits.length === 8) return digits;
-  throw new ToolError(`Could not parse the date "${input}". Use YYYY, YYYY-MM, or YYYY-MM-DD.`, {
-    retryable: false,
-  });
+  if (![4, 6, 8].includes(digits.length)) throw invalidDate(input);
+
+  const year = Number.parseInt(digits.slice(0, 4), 10);
+  const month = digits.length >= 6 ? Number.parseInt(digits.slice(4, 6), 10) : end ? 12 : 1;
+  const day =
+    digits.length === 8
+      ? Number.parseInt(digits.slice(6, 8), 10)
+      : end
+        ? daysInMonth(year, month)
+        : 1;
+  const maxDay = daysInMonth(year, month);
+
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > maxDay) {
+    throw invalidDate(input);
+  }
+
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return `${year}${mm}${dd}`;
 }
 
 interface SearchInput {
