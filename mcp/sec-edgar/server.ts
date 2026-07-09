@@ -736,6 +736,18 @@ function discoverPeriods(
     }
   }
   return [...windows.values()]
+    .filter((fact) => {
+      // Some filers report trailing-twelve-month figures inside quarterly
+      // reports (a year-long window ending at a quarter end). Those are not
+      // fiscal years: drop annual-length windows whose own filing stamps them
+      // as a quarter.
+      if (kind !== 'annual') return true;
+      return !(
+        fiscalStampsTrusted(kind, fact) &&
+        fact.fiscalPeriod !== null &&
+        fact.fiscalPeriod !== 'FY'
+      );
+    })
     .sort((a, b) => (a.end < b.end ? 1 : a.end > b.end ? -1 : 0))
     .slice(0, limit)
     .map((fact) => {
@@ -859,6 +871,17 @@ function assembleFinancials(
       ocf !== null && ocf !== undefined && capex !== null && capex !== undefined
         ? ocf - capex
         : null;
+    // Many filers (Amazon, Alphabet, Meta, Netflix) present no gross-profit
+    // subtotal; derive it when both components are reported.
+    if (
+      values.grossProfit === null &&
+      values.revenue !== null &&
+      values.revenue !== undefined &&
+      values.costOfRevenue !== null &&
+      values.costOfRevenue !== undefined
+    ) {
+      values.grossProfit = values.revenue - values.costOfRevenue;
+    }
     return { ...period, values, ...checkIdentity(values) };
   });
 

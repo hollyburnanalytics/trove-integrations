@@ -104,6 +104,8 @@ const ANNUAL_FACTS = companyFacts(100_001, {
   ]),
   // Only the legacy tag exists — `revenue` must fall back to it.
   Revenues: usd([fact({ val: 500 })]),
+  // No GrossProfit tag — it must be derived as revenue - costOfRevenue.
+  CostOfGoodsAndServicesSold: usd([fact({ val: 200 })]),
   Assets: usd([instant({ val: 350 })]),
   Liabilities: usd([instant({ val: 290 })]),
   StockholdersEquity: usd([instant({ val: 60 })]),
@@ -164,6 +166,32 @@ const COMPARATIVE_FACTS = companyFacts(100_016, {
       fp: 'Q3',
       form: '10-Q',
       filed: '2025-11-04',
+    }),
+  ]),
+});
+
+// A filer that reports trailing-twelve-month figures inside its 10-Qs
+// (year-long windows ending at quarter ends, stamped as quarters).
+const TTM_FACTS = companyFacts(100_018, {
+  NetIncomeLoss: usd([
+    // The real fiscal year.
+    fact({
+      start: '2025-01-01',
+      end: '2025-12-31',
+      val: 100,
+      fy: 2025,
+      fp: 'FY',
+      filed: '2026-02-06',
+    }),
+    // TTM window from the Q1 10-Q — annual-length, but NOT a fiscal year.
+    fact({
+      start: '2025-04-01',
+      end: '2026-03-31',
+      val: 110,
+      fy: 2026,
+      fp: 'Q1',
+      form: '10-Q',
+      filed: '2026-04-30',
     }),
   ]),
 });
@@ -247,6 +275,8 @@ describe('sec-edgar MCP server', () => {
       expect(fy2023.incomeStatement.netIncome).toBe(105);
       // Revenue resolved through the legacy `Revenues` fallback tag.
       expect(fy2023.incomeStatement.revenue).toBe(500);
+      // No GrossProfit tag in the fixture — derived from revenue - cost.
+      expect(fy2023.incomeStatement.grossProfit).toBe(300);
       expect(fy2023.incomeStatement.epsDiluted).toBe(2.5);
       expect(fy2023.balanceSheet.totalAssets).toBe(350);
       expect(fy2023.identityOk).toBe(true);
@@ -316,6 +346,19 @@ describe('sec-edgar MCP server', () => {
         routes({ '/api/xbrl/companyfacts/CIK0000100004.json': { json: REPORTED_TOTAL_FACTS } }),
       );
       expect(result.result.structured.periods[0].identityOk).toBe(true);
+    });
+
+    it('excludes trailing-twelve-month windows from annual periods', async () => {
+      const result = await callTool(
+        server,
+        'get_financials',
+        { company: '100018' },
+        routes({ '/api/xbrl/companyfacts/CIK0000100018.json': { json: TTM_FACTS } }),
+      );
+      const s = result.result.structured;
+      expect(s.count).toBe(1); // only the real fiscal year survives
+      expect(s.periods[0].label).toBe('FY2025');
+      expect(s.periods[0].end).toBe('2025-12-31');
     });
 
     it('does not trust comparative fy/fp stamps from later filings', async () => {
