@@ -13,7 +13,7 @@ import {
   kindOf,
   latestFiledByPeriod,
   pickUnitKey,
-} from '../xbrl.ts';
+} from '../facts.ts';
 
 /**
  * `get_xbrl_concept` — one XBRL concept's full value history, plus a discovery

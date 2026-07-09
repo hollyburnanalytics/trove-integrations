@@ -1,339 +1,32 @@
 import { ToolError } from '@ontrove/mcp';
+import {
+  type Fact,
+  factsForUnit,
+  fiscalStampsTrusted,
+  kindOf,
+  latestFiledByPeriod,
+  periodKey,
+  pickUnitKey,
+} from './facts.ts';
+import {
+  ANCHOR,
+  METRICS,
+  type MetricDef,
+  type Taxonomy,
+  tagsFor,
+  unitPreference,
+} from './metrics.ts';
 
 /**
- * XBRL fact handling for the sec-edgar server: fact normalization, reporting-
- * window classification, statement metric definitions, and the assembly of
- * full financial statements from a data.sec.gov companyfacts response.
+ * Statement assembly for the sec-edgar server: discovering reporting periods,
+ * detecting the reporting taxonomy and currency, and assembling full financial
+ * statements from a data.sec.gov companyfacts response. The raw-fact layer it
+ * builds on lives in `facts.ts`; the statement line-item table in `metrics.ts`.
  */
 
 // ---------------------------------------------------------------------------
-// XBRL facts: parsing, period classification, and fact selection
+// get_financials: statement assembly
 // ---------------------------------------------------------------------------
-
-/** One reported XBRL fact, normalized from the data.sec.gov shape. */
-export interface Fact {
-  start: string | null;
-  end: string;
-  value: number;
-  fiscalYear: number | null;
-  fiscalPeriod: string | null;
-  form: string;
-  filed: string;
-  accession: string;
-  frame: string | null;
-}
-
-export type PeriodKind = 'annual' | 'quarterly' | 'instant' | 'other';
-
-const DAY_MS = 86_400_000;
-
-/**
- * Classify a fact by its reporting window. Durations tolerate 52/53-week
- * fiscal calendars (annual years run 364–371 days, quarters 91–98). Facts with
- * other windows (six- and nine-month year-to-date figures in 10-Qs) are
- * excluded from period matching so YTD numbers never masquerade as quarters.
- */
-export function kindOf(fact: Fact): PeriodKind {
-  if (fact.start === null) return 'instant';
-  const days = (Date.parse(fact.end) - Date.parse(fact.start)) / DAY_MS;
-  if (days >= 330 && days <= 400) return 'annual';
-  if (days >= 75 && days <= 115) return 'quarterly';
-  return 'other';
-}
-
-/** Normalize one raw `units` array entry into a {@link Fact} (or null if unusable). */
-export function parseFact(raw: unknown): Fact | null {
-  const o = raw as Record<string, unknown>;
-  if (typeof o?.end !== 'string' || typeof o.val !== 'number' || typeof o.filed !== 'string') {
-    return null;
-  }
-  return {
-    start: typeof o.start === 'string' ? o.start : null,
-    end: o.end,
-    value: o.val,
-    fiscalYear: typeof o.fy === 'number' ? o.fy : null,
-    fiscalPeriod: typeof o.fp === 'string' ? o.fp : null,
-    form: typeof o.form === 'string' ? o.form : '?',
-    filed: o.filed,
-    accession: typeof o.accn === 'string' ? o.accn : '',
-    frame: typeof o.frame === 'string' ? o.frame : null,
-  };
-}
-
-/**
- * Pick the reporting unit for a concept's `units` map: the preferred keys in
- * order (e.g. `["USD"]` or `["USD/shares"]`), else the first unit present.
- */
-export function pickUnitKey(units: Record<string, unknown>, preferred: string[]): string | null {
-  for (const key of preferred) if (Array.isArray(units[key])) return key;
-  const first = Object.keys(units).find((key) => Array.isArray(units[key]));
-  return first ?? null;
-}
-
-/** All normalized facts for one concept in one unit. */
-export function factsForUnit(units: Record<string, unknown>, unitKey: string): Fact[] {
-  const raw = units[unitKey];
-  if (!Array.isArray(raw)) return [];
-  const facts: Fact[] = [];
-  for (const entry of raw) {
-    const fact = parseFact(entry);
-    if (fact) facts.push(fact);
-  }
-  return facts;
-}
-
-/** The identity of a fact's reporting window (instants have no start). */
-export const periodKey = (start: string | null, end: string): string => `${start ?? ''}|${end}`;
-
-/**
- * Deduplicate facts that report the same window: the same period appears in
- * many filings (originals, comparatives, amendments); the latest-filed fact
- * wins so restated/amended figures are preferred.
- */
-export function latestFiledByPeriod(facts: Fact[]): Map<string, Fact> {
-  const byPeriod = new Map<string, Fact>();
-  for (const fact of facts) {
-    const key = periodKey(fact.start, fact.end);
-    const existing = byPeriod.get(key);
-    if (!existing || fact.filed > existing.filed) byPeriod.set(key, fact);
-  }
-  return byPeriod;
-}
-
-// ---------------------------------------------------------------------------
-// get_financials: statement definitions and assembly
-// ---------------------------------------------------------------------------
-
-export type Statement = 'income' | 'balance' | 'cashFlow';
-
-export interface MetricDef {
-  /** Output key, e.g. "revenue". */
-  key: string;
-  /** Human label for the text rendering. */
-  label: string;
-  statement: Statement;
-  /** 'money' facts use the company currency; 'perShare' use `<currency>/shares`. */
-  unit: 'money' | 'perShare';
-  /** US-GAAP tags to try, in preference order (concepts drift across years). */
-  gaap: string[];
-  /** IFRS tags for foreign filers reporting under ifrs-full. */
-  ifrs: string[];
-}
-
-/**
- * The statement line items `get_financials` extracts, each with tag fallbacks:
- * companies switch concepts across taxonomy versions (e.g. `Revenues` →
- * `RevenueFromContractWithCustomerExcludingAssessedTax` after ASC 606), so
- * each line tries its tags in order per period.
- */
-export const METRICS: MetricDef[] = [
-  {
-    key: 'revenue',
-    label: 'Revenue',
-    statement: 'income',
-    unit: 'money',
-    gaap: [
-      'RevenueFromContractWithCustomerExcludingAssessedTax',
-      'Revenues',
-      'SalesRevenueNet',
-      'RevenueFromContractWithCustomerIncludingAssessedTax',
-      'SalesRevenueGoodsNet',
-      'RevenueMineralSales',
-    ],
-    ifrs: ['Revenue', 'RevenueFromContractsWithCustomers'],
-  },
-  {
-    key: 'costOfRevenue',
-    label: 'Cost of revenue',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['CostOfRevenue', 'CostOfGoodsAndServicesSold', 'CostOfGoodsSold'],
-    ifrs: ['CostOfSales'],
-  },
-  {
-    key: 'grossProfit',
-    label: 'Gross profit',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['GrossProfit'],
-    ifrs: ['GrossProfit'],
-  },
-  {
-    key: 'researchAndDevelopment',
-    label: 'R&D expense',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['ResearchAndDevelopmentExpense'],
-    ifrs: ['ResearchAndDevelopmentExpense'],
-  },
-  {
-    key: 'sellingGeneralAndAdministrative',
-    label: 'SG&A expense',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['SellingGeneralAndAdministrativeExpense', 'GeneralAndAdministrativeExpense'],
-    ifrs: ['SellingGeneralAndAdministrativeExpense'],
-  },
-  {
-    key: 'operatingIncome',
-    label: 'Operating income',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['OperatingIncomeLoss'],
-    ifrs: ['ProfitLossFromOperatingActivities'],
-  },
-  {
-    key: 'incomeTaxExpense',
-    label: 'Income tax expense',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['IncomeTaxExpenseBenefit'],
-    ifrs: ['IncomeTaxExpenseContinuingOperations'],
-  },
-  {
-    key: 'netIncome',
-    label: 'Net income',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['NetIncomeLoss', 'ProfitLoss'],
-    ifrs: ['ProfitLoss', 'ProfitLossAttributableToOwnersOfParent'],
-  },
-  {
-    key: 'epsBasic',
-    label: 'EPS (basic)',
-    statement: 'income',
-    unit: 'perShare',
-    gaap: ['EarningsPerShareBasic'],
-    ifrs: ['BasicEarningsLossPerShare'],
-  },
-  {
-    key: 'epsDiluted',
-    label: 'EPS (diluted)',
-    statement: 'income',
-    unit: 'perShare',
-    gaap: ['EarningsPerShareDiluted'],
-    ifrs: ['DilutedEarningsLossPerShare'],
-  },
-  {
-    key: 'cashAndEquivalents',
-    label: 'Cash & equivalents',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['CashAndCashEquivalentsAtCarryingValue'],
-    ifrs: ['CashAndCashEquivalents'],
-  },
-  {
-    key: 'currentAssets',
-    label: 'Current assets',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['AssetsCurrent'],
-    ifrs: ['CurrentAssets'],
-  },
-  {
-    key: 'totalAssets',
-    label: 'Total assets',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['Assets'],
-    ifrs: ['Assets'],
-  },
-  {
-    key: 'currentLiabilities',
-    label: 'Current liabilities',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['LiabilitiesCurrent'],
-    ifrs: ['CurrentLiabilities'],
-  },
-  {
-    key: 'longTermDebt',
-    label: 'Long-term debt',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['LongTermDebtNoncurrent', 'LongTermDebt', 'ConvertibleDebtNoncurrent'],
-    ifrs: ['NoncurrentPortionOfNoncurrentBorrowings', 'Borrowings'],
-  },
-  {
-    key: 'totalLiabilities',
-    label: 'Total liabilities',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['Liabilities'],
-    ifrs: ['Liabilities'],
-  },
-  {
-    key: 'stockholdersEquity',
-    label: 'Stockholders’ equity',
-    statement: 'balance',
-    unit: 'money',
-    gaap: [
-      'StockholdersEquity',
-      'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
-    ],
-    ifrs: ['Equity', 'EquityAttributableToOwnersOfParent'],
-  },
-  {
-    key: 'liabilitiesAndEquity',
-    label: 'Liabilities + equity',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['LiabilitiesAndStockholdersEquity'],
-    ifrs: ['EquityAndLiabilities'],
-  },
-  {
-    key: 'operatingCashFlow',
-    label: 'Operating cash flow',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: [
-      'NetCashProvidedByUsedInOperatingActivities',
-      'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations',
-    ],
-    ifrs: ['CashFlowsFromUsedInOperatingActivities'],
-  },
-  {
-    key: 'investingCashFlow',
-    label: 'Investing cash flow',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: [
-      'NetCashProvidedByUsedInInvestingActivities',
-      'NetCashProvidedByUsedInInvestingActivitiesContinuingOperations',
-    ],
-    ifrs: ['CashFlowsFromUsedInInvestingActivities'],
-  },
-  {
-    key: 'financingCashFlow',
-    label: 'Financing cash flow',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: [
-      'NetCashProvidedByUsedInFinancingActivities',
-      'NetCashProvidedByUsedInFinancingActivitiesContinuingOperations',
-    ],
-    ifrs: ['CashFlowsFromUsedInFinancingActivities'],
-  },
-  {
-    key: 'capitalExpenditures',
-    label: 'Capital expenditures',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: ['PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsToAcquireProductiveAssets'],
-    ifrs: ['PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities'],
-  },
-  {
-    key: 'dividendsPaid',
-    label: 'Dividends paid',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: ['PaymentsOfDividends', 'PaymentsOfDividendsCommonStock'],
-    ifrs: ['DividendsPaidClassifiedAsFinancingActivities'],
-  },
-];
-
-/** The concepts that anchor period discovery (every filer reports net income). */
-const ANCHOR = METRICS.find((m) => m.key === 'netIncome') as MetricDef;
 
 /** One assembled reporting period. */
 export interface StatementPeriod {
@@ -363,16 +56,6 @@ export interface Financials {
 /** The concept map for one taxonomy inside a companyfacts response. */
 type TaxonomyFacts = Record<string, { units?: Record<string, unknown> } | undefined>;
 
-type Taxonomy = Financials['taxonomy'];
-
-/** Tags for a metric in the given taxonomy. */
-const tagsFor = (def: MetricDef, taxonomy: Taxonomy): string[] =>
-  taxonomy === 'us-gaap' ? def.gaap : def.ifrs;
-
-/** Unit-key preference for a metric given the company currency. */
-const unitPreference = (def: MetricDef, currency: string): string[] =>
-  def.unit === 'perShare' ? [`${currency}/shares`] : [currency];
-
 /**
  * Merge a metric's facts across its fallback tags: an earlier (preferred) tag
  * wins a period outright; within one tag the latest-filed fact wins.
@@ -397,17 +80,6 @@ function metricFactsByPeriod(
     }
   });
   return byPeriod;
-}
-
-/**
- * Whether a fact's fiscal-year/period stamps describe its own window. The
- * stamps are relative to the FILING, so a comparative re-reported a year later
- * carries the later filing's fy/fp — only facts filed shortly after their
- * window end (an original report or its amendment window) are trusted.
- */
-export function fiscalStampsTrusted(kind: 'annual' | 'quarterly' | 'instant', fact: Fact): boolean {
-  const gapDays = (Date.parse(fact.filed) - Date.parse(fact.end)) / DAY_MS;
-  return gapDays <= (kind === 'annual' ? 365 : 180);
 }
 
 /**

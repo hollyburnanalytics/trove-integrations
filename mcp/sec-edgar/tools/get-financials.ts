@@ -1,6 +1,7 @@
 import { type ToolDefinition, z } from '@ontrove/mcp';
 import { companyFactsUrl, edgarJson, fmtMoney, requireCompany } from '../client.ts';
-import { assembleFinancials, METRICS, type Statement, type StatementPeriod } from '../xbrl.ts';
+import { METRICS, type Statement } from '../metrics.ts';
+import { assembleFinancials, type StatementPeriod } from '../xbrl.ts';
 
 /**
  * `get_financials` — structured financial statements assembled from a
