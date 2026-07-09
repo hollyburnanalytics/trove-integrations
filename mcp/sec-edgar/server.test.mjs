@@ -1314,3 +1314,228 @@ describe('sec-edgar v1.3 features', () => {
     });
   });
 });
+
+// --- Fixtures for the v1.3.1 correctness release ------------------------------
+
+// EDGAR-001: a US-GAAP -> IFRS switcher. The stale us-gaap bucket must lose to
+// the current ifrs-full bucket.
+const SWITCHER_FACTS = {
+  cik: 100_041,
+  entityName: 'Switcher Corp',
+  facts: {
+    'us-gaap': {
+      NetIncomeLoss: {
+        units: {
+          USD: [
+            {
+              start: '2013-01-01',
+              end: '2013-12-31',
+              val: 50,
+              fy: 2013,
+              fp: 'FY',
+              form: '40-F',
+              filed: '2014-03-26',
+              accn: '0001-14-000001',
+            },
+          ],
+        },
+      },
+    },
+    'ifrs-full': {
+      ProfitLoss: {
+        units: {
+          USD: [
+            {
+              start: '2025-01-01',
+              end: '2025-12-31',
+              val: 90,
+              fy: 2025,
+              fp: 'FY',
+              form: '40-F',
+              filed: '2026-03-20',
+              accn: '0001-26-000001',
+            },
+          ],
+        },
+      },
+      Assets: {
+        units: {
+          USD: [
+            {
+              end: '2025-12-31',
+              val: 400,
+              form: '40-F',
+              filed: '2026-03-20',
+              accn: '0001-26-000001',
+            },
+          ],
+        },
+      },
+    },
+  },
+};
+
+// EDGAR-003: no Liabilities tag, but the combined total and equity exist.
+const NO_LIABILITIES_FACTS = companyFacts(100_042, {
+  NetIncomeLoss: usd([fact()]),
+  Assets: usd([instant({ val: 350 })]),
+  StockholdersEquity: usd([instant({ val: 100 })]),
+  LiabilitiesAndStockholdersEquity: usd([instant({ val: 350 })]),
+});
+
+// EDGAR-004: an original filing whose own annual window carries a wrong fy
+// stamp (end 2023-12-31, stamped fy 2022) plus a legitimate January-FYE window
+// where fy = year(end) - 1 is conventional and must be preserved.
+const BAD_STAMP_FACTS = companyFacts(100_043, {
+  NetIncomeLoss: usd([
+    fact({
+      start: '2023-01-01',
+      end: '2023-12-31',
+      val: 132,
+      fy: 2022,
+      fp: 'FY',
+      form: '40-F',
+      filed: '2024-02-13',
+    }),
+    fact({
+      start: '2024-02-01',
+      end: '2025-01-31',
+      val: 77,
+      fy: 2024,
+      fp: 'FY',
+      form: '10-K',
+      filed: '2025-03-20',
+    }),
+  ]),
+});
+
+describe('sec-edgar v1.3.1 correctness fixes', () => {
+  it('EDGAR-001: picks the taxonomy with the most recent facts, not a static priority', async () => {
+    const result = await callTool(
+      server,
+      'get_financials',
+      { company: '100041' },
+      routes({ '/api/xbrl/companyfacts/CIK0000100041.json': { json: SWITCHER_FACTS } }),
+    );
+    expect(result.ok).toBe(true);
+    const s = result.result.structured;
+    expect(s.taxonomy).toBe('ifrs-full');
+    expect(s.periods[0].end).toBe('2025-12-31');
+    expect(s.stale).toBe(false);
+    expect(s.latestPeriodEnd).toBe('2025-12-31');
+  });
+
+  it('flags stale coverage when the newest period is over a reporting cycle old', async () => {
+    const result = await callTool(
+      server,
+      'get_financials',
+      { company: '100001' },
+      routes({ '/api/xbrl/companyfacts/CIK0000100001.json': { json: ANNUAL_FACTS } }),
+    );
+    const s = result.result.structured;
+    expect(s.latestPeriodEnd).toBe('2023-09-30');
+    expect(s.stale).toBe(true); // fixture data ends years ago
+    expect(result.result.text).toContain('Coverage may be incomplete');
+  });
+
+  it('EDGAR-003: derives total liabilities from the combined total minus equity', async () => {
+    const result = await callTool(
+      server,
+      'get_financials',
+      { company: '100042' },
+      routes({ '/api/xbrl/companyfacts/CIK0000100042.json': { json: NO_LIABILITIES_FACTS } }),
+    );
+    const period = result.result.structured.periods[0];
+    expect(period.balanceSheet.totalLiabilities).toBe(250); // 350 - 100
+    expect(period.identityOk).toBe(true);
+    expect(period.identityChecked).toBe(true);
+  });
+
+  it('EDGAR-004: corrects a wrong annual fy stamp; keeps valid January-FYE stamps', async () => {
+    const result = await callTool(
+      server,
+      'get_financials',
+      { company: '100043', limit: 4 },
+      routes({ '/api/xbrl/companyfacts/CIK0000100043.json': { json: BAD_STAMP_FACTS } }),
+    );
+    const [janFye, badStamp] = result.result.structured.periods;
+    // Window ending 2025-01-31 stamped fy 2024: conventional retail calendar, kept.
+    expect(janFye.label).toBe('FY2024');
+    expect(janFye.fiscalYear).toBe(2024);
+    // Window ending 2023-12-31 stamped fy 2022: impossible for a July-Dec end; corrected.
+    expect(badStamp.label).toBe('FY2023');
+    expect(badStamp.fiscalYear).toBe(2023);
+  });
+
+  it('EDGAR-005: hides XBRL viewer artifacts from the documents list', async () => {
+    const bloatedIndex = {
+      directory: {
+        item: [
+          { name: 'main10k.htm', size: 5000 },
+          { name: 'ex-99.pdf', size: 900 },
+          { name: 'R1.htm', size: 300 },
+          { name: 'R115.htm', size: 300 },
+          { name: 'MetaLinks.json', size: 40_000 },
+          { name: 'FilingSummary.xml', size: 2000 },
+          { name: 'Financial_Report.xlsx', size: 9000 },
+          { name: 'shop-20241231_cal.xml', size: 1000 },
+          { name: 'shop-20241231.xsd', size: 1000 },
+          { name: 'report.css', size: 500 },
+          { name: 'logo.jpg', size: 500 },
+        ],
+      },
+    };
+    const bloatedRoutes = routes({
+      '/submissions/CIK0000100044.json': {
+        json: {
+          name: 'Testco Inc.',
+          filings: {
+            recent: {
+              form: ['10-K'],
+              filingDate: ['2026-02-01'],
+              accessionNumber: ['0000000044-26-000001'],
+              primaryDocument: ['main10k.htm'],
+              primaryDocDescription: ['10-K'],
+            },
+          },
+        },
+      },
+      '/Archives/edgar/data/100044/000000004426000001/index.json': { json: bloatedIndex },
+      '/Archives/edgar/data/100044/000000004426000001/main10k.htm': { text: DOC_HTML },
+      '/Archives/edgar/data/100044/000000004426000001/R1.htm': { text: '<p>viewer page</p>' },
+    });
+    const result = await callTool(
+      server,
+      'get_filing_document',
+      { company: '100044', accession: '0000000044-26-000001' },
+      bloatedRoutes,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.result.structured.documents.map((d) => d.name)).toEqual([
+      'main10k.htm',
+      'ex-99.pdf',
+    ]);
+    // An explicitly named viewer file is still fetchable.
+    const explicit = await callTool(
+      server,
+      'get_filing_document',
+      { company: '100044', accession: '0000000044-26-000001', document: 'R1.htm' },
+      bloatedRoutes,
+    );
+    expect(explicit.ok).toBe(true);
+    expect(explicit.result.structured.content).toContain('viewer page');
+  });
+
+  it('EDGAR-007: decodes the state-of-incorporation code', async () => {
+    const result = await callTool(
+      server,
+      'get_company',
+      { company: '100023' },
+      routes({ '/submissions/CIK0000100023.json': { json: PROFILE_SUBMISSIONS } }),
+    );
+    const s = result.result.structured;
+    expect(s.stateOfIncorporation).toBe('DE');
+    expect(s.stateOfIncorporationLabel).toBe('DELAWARE');
+    expect(result.result.text).toContain('Incorporated: DELAWARE (DE)');
+  });
+});

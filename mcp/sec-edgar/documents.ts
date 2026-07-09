@@ -23,6 +23,24 @@ const TEXT_EXTENSIONS = new Set(['htm', 'html', 'txt', 'xml']);
 export const isReadable = (entry: { extension: string }): boolean =>
   TEXT_EXTENSIONS.has(entry.extension);
 
+/**
+ * EDGAR's inline-XBRL viewer plumbing — rendered R-files, linkbase sidecars,
+ * schemas, styling, and generated spreadsheets. These outnumber the real
+ * documents ~10:1 in a modern filing and bury the filer-authored exhibits, so
+ * document listings exclude them (a specific name can still be fetched).
+ */
+export function isViewerArtifact(entry: FilingEntry): boolean {
+  const name = entry.name.toLowerCase();
+  return (
+    /^r\d+\.htm$/.test(name) ||
+    name === 'metalinks.json' ||
+    name === 'filingsummary.xml' ||
+    name === 'financial_report.xlsx' ||
+    /_(cal|def|lab|pre)\.xml$/.test(name) ||
+    ['xsd', 'css', 'js', 'jpg', 'jpeg', 'png', 'gif'].includes(entry.extension)
+  );
+}
+
 /** List a filing's documents from its Archives directory index. */
 export async function listFilingDocuments(
   ctx: ToolContext,

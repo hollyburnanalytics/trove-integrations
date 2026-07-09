@@ -17,9 +17,11 @@ import {
   fetchFilingText,
   findInText,
   isReadable,
+  isViewerArtifact,
   listFilingDocuments,
   pickPrimaryDocument,
 } from './documents.ts';
+import { JURISDICTIONS } from './jurisdictions.ts';
 import {
   type InsiderTransaction,
   type OwnershipFiling,
@@ -294,6 +296,7 @@ const statementPeriodShape = z.object({
   }),
   identityOk: z.boolean().nullable(),
   identityDelta: z.number().nullable(),
+  identityChecked: z.boolean(),
 });
 
 /** Regroup a period's flat metric values into the three statement objects. */
@@ -322,6 +325,7 @@ function shapePeriod(period: StatementPeriod): z.infer<typeof statementPeriodSha
     } as z.infer<typeof statementPeriodShape>['cashFlow'],
     identityOk: period.identityOk,
     identityDelta: period.identityDelta,
+    identityChecked: period.identityOk !== null,
   };
 }
 
@@ -557,6 +561,8 @@ export default defineMcpServer({
         currency: z.string(),
         periodType: z.string(),
         count: z.number(),
+        latestPeriodEnd: z.string().nullable(),
+        stale: z.boolean(),
         periods: z.array(statementPeriodShape),
       }),
       async handler(args, ctx) {
@@ -583,10 +589,19 @@ export default defineMcpServer({
               currency: financials.currency,
               periodType: period,
               count: 0,
+              latestPeriodEnd: null,
+              stale: false,
               periods: [],
             },
           };
         }
+
+        // Guardrail: a healthy active filer's newest period is at most one
+        // reporting cycle old. Anything much older signals missing coverage
+        // (delisting, identifier change) and must never read as current.
+        const latestPeriodEnd = financials.periods[0]?.end ?? null;
+        const stale =
+          latestPeriodEnd !== null && Date.now() - Date.parse(latestPeriodEnd) > 548 * 86_400_000;
 
         const blocks = financials.periods
           .map((p) => renderPeriod(p, financials.currency))
@@ -596,6 +611,10 @@ export default defineMcpServer({
             `${name} (CIK ${resolved.cik}) — ${period} financials, ${financials.currency} ` +
             '(as reported; latest amendments preferred):\n' +
             blocks +
+            (stale
+              ? `\n⚠ The newest available period ends ${latestPeriodEnd} — more than one ` +
+                'reporting cycle old. Coverage may be incomplete for this filer.'
+              : '') +
             '\n(Full line items in the structured output.)',
           structured: {
             company: name,
@@ -604,6 +623,8 @@ export default defineMcpServer({
             currency: financials.currency,
             periodType: period,
             count: financials.periods.length,
+            latestPeriodEnd,
+            stale,
             periods: financials.periods.map(shapePeriod),
           },
         };
@@ -812,12 +833,15 @@ export default defineMcpServer({
         ctx.log('get_filing_document', { company, accession, document, find });
         const resolved = await requireCompany(ctx, company);
         const entries = await listFilingDocuments(ctx, resolved.cik, accession);
+        // Hide EDGAR's XBRL-viewer plumbing (R-files, linkbase sidecars, CSS/JS)
+        // from the listing; an explicitly named document is still fetchable.
+        const substantive = entries.filter((e) => !isViewerArtifact(e));
 
         let entry: FilingEntry | null;
         if (document) {
           entry = entries.find((e) => e.name === document) ?? null;
           if (!entry) {
-            const names = entries.map((e) => e.name).join(', ');
+            const names = substantive.map((e) => e.name).join(', ');
             throw new ToolError(`No document "${document}" in ${accession}. Available: ${names}`, {
               retryable: false,
             });
@@ -825,7 +849,7 @@ export default defineMcpServer({
         } else {
           const { filings } = await recentFilings(ctx, resolved.cik);
           const declared = filings.find((f) => f.accession === accession)?.primaryDocument;
-          entry = pickPrimaryDocument(entries, declared);
+          entry = pickPrimaryDocument(substantive, declared);
         }
         if (!entry) {
           throw new ToolError(`Filing ${accession} has no readable primary document.`, {
@@ -844,7 +868,11 @@ export default defineMcpServer({
         const matches = find ? findInText(text, find) : [];
         const content = text.slice(offset, offset + maxChars);
         const nextOffset = offset + content.length < text.length ? offset + content.length : null;
-        const documents = entries.map(({ name, size, extension }) => ({ name, size, extension }));
+        const documents = substantive.map(({ name, size, extension }) => ({
+          name,
+          size,
+          extension,
+        }));
 
         const matchText =
           find === undefined
@@ -1246,6 +1274,7 @@ export default defineMcpServer({
         entityType: z.string().nullable(),
         category: z.string().nullable(),
         stateOfIncorporation: z.string().nullable(),
+        stateOfIncorporationLabel: z.string().nullable(),
         fiscalYearEnd: z.string().nullable(),
         website: z.string().nullable(),
         phone: z.string().nullable(),
@@ -1283,6 +1312,8 @@ export default defineMcpServer({
         const name = str('name') ?? resolved.name;
         const tickers = strings('tickers');
         const exchanges = strings('exchanges');
+        const stateCode = str('stateOfIncorporation');
+        const stateLabel = stateCode === null ? null : (JURISDICTIONS[stateCode] ?? null);
 
         const parts = [
           `${name} (CIK ${resolved.cik})`,
@@ -1292,7 +1323,9 @@ export default defineMcpServer({
           str('sicDescription') ? `Industry: ${str('sicDescription')} (SIC ${str('sic')})` : null,
           str('entityType') ? `Entity type: ${str('entityType')}` : null,
           str('category') ? `Filer category: ${str('category')}` : null,
-          str('stateOfIncorporation') ? `Incorporated: ${str('stateOfIncorporation')}` : null,
+          stateCode
+            ? `Incorporated: ${stateLabel ?? stateCode}${stateLabel ? ` (${stateCode})` : ''}`
+            : null,
           fiscalYearEnd ? `Fiscal year ends: ${fiscalYearEnd}` : null,
           str('website') ? `Website: ${str('website')}` : null,
           formerNames.length > 0
@@ -1311,7 +1344,8 @@ export default defineMcpServer({
             sicDescription: str('sicDescription'),
             entityType: str('entityType'),
             category: str('category'),
-            stateOfIncorporation: str('stateOfIncorporation'),
+            stateOfIncorporation: stateCode,
+            stateOfIncorporationLabel: stateLabel,
             fiscalYearEnd,
             website: str('website'),
             phone: str('phone'),

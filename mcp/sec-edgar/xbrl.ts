@@ -138,6 +138,7 @@ export const METRICS: MetricDef[] = [
       'SalesRevenueNet',
       'RevenueFromContractWithCustomerIncludingAssessedTax',
       'SalesRevenueGoodsNet',
+      'RevenueMineralSales',
     ],
     ifrs: ['Revenue', 'RevenueFromContractsWithCustomers'],
   },
@@ -250,7 +251,7 @@ export const METRICS: MetricDef[] = [
     label: 'Long-term debt',
     statement: 'balance',
     unit: 'money',
-    gaap: ['LongTermDebtNoncurrent', 'LongTermDebt'],
+    gaap: ['LongTermDebtNoncurrent', 'LongTermDebt', 'ConvertibleDebtNoncurrent'],
     ifrs: ['NoncurrentPortionOfNoncurrentBorrowings', 'Borrowings'],
   },
   {
@@ -409,10 +410,30 @@ export function fiscalStampsTrusted(kind: 'annual' | 'quarterly' | 'instant', fa
   return gapDays <= (kind === 'annual' ? 365 : 180);
 }
 
+/**
+ * Sanity-check an annual fiscal-year stamp against the window it labels. For
+ * windows ending July–December the fiscal year IS the end year; for windows
+ * ending January–June (retail-style fiscal calendars) either the end year or
+ * the prior year is conventional. Some filings carry a wrong stamp on their
+ * OWN period (observed: a 40-F for the year ending 2023-12-31 stamped fy 2022)
+ * — such stamps are corrected (month ≥ 7) or dropped rather than echoed.
+ */
+function annualFiscalYear(fact: Fact): number | null {
+  if (fact.fiscalYear === null) return null;
+  const endYear = Number.parseInt(fact.end.slice(0, 4), 10);
+  const endMonth = Number.parseInt(fact.end.slice(5, 7), 10);
+  if (endMonth >= 7) return endYear;
+  return fact.fiscalYear === endYear || fact.fiscalYear === endYear - 1 ? fact.fiscalYear : null;
+}
+
 /** Human period label from the original filing's fiscal-year/period stamps. */
 function periodLabel(kind: 'annual' | 'quarterly', fact: Fact): string {
   if (fact.fiscalYear !== null && fact.fiscalPeriod !== null && fiscalStampsTrusted(kind, fact)) {
-    return kind === 'annual' ? `FY${fact.fiscalYear}` : `${fact.fiscalPeriod} FY${fact.fiscalYear}`;
+    if (kind === 'annual') {
+      const fy = annualFiscalYear(fact);
+      return fy === null ? `FY ending ${fact.end}` : `FY${fy}`;
+    }
+    return `${fact.fiscalPeriod} FY${fact.fiscalYear}`;
   }
   return `${kind === 'annual' ? 'FY' : 'Q'} ending ${fact.end}`;
 }
@@ -461,12 +482,17 @@ function discoverPeriods(
     .slice(0, limit)
     .map((fact) => {
       const trusted = fiscalStampsTrusted(kind, fact);
+      const fiscalYear = !trusted
+        ? null
+        : kind === 'annual'
+          ? annualFiscalYear(fact)
+          : fact.fiscalYear;
       return {
         label: periodLabel(kind, fact),
         start: fact.start ?? fact.end,
         end: fact.end,
-        fiscalYear: trusted ? fact.fiscalYear : null,
-        fiscalPeriod: trusted ? fact.fiscalPeriod : null,
+        fiscalYear,
+        fiscalPeriod: trusted && fiscalYear !== null ? fact.fiscalPeriod : null,
         form: fact.form,
         filed: fact.filed,
         accession: fact.accession,
@@ -541,6 +567,44 @@ function checkIdentity(values: Record<string, number | null>): {
   };
 }
 
+/** The most recent anchor-fact period end within one taxonomy bucket ('' if none). */
+function latestAnchorEnd(taxFacts: TaxonomyFacts, taxonomy: Taxonomy): string {
+  let latest = '';
+  for (const tag of tagsFor(ANCHOR, taxonomy)) {
+    const units = taxFacts[tag]?.units;
+    if (!units) continue;
+    for (const facts of Object.values(units)) {
+      if (!Array.isArray(facts)) continue;
+      for (const fact of facts) {
+        const end = (fact as { end?: unknown }).end;
+        if (typeof end === 'string' && end > latest) latest = end;
+      }
+    }
+  }
+  return latest;
+}
+
+/**
+ * Pick the reporting taxonomy by RECENCY of its facts, never by a static
+ * priority: filers that switched standards (commonly US GAAP → IFRS) keep
+ * their stale pre-switch bucket in companyfacts forever, and a priority pick
+ * would silently serve decade-old numbers as current.
+ */
+function pickTaxonomy(allFacts: Record<string, unknown>): Financials['taxonomy'] {
+  const candidates: Financials['taxonomy'][] = ['us-gaap', 'ifrs-full'];
+  let best: Financials['taxonomy'] = 'us-gaap';
+  let bestEnd = '';
+  for (const taxonomy of candidates) {
+    if (!allFacts[taxonomy]) continue;
+    const end = latestAnchorEnd(allFacts[taxonomy] as TaxonomyFacts, taxonomy);
+    if (end > bestEnd) {
+      best = taxonomy;
+      bestEnd = end;
+    }
+  }
+  return best;
+}
+
 /** Assemble the full statements from a companyfacts response. */
 export function assembleFinancials(
   factsBody: Record<string, unknown>,
@@ -548,11 +612,7 @@ export function assembleFinancials(
   limit: number,
 ): Financials {
   const allFacts = (factsBody.facts ?? {}) as Record<string, unknown>;
-  const taxonomy: Financials['taxonomy'] = allFacts['us-gaap']
-    ? 'us-gaap'
-    : allFacts['ifrs-full']
-      ? 'ifrs-full'
-      : 'us-gaap';
+  const taxonomy = pickTaxonomy(allFacts);
   if (!allFacts[taxonomy]) {
     throw new ToolError(
       'This filer has no US-GAAP or IFRS company facts (funds and trusts often report none).',
@@ -590,6 +650,17 @@ export function assembleFinancials(
       values.costOfRevenue !== undefined
     ) {
       values.grossProfit = values.revenue - values.costOfRevenue;
+    }
+    // Some filers (Shopify, Cameco) tag no total-liabilities line; derive it
+    // from the reported combined total minus equity.
+    if (
+      values.totalLiabilities === null &&
+      values.liabilitiesAndEquity !== null &&
+      values.liabilitiesAndEquity !== undefined &&
+      values.stockholdersEquity !== null &&
+      values.stockholdersEquity !== undefined
+    ) {
+      values.totalLiabilities = values.liabilitiesAndEquity - values.stockholdersEquity;
     }
     return { ...period, values, ...checkIdentity(values) };
   });

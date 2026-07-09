@@ -3,7 +3,7 @@
   "name": "SEC EDGAR",
   "description": "SEC filings and financials: XBRL income statement / balance sheet / cash flow, any concept's history, filing full text (paginated + searchable), decoded insider transactions (Form 4), 13F fund holdings, company profiles, and full-text filing search. No key required.",
   "icon": "\ud83c\udfdb\ufe0f",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "sdk": "@ontrove/mcp@^0.1",
   "secrets": [],
   "egress": [
