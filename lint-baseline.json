@@ -1,4 +1,1 @@
-{
-  "lint/style/noExcessiveLinesPerFile": 8,
-  "suppressions/biome-ignore": 3
-}
+{}
