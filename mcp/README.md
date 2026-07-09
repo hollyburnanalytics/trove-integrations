@@ -40,7 +40,7 @@ in their manifest `egress`.
 ### Government & civic
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
-| `sec-edgar` | `search_filings`, `company_filings` | SEC EDGAR (efts/data/www.sec.gov) | — |
+| `sec-edgar` | `get_financials`, `get_xbrl_concept`, `search_filings`, `company_filings` | SEC EDGAR (efts/data/www.sec.gov) | — |
 | `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — |
 | `canada-open-data` | `search_datasets`, `get_dataset`, `query_dataset`, `find_organizations` | open.canada.ca (CKAN — federal + provincial) | — |
 | `openparliament` | `find_mp`, `mp_speeches`, `search_bills` | api.openparliament.ca (Canada Hansard) | — |
