@@ -1,12 +1,16 @@
 {
   "id": "sec-edgar",
   "name": "SEC EDGAR",
-  "description": "SEC filings and financials: structured XBRL income statement / balance sheet / cash flow, any XBRL concept's history, full-text filing search, and a company's filing list. No key required.",
-  "icon": "🏛️",
-  "version": "1.1.1",
+  "description": "SEC filings and financials: XBRL income statement / balance sheet / cash flow, any concept's history, filing full text (paginated + searchable), decoded insider transactions (Form 4), 13F fund holdings, company profiles, and full-text filing search. No key required.",
+  "icon": "\ud83c\udfdb\ufe0f",
+  "version": "1.2.0",
   "sdk": "@ontrove/mcp@^0.1",
   "secrets": [],
-  "egress": ["efts.sec.gov", "www.sec.gov", "data.sec.gov"],
+  "egress": [
+    "efts.sec.gov",
+    "www.sec.gov",
+    "data.sec.gov"
+  ],
   "scopes": [],
   "visibility": "public"
 }
