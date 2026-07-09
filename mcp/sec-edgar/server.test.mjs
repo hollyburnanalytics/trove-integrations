@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { callTool } from '../lib/test-harness.mjs';
+import { METRICS } from './metrics.ts';
 import server from './server.ts';
 import { statementPeriodShape } from './tools/get-financials.ts';
-import { METRICS } from './xbrl.ts';
 
 // NOTE: the server keeps an in-isolate response cache keyed by URL that
 // persists across tests, so any two tests that need DIFFERENT bodies for the
@@ -261,7 +261,7 @@ describe('sec-edgar MCP server', () => {
     ]);
   });
 
-  // METRICS (xbrl.ts) and the get_financials output schema are maintained by
+  // METRICS (metrics.ts) and the get_financials output schema are maintained by
   // hand in two files; this pins them together so adding a metric to one
   // without the other fails loudly instead of silently dropping the value.
   it('keeps the statement output schema in sync with METRICS', () => {

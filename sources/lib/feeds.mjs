@@ -1,46 +1,26 @@
 /**
- * Shared utilities for feed source adapters: HTTP fetch, RSS/Atom parsing, and a
- * complete `syncRSS()` sync. Feed bodies are stored as plain text (decoded,
- * tags stripped) — we deliberately do not try to reconstruct rich Markdown.
+ * The shared-helper entry point for feed source adapters. The complete
+ * `syncRSS()` / `syncFeedArticles()` syncs and the single-article fetch live
+ * here; the lower-level primitives they build on are re-exported from their
+ * focused modules (`http.mjs`, `rss-parse.mjs`, `text.mjs`) so adapters keep
+ * importing everything from one place. Feed bodies are stored as plain text
+ * (decoded, tags stripped) — we deliberately do not try to reconstruct rich
+ * Markdown.
  */
 
-import { createHash } from 'node:crypto';
 import { parse } from 'node-html-parser';
+import { fetchPage } from './http.mjs';
+import { parseRSS } from './rss-parse.mjs';
+import { decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
 import { dateWatermark, readDateWatermark } from './watermark.mjs';
 
+// Re-export the feed primitives so `feeds.mjs` stays the single import surface
+// for adapters, even though the implementations live in focused sibling modules.
+export { fetchPage } from './http.mjs';
+export { parseRSS, xmlText } from './rss-parse.mjs';
+export { decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Strip HTML tags from a string by matching angle-bracketed sequences.
- * Uses a simple state-machine approach to avoid regex backtracking issues.
- */
-function stripHtmlTags(input) {
-  let result = '';
-  let inTag = false;
-  for (const char of input) {
-    if (char === '<') {
-      inTag = true;
-    } else if (char === '>') {
-      inTag = false;
-    } else if (!inTag) {
-      result += char;
-    }
-  }
-  return result;
-}
-
-const HEADERS = {
-  // Descriptive, attributable User-Agent that identifies this client honestly.
-  'User-Agent': 'TroveBot/0.1 (+https://github.com/hollyburnanalytics/trove-integrations)',
-  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-};
-
-const MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB
-
-// Per-request ceiling. Without it a single slow/hung host stalls an entire sync
-// run for minutes (until the host process is killed). A bounded request fails
-// fast and is retried next run.
-const FETCH_TIMEOUT_MS = 20_000;
 
 /**
  * Whether the host-provided soft deadline has passed. The host sets
@@ -51,231 +31,6 @@ const FETCH_TIMEOUT_MS = 20_000;
  */
 export function deadlineReached(context) {
   return typeof context.deadline === 'number' && Date.now() >= context.deadline;
-}
-
-/**
- * Generate a stable, collision-resistant ID from a string.
- */
-export function stableId(prefix, input) {
-  const hash = createHash('sha256').update(input).digest('hex').slice(0, 16);
-  return `${prefix}-${hash}`;
-}
-
-/**
- * Safely parse a date string. Returns a valid ISO string or undefined.
- */
-export function safeDate(dateString) {
-  if (!dateString) return;
-  const d = new Date(dateString);
-  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
-}
-
-/**
- * Decode common HTML entities (including numeric).
- */
-export function decodeHtmlEntities(string_) {
-  return string_
-    .replaceAll(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number.parseInt(n, 10)))
-    .replaceAll(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(Number.parseInt(h, 16)))
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&#39;', "'")
-    .replaceAll('&apos;', "'")
-    .replaceAll('&amp;', '&'); // amp last so we don't double-decode
-}
-
-/**
- * Reduce an HTML (or already-plain) fragment to clean plain text: decode
- * entities, drop tags, and tidy whitespace while keeping line breaks. We store
- * feed bodies as raw text rather than (lossily) converting markup to Markdown.
- */
-export function htmlToText(html) {
-  if (!html) return '';
-  // Decode → strip → decode: feed bodies are HTML that was itself entity-encoded
-  // for XML embedding, so unwrapping one level exposes a second (e.g. `&amp;amp;`
-  // → `&amp;` → `&`).
-  return decodeHtmlEntities(stripHtmlTags(decodeHtmlEntities(html)))
-    .split('\n')
-    .map((line) => line.replaceAll(/[^\S\n]+/g, ' ').trim()) // tidy each line
-    .join('\n')
-    .replaceAll(/\n{3,}/g, '\n\n') // cap consecutive blank lines
-    .trim();
-}
-
-/**
- * Extract a tag's text content from an XML fragment.
- * Handles CDATA and plain text. Tag names are treated as literals, not regex.
- */
-export function xmlText(xml, tag) {
-  const t = tag.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-  const m =
-    xml.match(new RegExp(String.raw`<${t}><!\[CDATA\[([\s\S]*?)\]\]><\/${t}>`)) ||
-    xml.match(new RegExp(String.raw`<${t}>([^<]*)<\/${t}>`));
-  return m ? m[1].trim() : '';
-}
-
-/**
- * Extract a tag's full inner content (including HTML) from an XML fragment.
- */
-function xmlHtml(xml, tag) {
-  const t = tag.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-  const m =
-    xml.match(new RegExp(String.raw`<${t}[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/${t}>`)) ||
-    xml.match(new RegExp(String.raw`<${t}[^>]*>([\s\S]*?)<\/${t}>`));
-  return m ? m[1].trim() : '';
-}
-
-/** IPv4/IPv6 hosts in private, loopback, or link-local ranges (SSRF guard). */
-function isPrivateHost(host) {
-  if (
-    host === '::1' ||
-    host.startsWith('fe80:') ||
-    host.startsWith('fc') ||
-    host.startsWith('fd')
-  ) {
-    return true;
-  }
-  const octets = host.split('.');
-  if (octets.length !== 4) return false;
-  const numbers = octets.map(Number);
-  if (numbers.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
-  const [first, second] = numbers;
-  return (
-    first === 0 ||
-    first === 10 ||
-    first === 127 ||
-    (first === 169 && second === 254) || // link-local, incl. the 169.254.169.254 metadata IP
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168) ||
-    (first === 100 && second >= 64 && second <= 127) // CGNAT
-  );
-}
-
-/**
- * Guard a URL before fetching. Feed `<link>` targets come from the publisher,
- * not us, so a hostile or compromised feed could aim them at localhost, a cloud
- * metadata endpoint, or an internal IP. We only ever want public web pages, so
- * require http(s) and reject private/loopback/link-local hosts.
- */
-function assertPublicHttpUrl(target) {
-  let parsed;
-  try {
-    parsed = new URL(target);
-  } catch {
-    throw new Error(`Invalid URL: ${target}`);
-  }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    throw new Error(`Refusing non-HTTP(S) URL: ${target}`);
-  }
-  const host = parsed.hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
-  if (
-    host === 'localhost' ||
-    host.endsWith('.local') ||
-    host.endsWith('.internal') ||
-    isPrivateHost(host)
-  ) {
-    throw new Error(`Refusing to fetch private or loopback host: ${host}`);
-  }
-}
-
-/**
- * Fetch a URL with our honest bot UA, a hard timeout, and a response-size cap.
- * Rejects non-public hosts (SSRF guard), throws on non-200. Returns body text.
- */
-export async function fetchPage(url) {
-  assertPublicHttpUrl(url);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { headers: HEADERS, signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
-
-    const contentLength = response.headers.get('content-length');
-    if (contentLength && Number.parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
-      throw new Error(`Response too large (${contentLength} bytes) for ${url}`);
-    }
-
-    const reader = response.body.getReader();
-    const chunks = [];
-    let totalBytes = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.length;
-      if (totalBytes > MAX_RESPONSE_BYTES) {
-        reader.cancel();
-        throw new Error(`Response exceeded ${MAX_RESPONSE_BYTES} bytes for ${url}`);
-      }
-      chunks.push(value);
-    }
-    return new TextDecoder().decode(Buffer.concat(chunks));
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Parse RSS/Atom XML into items.
- * Handles both RSS (<item>) and Atom (<entry>) feeds.
- */
-export function parseRSS(xml) {
-  const items = [];
-
-  // Try RSS <item> first
-  for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
-    const x = m[1];
-    items.push({
-      title: xmlText(x, 'title'),
-      link: xmlText(x, 'link'),
-      description: stripHtmlTags(xmlText(x, 'description')),
-      // Full-content feeds (e.g. WordPress) put the entire post body in
-      // <content:encoded>; <description> is only the excerpt. Keep the raw HTML
-      // so syncRSS can store the full body, falling back to the description
-      // when the feed omits it.
-      content: xmlHtml(x, 'content:encoded'),
-      pubDate: xmlText(x, 'pubDate'),
-      author: xmlText(x, 'dc:creator') || xmlText(x, 'author'),
-      guid: xmlText(x, 'guid') || xmlText(x, 'link'),
-      categories: [...x.matchAll(/<category[^>]*>([^<]+)<\/category>/g)].map((c) => c[1].trim()),
-    });
-  }
-
-  // Fallback: Atom <entry>
-  if (items.length === 0) {
-    for (const m of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
-      const x = m[1];
-      // Atom uses <link href="..." rel="alternate"/> (self-closing, attribute
-      // order varies). Prefer the explicit alternate link, then fall back to any
-      // bare <link href="..."/> (many feeds omit rel entirely), then to the
-      // element text of a <link>…</link>.
-      const linkMatch =
-        x.match(/<link[^>]*href="([^"]+)"[^>]*rel="alternate"/) ||
-        x.match(/<link[^>]*rel="alternate"[^>]*href="([^"]+)"/) ||
-        x.match(/<link[^>]*href="([^"]+)"/);
-      const link = linkMatch ? linkMatch[1] : xmlText(x, 'link');
-
-      const rawSummary = xmlHtml(x, 'summary') || xmlHtml(x, 'content');
-      const description = stripHtmlTags(decodeHtmlEntities(rawSummary))
-        .replaceAll(/\s+/g, ' ')
-        .trim();
-      // Prefer the full <content> body (decoded HTML) over the <summary> excerpt,
-      // so full-text Atom feeds keep their full post.
-      const rawContent = xmlHtml(x, 'content') || xmlHtml(x, 'summary');
-
-      items.push({
-        title: xmlText(x, 'title'),
-        link,
-        description: description.slice(0, 1000),
-        content: decodeHtmlEntities(rawContent),
-        pubDate: xmlText(x, 'published') || xmlText(x, 'updated'),
-        author: xmlText(x, 'name') || xmlText(x, 'author'),
-        guid: xmlText(x, 'id') || link,
-      });
-    }
-  }
-
-  return items;
 }
 
 /**
