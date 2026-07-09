@@ -60,6 +60,8 @@ export interface OwnershipFiling {
   isOfficer: boolean;
   isTenPercentOwner: boolean;
   issuer: string | null;
+  issuerTicker: string | null;
+  issuerCik: string | null;
   periodOfReport: string | null;
   /** The document's 10b5-1 trading-plan checkbox (Form 4 amendments of 2023+). */
   planned10b5One: boolean;
@@ -109,6 +111,7 @@ export function parseOwnershipXml(xml: string): OwnershipFiling {
     ...xmlBlocks(xml, 'derivativeTransaction').map((b) => parseTransaction(b, true)),
   ];
 
+  const issuerCik = xmlValue(xml, 'issuerCik');
   return {
     owners,
     officerTitle,
@@ -116,6 +119,8 @@ export function parseOwnershipXml(xml: string): OwnershipFiling {
     isOfficer,
     isTenPercentOwner,
     issuer: xmlValue(xml, 'issuerName'),
+    issuerTicker: xmlValue(xml, 'issuerTradingSymbol'),
+    issuerCik: issuerCik === null ? null : issuerCik.padStart(10, '0'),
     periodOfReport: xmlValue(xml, 'periodOfReport'),
     planned10b5One: xmlFlag(xml, 'aff10b5One'),
     transactions,
