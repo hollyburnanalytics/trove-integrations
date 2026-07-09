@@ -24,7 +24,7 @@ in their manifest `egress`.
 ### Knowledge & research
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
-| `arxiv` | `search_papers`, `get_paper` | export.arxiv.org | — |
+| `arxiv` | `search_papers`, `get_paper`, `get_paper_content`, `save_paper` | export.arxiv.org, arxiv.org, ar5iv.labs.arxiv.org | — |
 | `semantic-scholar` | `search_papers`, `get_paper`, `get_paper_citations`, `get_paper_references` | api.semanticscholar.org | — |
 | `openalex` | `search_works`, `search_authors` | api.openalex.org | **`OPENALEX_API_KEY`** |
 | `openlibrary` | `search_books`, `get_book` | openlibrary.org | — |

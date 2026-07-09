@@ -130,7 +130,26 @@ describe('arxiv MCP server', () => {
           return { text: feed([entry()]) };
         },
       );
-      expect(requested).toContain('submittedDate:[20260101+TO+20260631]');
+      expect(requested).toContain('submittedDate:[20260101+TO+20260630]');
+    });
+
+    it('uses the real last day of a leap-year month', async () => {
+      let requested = '';
+      await callTool(server, 'search_papers', { query: 'dementia', to_date: '2024-02' }, (url) => {
+        requested = url;
+        return { text: feed([entry()]) };
+      });
+      expect(requested).toContain('submittedDate:[19910101+TO+20240229]');
+    });
+
+    it('rejects impossible dates before calling arXiv', async () => {
+      const result = await callTool(server, 'search_papers', {
+        query: 'dementia',
+        to_date: '2026-02-31',
+      });
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(false);
+      expect(result.error).toMatch(/could not parse the date/i);
     });
 
     it('passes a raw advanced expression through, overriding the fields', async () => {
