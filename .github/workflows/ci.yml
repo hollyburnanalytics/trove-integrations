@@ -23,6 +23,9 @@ jobs:
       - name: Code quality (ESLint + SonarJS + Unicorn)
         run: bun run lint:sonar
 
+      - name: Lint ratchet (warn-level debt may only shrink)
+        run: bun run lint:baseline
+
       - name: Test with coverage
         run: bun run test:coverage
 

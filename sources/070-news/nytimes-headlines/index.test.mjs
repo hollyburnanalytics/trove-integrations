@@ -16,8 +16,8 @@ function makeContext(config = {}) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor: undefined };
 }
 
-function optionsFor(config) {
-  sync(makeContext(config));
+async function optionsFor(config) {
+  await sync(makeContext(config));
   return syncFeeds.mock.calls.at(-1)[1];
 }
 
@@ -25,20 +25,23 @@ describe('nytimes source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 
-  it('defaults to the HomePage feed', () => {
-    expect(optionsFor({}).feeds).toEqual([
+  it('defaults to the HomePage feed', async () => {
+    const options = await optionsFor({});
+    expect(options.feeds).toEqual([
       { url: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml', label: 'HomePage' },
     ]);
   });
 
-  it('builds a feed URL per configured section', () => {
-    expect(optionsFor({ sections: ['Technology'] }).feeds[0].url).toBe(
+  it('builds a feed URL per configured section', async () => {
+    const options = await optionsFor({ sections: ['Technology'] });
+    expect(options.feeds[0].url).toBe(
       'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml',
     );
   });
 
-  it('builds documents with the nyt id prefix and default author', () => {
-    const document = optionsFor({}).toDocument({
+  it('builds documents with the nyt id prefix and default author', async () => {
+    const options = await optionsFor({});
+    const document = options.toDocument({
       title: 'Story',
       link: 'https://nyt.test/1',
       guid: 'https://nyt.test/1',
