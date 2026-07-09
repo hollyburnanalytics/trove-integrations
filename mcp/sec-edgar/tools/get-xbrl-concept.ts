@@ -20,6 +20,55 @@ import {
  * mode (`search`) that lists which tags a company actually reports.
  */
 
+/** One discovered XBRL tag, summarizing how much data the company reports for it. */
+interface DiscoveredConcept {
+  tag: string;
+  label: string | null;
+  units: string[];
+  factCount: number;
+  latestEnd: string | null;
+}
+
+/** Summarize one taxonomy tag's units, fact count, and latest reported period. */
+function summarizeTag(entry: {
+  label?: unknown;
+  units?: Record<string, unknown>;
+}): Omit<DiscoveredConcept, 'tag'> {
+  const units = Object.keys(entry.units ?? {});
+  let factCount = 0;
+  let latestEnd: string | null = null;
+  for (const unit of units) {
+    const facts = entry.units?.[unit];
+    if (!Array.isArray(facts)) continue;
+    factCount += facts.length;
+    for (const fact of facts) {
+      const end = (fact as { end?: unknown }).end;
+      if (typeof end === 'string' && (latestEnd === null || end > latestEnd)) latestEnd = end;
+    }
+  }
+  return {
+    label: typeof entry.label === 'string' ? entry.label : null,
+    units,
+    factCount,
+    latestEnd,
+  };
+}
+
+/** Collect the tags whose name contains `needle` and that carry at least one fact. */
+function collectMatchingConcepts(
+  taxFacts: Record<string, { label?: unknown; units?: Record<string, unknown> }> | undefined,
+  needle: string,
+): DiscoveredConcept[] {
+  const found: DiscoveredConcept[] = [];
+  for (const [tag, entry] of Object.entries(taxFacts ?? {})) {
+    if (!tag.toLowerCase().includes(needle)) continue;
+    const summary = summarizeTag(entry);
+    if (summary.factCount === 0) continue;
+    found.push({ tag, ...summary });
+  }
+  return found;
+}
+
 /**
  * Discovery mode for get_xbrl_concept: list the tags a company actually
  * reports (from companyfacts) whose name matches a substring, ranked by how
@@ -41,37 +90,7 @@ async function discoverConcepts(
   const taxFacts = ((body.facts ?? {}) as Record<string, unknown>)[taxonomy] as
     | Record<string, { label?: unknown; units?: Record<string, unknown> }>
     | undefined;
-  const needle = search.toLowerCase();
-  const found: {
-    tag: string;
-    label: string | null;
-    units: string[];
-    factCount: number;
-    latestEnd: string | null;
-  }[] = [];
-  for (const [tag, entry] of Object.entries(taxFacts ?? {})) {
-    if (!tag.toLowerCase().includes(needle)) continue;
-    const units = Object.keys(entry.units ?? {});
-    let factCount = 0;
-    let latestEnd: string | null = null;
-    for (const unit of units) {
-      const facts = entry.units?.[unit];
-      if (!Array.isArray(facts)) continue;
-      factCount += facts.length;
-      for (const fact of facts) {
-        const end = (fact as { end?: unknown }).end;
-        if (typeof end === 'string' && (latestEnd === null || end > latestEnd)) latestEnd = end;
-      }
-    }
-    if (factCount === 0) continue;
-    found.push({
-      tag,
-      label: typeof entry.label === 'string' ? entry.label : null,
-      units,
-      factCount,
-      latestEnd,
-    });
-  }
+  const found = collectMatchingConcepts(taxFacts, search.toLowerCase());
   found.sort((a, b) => b.factCount - a.factCount);
   const concepts = found.slice(0, limit);
 

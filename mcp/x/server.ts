@@ -185,6 +185,40 @@ function parseXError(body: string): string {
   return '';
 }
 
+/**
+ * Map an X HTTP error status to a tool error: 401/403 → bad token, 404 → not
+ * found, 429 → rate limit, other 4xx → surface X's reason. Returns undefined for
+ * anything else (5xx) so the SDK's default retryable mapping applies.
+ */
+function mapXHttpError(
+  status: number,
+  body: string,
+  unauthorizedMessage?: string,
+): ToolError | undefined {
+  const reason = parseXError(body);
+  if (status === 401 || status === 403) {
+    return new ToolError(
+      unauthorizedMessage ??
+        "X_BEARER_TOKEN is missing or unauthorized — check your app's Bearer Token and access level.",
+      { retryable: false },
+    );
+  }
+  if (status === 404) {
+    return new ToolError(`X resource not found${reason ? `: ${reason}` : '.'}`, {
+      retryable: false,
+    });
+  }
+  if (status === 429) {
+    return new ToolError('X rate limit hit; try again shortly.', { retryable: true });
+  }
+  if (status >= 400 && status < 500) {
+    return new ToolError(`X rejected the request${reason ? `: ${reason}` : '.'}`, {
+      retryable: false,
+    });
+  }
+  return undefined;
+}
+
 /** Options for {@link xGet}. */
 interface XGetOptions {
   /** Bearer to attach instead of the app-only `X_BEARER_TOKEN` (user-context flow). */
@@ -214,28 +248,7 @@ async function xGet(
   const parsed = await ctx.fetchJson(url, {
     init: { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } },
     errorMap(res, body) {
-      const reason = parseXError(body);
-      if (res.status === 401 || res.status === 403) {
-        return new ToolError(
-          opts.unauthorizedMessage ??
-            "X_BEARER_TOKEN is missing or unauthorized — check your app's Bearer Token and access level.",
-          { retryable: false },
-        );
-      }
-      if (res.status === 404) {
-        return new ToolError(`X resource not found${reason ? `: ${reason}` : '.'}`, {
-          retryable: false,
-        });
-      }
-      if (res.status === 429) {
-        return new ToolError('X rate limit hit; try again shortly.', { retryable: true });
-      }
-      if (res.status >= 400 && res.status < 500) {
-        return new ToolError(`X rejected the request${reason ? `: ${reason}` : '.'}`, {
-          retryable: false,
-        });
-      }
-      return undefined;
+      return mapXHttpError(res.status, body, opts.unauthorizedMessage);
     },
   });
   if (typeof parsed !== 'object' || parsed === null) {
@@ -425,6 +438,48 @@ function mapTweet(
   return mapped;
 }
 
+/** A referenced (quoted/replied-to) tweet, tagged with its reference type. */
+type ReferencedTweet = MappedTweet & { type: string | null };
+
+/** An empty referenced-tweet placeholder for a ref X did not expand in the payload. */
+function placeholderReference(refId: string): MappedTweet {
+  return {
+    id: refId,
+    text: '',
+    url: refId ? `https://x.com/i/status/${refId}` : null,
+    author: null,
+    authorName: null,
+    createdAt: null,
+    likes: null,
+    reposts: null,
+    replies: null,
+    quotes: null,
+  };
+}
+
+/**
+ * Resolve a tweet's `referenced_tweets[]` against the includes index, mapping
+ * each to a clean tweet (or a placeholder when X didn't expand it), tagged with
+ * its reference type.
+ */
+function mapReferencedTweets(
+  rawTweet: Record<string, unknown>,
+  tweetsIndex: Map<string, Record<string, unknown>>,
+  users: Map<string, XUser>,
+  media: Map<string, XMedia>,
+): ReferencedTweet[] {
+  if (!Array.isArray(rawTweet.referenced_tweets)) return [];
+  const referenced: ReferencedTweet[] = [];
+  for (const ref of rawTweet.referenced_tweets) {
+    const ro = ref as Record<string, unknown>;
+    const refId = typeof ro.id === 'string' ? ro.id : '';
+    const refRaw = refId ? tweetsIndex.get(refId) : undefined;
+    const mapped = refRaw ? mapTweet(refRaw, users, media) : placeholderReference(refId);
+    referenced.push({ type: strOrNull(ro.type), ...mapped });
+  }
+  return referenced;
+}
+
 /** A resolved user profile. */
 interface MappedProfile {
   id: string;
@@ -546,6 +601,55 @@ const userIdCache = new Map<string, string>();
 /** Reset the module-level username→id cache. Test-only seam. */
 export function __resetUserCache(): void {
   userIdCache.clear();
+}
+
+/** The lightweight user object surfaced alongside a timeline. */
+interface TimelineUser {
+  id: string;
+  name: string | null;
+  username: string | null;
+  url: string | null;
+  verified: boolean | null;
+}
+
+/**
+ * Resolve a handle to its user id plus a display user. The handle→id lookup is a
+ * billable user read, so a cached id is reused and returned with
+ * `resolvedNow: false`; only a cache miss resolves (and bills) the lookup.
+ */
+async function resolveTimelineUser(
+  username: string,
+  ctx: ToolContext,
+): Promise<{ userId: string; user: TimelineUser; resolvedNow: boolean }> {
+  const cacheKey = username.toLowerCase();
+  const cachedId = userIdCache.get(cacheKey);
+  if (cachedId) {
+    return {
+      userId: cachedId,
+      user: {
+        id: cachedId,
+        name: null,
+        username,
+        url: `https://x.com/${username}`,
+        verified: null,
+      },
+      resolvedNow: false,
+    };
+  }
+  const userRaw = await resolveUser(username, USER_FIELDS_BASIC, ctx);
+  const userId = typeof userRaw.id === 'string' ? userRaw.id : '';
+  if (userId) userIdCache.set(cacheKey, userId);
+  return {
+    userId,
+    user: {
+      id: userId,
+      name: strOrNull(userRaw.name),
+      username: strOrNull(userRaw.username),
+      url: typeof userRaw.username === 'string' ? `https://x.com/${userRaw.username}` : null,
+      verified: typeof userRaw.verified === 'boolean' ? userRaw.verified : null,
+    },
+    resolvedNow: true,
+  };
 }
 
 /** Read an optional secret, treating "missing"/empty as `undefined`. */
@@ -727,39 +831,7 @@ export default defineMcpServer({
         });
         // Resolving a handle is a billable user lookup; reuse a cached id when we
         // have one (and only bill for it on a cache miss).
-        const cacheKey = username.toLowerCase();
-        const cachedId = userIdCache.get(cacheKey);
-        let userId: string;
-        let user: {
-          id: string;
-          name: string | null;
-          username: string | null;
-          url: string | null;
-          verified: boolean | null;
-        };
-        let resolvedNow = false;
-        if (cachedId) {
-          userId = cachedId;
-          user = {
-            id: userId,
-            name: null,
-            username,
-            url: `https://x.com/${username}`,
-            verified: null,
-          };
-        } else {
-          const userRaw = await resolveUser(username, USER_FIELDS_BASIC, ctx);
-          userId = typeof userRaw.id === 'string' ? userRaw.id : '';
-          resolvedNow = true;
-          if (userId) userIdCache.set(cacheKey, userId);
-          user = {
-            id: userId,
-            name: strOrNull(userRaw.name),
-            username: strOrNull(userRaw.username),
-            url: typeof userRaw.username === 'string' ? `https://x.com/${userRaw.username}` : null,
-            verified: typeof userRaw.verified === 'boolean' ? userRaw.verified : null,
-          };
-        }
+        const { userId, user, resolvedNow } = await resolveTimelineUser(username, ctx);
 
         const params = new URLSearchParams({
           max_results: String(args.max_results),
@@ -847,29 +919,9 @@ export default defineMcpServer({
         const rawTweet = rawTweets[0] as Record<string, unknown>;
         const tweet = mapTweet(rawTweet, users, media);
 
-        const referenced: (MappedTweet & { type: string | null })[] = [];
-        if (args.expand_referenced && Array.isArray(rawTweet.referenced_tweets)) {
-          for (const ref of rawTweet.referenced_tweets) {
-            const ro = ref as Record<string, unknown>;
-            const refId = typeof ro.id === 'string' ? ro.id : '';
-            const refRaw = refId ? tweetsIndex.get(refId) : undefined;
-            const mapped = refRaw
-              ? mapTweet(refRaw, users, media)
-              : {
-                  id: refId,
-                  text: '',
-                  url: refId ? `https://x.com/i/status/${refId}` : null,
-                  author: null,
-                  authorName: null,
-                  createdAt: null,
-                  likes: null,
-                  reposts: null,
-                  replies: null,
-                  quotes: null,
-                };
-            referenced.push({ type: strOrNull(ro.type), ...mapped });
-          }
-        }
+        const referenced = args.expand_referenced
+          ? mapReferencedTweets(rawTweet, tweetsIndex, users, media)
+          : [];
 
         const note = costNote(1 + referenced.length, 0);
         const refLines = referenced

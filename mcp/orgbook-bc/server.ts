@@ -165,6 +165,45 @@ const entityLine = (e: EntityRecord): string =>
   `  ${e.registrationNumber ?? '?'} — ${e.entityName ?? '?'} ` +
   `[${e.entityStatus ?? '?'}${e.entityType ? ` · ${e.entityType}` : ''}]`;
 
+/** Map one raw credential entry (from a credential-set) to the tool-facing shape. */
+function mapCredential(entry: unknown) {
+  const c = (entry ?? {}) as Record<string, unknown>;
+  const credType = (c.credential_type ?? {}) as Record<string, unknown>;
+  const schemaLabel = (credType.schema_label ?? {}) as Record<string, unknown>;
+  const en = (schemaLabel.en ?? {}) as Record<string, unknown>;
+  const names = (Array.isArray(c.names) ? c.names : [])
+    .map((n) => (n ?? {}) as Record<string, unknown>)
+    .filter((n) => typeof n.text === 'string' && n.text !== '')
+    .map((n) => ({
+      text: n.text as string,
+      type: typeof n.type === 'string' ? n.type : null,
+    }));
+  const attributes = (Array.isArray(c.attributes) ? c.attributes : [])
+    .map((a) => (a ?? {}) as Record<string, unknown>)
+    .filter((a) => typeof a.type === 'string' && typeof a.value === 'string')
+    .map((a) => ({ type: a.type as string, value: a.value as string }));
+  return {
+    type: typeof en.label === 'string' ? en.label : null,
+    effectiveDate: typeof c.effective_date === 'string' ? c.effective_date : null,
+    latest: typeof c.latest === 'boolean' ? c.latest : null,
+    revoked: typeof c.revoked === 'boolean' ? c.revoked : null,
+    revokedDate: typeof c.revoked_date === 'string' ? c.revoked_date : null,
+    names,
+    attributes,
+  };
+}
+
+/** Flatten OrgBook's credential-set response into mapped credentials. */
+function parseCredentialSets(body: unknown): ReturnType<typeof mapCredential>[] {
+  const sets = Array.isArray(body) ? body : [];
+  return sets
+    .flatMap((set) => {
+      const s = (set ?? {}) as Record<string, unknown>;
+      return Array.isArray(s.credentials) ? s.credentials : [];
+    })
+    .map(mapCredential);
+}
+
 export default defineMcpServer({
   egress: ['orgbook.gov.bc.ca'],
   tools: [
@@ -293,38 +332,7 @@ export default defineMcpServer({
               ),
           },
         )) as unknown;
-        const sets = Array.isArray(body) ? body : [];
-        const credentials = sets
-          .flatMap((set) => {
-            const s = (set ?? {}) as Record<string, unknown>;
-            return Array.isArray(s.credentials) ? s.credentials : [];
-          })
-          .map((entry) => {
-            const c = (entry ?? {}) as Record<string, unknown>;
-            const credType = (c.credential_type ?? {}) as Record<string, unknown>;
-            const schemaLabel = (credType.schema_label ?? {}) as Record<string, unknown>;
-            const en = (schemaLabel.en ?? {}) as Record<string, unknown>;
-            const names = (Array.isArray(c.names) ? c.names : [])
-              .map((n) => (n ?? {}) as Record<string, unknown>)
-              .filter((n) => typeof n.text === 'string' && n.text !== '')
-              .map((n) => ({
-                text: n.text as string,
-                type: typeof n.type === 'string' ? n.type : null,
-              }));
-            const attributes = (Array.isArray(c.attributes) ? c.attributes : [])
-              .map((a) => (a ?? {}) as Record<string, unknown>)
-              .filter((a) => typeof a.type === 'string' && typeof a.value === 'string')
-              .map((a) => ({ type: a.type as string, value: a.value as string }));
-            return {
-              type: typeof en.label === 'string' ? en.label : null,
-              effectiveDate: typeof c.effective_date === 'string' ? c.effective_date : null,
-              latest: typeof c.latest === 'boolean' ? c.latest : null,
-              revoked: typeof c.revoked === 'boolean' ? c.revoked : null,
-              revokedDate: typeof c.revoked_date === 'string' ? c.revoked_date : null,
-              names,
-              attributes,
-            };
-          });
+        const credentials = parseCredentialSets(body);
         const structured = {
           registrationNumber: entity.registrationNumber,
           entityName: entity.entityName,

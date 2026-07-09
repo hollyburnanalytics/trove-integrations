@@ -92,19 +92,9 @@ export interface Company {
   exchange?: string;
 }
 
-/**
- * Resolve a company identifier to its 10-digit zero-padded CIK. Accepts a bare
- * CIK number, an exact ticker (share-class dots normalized, so "BRK.B" matches
- * EDGAR's "BRK-B"), or — as a fallback — a company-name match against the SEC's
- * ticker/exchange map (exact name first, then prefix, then substring).
- */
-export async function resolveCompany(ctx: ToolContext, query: string): Promise<Company | null> {
-  const trimmed = query.trim();
-  if (/^\d{1,10}$/.test(trimmed)) {
-    return { cik: trimmed.padStart(10, '0'), name: '' };
-  }
-  const map = await edgarJson(ctx, TICKER_MAP_URL, 'The SEC ticker map is unavailable.');
-  const rows = Array.isArray(map.data) ? map.data : [];
+/** Parse the SEC ticker/exchange map's `data` rows into typed companies. */
+function parseTickerRows(data: unknown): Company[] {
+  const rows = Array.isArray(data) ? data : [];
   const entries: Company[] = [];
   for (const row of rows) {
     if (!Array.isArray(row)) continue;
@@ -117,15 +107,19 @@ export async function resolveCompany(ctx: ToolContext, query: string): Promise<C
       exchange: typeof exchange === 'string' ? exchange : undefined,
     });
   }
+  return entries;
+}
 
-  const target = trimmed.toUpperCase();
+/** Exact-ticker match, normalizing share-class dots so "BRK.B" matches "BRK-B". */
+function matchTicker(entries: Company[], query: string): Company | undefined {
+  const target = query.toUpperCase();
   const dashed = target.replaceAll('.', '-');
-  for (const entry of entries) {
-    if (entry.ticker === target || entry.ticker === dashed) return entry;
-  }
+  return entries.find((entry) => entry.ticker === target || entry.ticker === dashed);
+}
 
-  // Name fallback: exact (case-insensitive), then prefix, then substring.
-  const lower = trimmed.toLowerCase();
+/** Company-name fallback: exact (case-insensitive), then prefix, then substring. */
+function matchName(entries: Company[], query: string): Company | null {
+  const lower = query.toLowerCase();
   const byName =
     entries.find((entry) => entry.name.toLowerCase() === lower) ??
     entries.find((entry) => entry.name.toLowerCase().startsWith(lower)) ??
@@ -133,6 +127,22 @@ export async function resolveCompany(ctx: ToolContext, query: string): Promise<C
       ? entries.find((entry) => entry.name.toLowerCase().includes(lower))
       : undefined);
   return byName ?? null;
+}
+
+/**
+ * Resolve a company identifier to its 10-digit zero-padded CIK. Accepts a bare
+ * CIK number, an exact ticker (share-class dots normalized, so "BRK.B" matches
+ * EDGAR's "BRK-B"), or — as a fallback — a company-name match against the SEC's
+ * ticker/exchange map (exact name first, then prefix, then substring).
+ */
+export async function resolveCompany(ctx: ToolContext, query: string): Promise<Company | null> {
+  const trimmed = query.trim();
+  if (/^\d{1,10}$/.test(trimmed)) {
+    return { cik: trimmed.padStart(10, '0'), name: '' };
+  }
+  const map = await edgarJson(ctx, TICKER_MAP_URL, 'The SEC ticker map is unavailable.');
+  const entries = parseTickerRows(map.data);
+  return matchTicker(entries, trimmed) ?? matchName(entries, trimmed);
 }
 
 /**

@@ -92,6 +92,16 @@ export function parseInfoTable(xml: string, periodOfReport: string | null): Info
   return { holdings, valueUnits };
 }
 
+/** Fold a duplicate row's totals into an accumulator, null-summing each field. */
+function mergeHolding(existing: Holding, h: Holding): void {
+  existing.value += h.value;
+  if (h.shares !== null) existing.shares = (existing.shares ?? 0) + h.shares;
+  if (h.votingSole !== null) existing.votingSole = (existing.votingSole ?? 0) + h.votingSole;
+  if (h.votingShared !== null)
+    existing.votingShared = (existing.votingShared ?? 0) + h.votingShared;
+  if (h.votingNone !== null) existing.votingNone = (existing.votingNone ?? 0) + h.votingNone;
+}
+
 /**
  * Aggregate duplicate rows. The key is (CUSIP, put/call) — never CUSIP alone,
  * or option positions would merge into the underlying equity.
@@ -101,17 +111,8 @@ export function aggregateHoldings(holdings: Holding[]): Holding[] {
   for (const h of holdings) {
     const key = `${h.cusip ?? h.issuer ?? '?'}|${h.putCall ?? ''}`;
     const existing = byKey.get(key);
-    if (existing) {
-      existing.value += h.value;
-      if (h.shares !== null) existing.shares = (existing.shares ?? 0) + h.shares;
-      if (h.votingSole !== null) existing.votingSole = (existing.votingSole ?? 0) + h.votingSole;
-      if (h.votingShared !== null) {
-        existing.votingShared = (existing.votingShared ?? 0) + h.votingShared;
-      }
-      if (h.votingNone !== null) existing.votingNone = (existing.votingNone ?? 0) + h.votingNone;
-    } else {
-      byKey.set(key, { ...h });
-    }
+    if (existing) mergeHolding(existing, h);
+    else byKey.set(key, { ...h });
   }
   return [...byKey.values()].sort((a, b) => b.value - a.value);
 }

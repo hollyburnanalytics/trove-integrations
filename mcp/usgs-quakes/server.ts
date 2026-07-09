@@ -28,6 +28,38 @@ const QuakeFeed = z.object({
     .default([]),
 });
 
+type QuakeFeature = z.infer<typeof QuakeFeed>['features'][number];
+
+interface Quake {
+  place: string;
+  magnitude: number;
+  time: string;
+  url: string;
+  longitude: number;
+  latitude: number;
+  depthKm: number;
+}
+
+/**
+ * Map one USGS feature to a clean quake row, defaulting every missing/mistyped
+ * field. Returns undefined when the feature has no coordinate array to place it.
+ */
+function toQuake(feature: QuakeFeature): Quake | undefined {
+  const coords = feature.geometry?.coordinates;
+  if (!Array.isArray(coords)) return undefined;
+  const [lng, lat, depth] = coords;
+  const props = feature.properties ?? {};
+  return {
+    place: typeof props.place === 'string' ? props.place : 'Unknown location',
+    magnitude: typeof props.mag === 'number' ? props.mag : 0,
+    time: typeof props.time === 'number' ? new Date(props.time).toISOString() : '',
+    url: typeof props.url === 'string' ? props.url : '',
+    longitude: typeof lng === 'number' ? lng : 0,
+    latitude: typeof lat === 'number' ? lat : 0,
+    depthKm: typeof depth === 'number' ? depth : 0,
+  };
+}
+
 export default defineMcpServer({
   tools: [
     {
@@ -110,21 +142,8 @@ export default defineMcpServer({
         });
 
         const quakes = body.features.flatMap((f) => {
-          const coords = f.geometry?.coordinates;
-          if (!Array.isArray(coords)) return [];
-          const [lng, lat, depth] = coords;
-          const props = f.properties ?? {};
-          return [
-            {
-              place: typeof props.place === 'string' ? props.place : 'Unknown location',
-              magnitude: typeof props.mag === 'number' ? props.mag : 0,
-              time: typeof props.time === 'number' ? new Date(props.time).toISOString() : '',
-              url: typeof props.url === 'string' ? props.url : '',
-              longitude: typeof lng === 'number' ? lng : 0,
-              latitude: typeof lat === 'number' ? lat : 0,
-              depthKm: typeof depth === 'number' ? depth : 0,
-            },
-          ];
+          const quake = toQuake(f);
+          return quake ? [quake] : [];
         });
 
         if (quakes.length === 0) {

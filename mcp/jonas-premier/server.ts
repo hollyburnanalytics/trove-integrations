@@ -150,6 +150,44 @@ function unwrapList(parsed: unknown): Record<string, unknown>[] {
   return [];
 }
 
+/** Map a non-ok Premier response to a ToolError (always throws). */
+function throwPremierError(status: number, body: string): never {
+  if (status === 401 || status === 403) {
+    throw new ToolError(
+      'Premier refused the request even after re-authenticating — the API user may lack ' +
+        'permission for this module, or the credentials were revoked.',
+      { retryable: false },
+    );
+  }
+  if (status === 400 || status === 404) {
+    let reason = '';
+    try {
+      const parsed = JSON.parse(body) as { Message?: unknown; message?: unknown };
+      const m = parsed.Message ?? parsed.message;
+      if (typeof m === 'string') reason = m;
+    } catch {
+      reason = body.slice(0, 120);
+    }
+    throw new ToolError(`Premier rejected the request: ${reason || `HTTP ${status}`}.`, {
+      retryable: false,
+    });
+  }
+  throw new ToolError(`Premier returned ${status}: ${body.slice(0, 100)}`, {
+    retryable: status === 429 || status >= 500,
+  });
+}
+
+/** Parse a Premier JSON body, or throw a retryable "malformed data" ToolError. */
+function parsePremierBody(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new ToolError('Premier returned malformed data; try again shortly.', {
+      retryable: true,
+    });
+  }
+}
+
 /**
  * GET a Premier endpoint with the user's bearer attached, unwrap the envelope.
  * On a 401 the cached token is dropped and the request retried once with a
@@ -171,40 +209,8 @@ async function jonasGet(
     return jonasGet(path, params, ctx, true);
   }
   const body = await res.text();
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      throw new ToolError(
-        'Premier refused the request even after re-authenticating — the API user may lack ' +
-          'permission for this module, or the credentials were revoked.',
-        { retryable: false },
-      );
-    }
-    if (res.status === 400 || res.status === 404) {
-      let reason = '';
-      try {
-        const parsed = JSON.parse(body) as { Message?: unknown; message?: unknown };
-        const m = parsed.Message ?? parsed.message;
-        if (typeof m === 'string') reason = m;
-      } catch {
-        reason = body.slice(0, 120);
-      }
-      throw new ToolError(`Premier rejected the request: ${reason || `HTTP ${res.status}`}.`, {
-        retryable: false,
-      });
-    }
-    throw new ToolError(`Premier returned ${res.status}: ${body.slice(0, 100)}`, {
-      retryable: res.status === 429 || res.status >= 500,
-    });
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    throw new ToolError('Premier returned malformed data; try again shortly.', {
-      retryable: true,
-    });
-  }
-  return unwrapList(parsed);
+  if (!res.ok) throwPremierError(res.status, body);
+  return unwrapList(parsePremierBody(body));
 }
 
 /** Read a string prop, or null (Premier omits/nulls fields freely). */

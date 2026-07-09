@@ -567,19 +567,27 @@ function checkIdentity(values: Record<string, number | null>): {
   };
 }
 
+/** The latest `end` date across every fact in one concept's units map ('' if none). */
+function latestEndInUnits(units: Record<string, unknown>): string {
+  let latest = '';
+  for (const facts of Object.values(units)) {
+    if (!Array.isArray(facts)) continue;
+    for (const fact of facts) {
+      const end = (fact as { end?: unknown }).end;
+      if (typeof end === 'string' && end > latest) latest = end;
+    }
+  }
+  return latest;
+}
+
 /** The most recent anchor-fact period end within one taxonomy bucket ('' if none). */
 function latestAnchorEnd(taxFacts: TaxonomyFacts, taxonomy: Taxonomy): string {
   let latest = '';
   for (const tag of tagsFor(ANCHOR, taxonomy)) {
     const units = taxFacts[tag]?.units;
     if (!units) continue;
-    for (const facts of Object.values(units)) {
-      if (!Array.isArray(facts)) continue;
-      for (const fact of facts) {
-        const end = (fact as { end?: unknown }).end;
-        if (typeof end === 'string' && end > latest) latest = end;
-      }
-    }
+    const end = latestEndInUnits(units);
+    if (end > latest) latest = end;
   }
   return latest;
 }

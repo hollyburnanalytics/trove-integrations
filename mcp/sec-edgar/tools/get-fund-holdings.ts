@@ -1,5 +1,6 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, type ToolDefinition, ToolError, z } from '@ontrove/mcp';
 import {
+  type Company,
   edgarDocument,
   filingDirUrl,
   fmtMoney,
@@ -7,13 +8,118 @@ import {
   requireCompany,
 } from '../client.ts';
 import { listFilingDocuments } from '../documents.ts';
-import { recentFilings } from '../submissions.ts';
+import { type RecentFiling, recentFilings } from '../submissions.ts';
 import { aggregateHoldings, parseCoverPage, parseInfoTable } from '../thirteenf.ts';
 
 /**
  * `get_fund_holdings` — a 13F manager's portfolio (see `thirteenf.ts` for the
  * information-table parsing and value-unit detection rules).
  */
+
+/** One of the top holdings rendered in the response. */
+interface TopHolding {
+  issuer: string | null;
+  titleOfClass: string | null;
+  cusip: string | null;
+  value: number;
+  shares: number | null;
+  sharesType: string | null;
+  putCall: string | null;
+  percent: number;
+}
+
+/**
+ * Pick which 13F filing to read: the requested accession, or the most recent
+ * 13F-HR. Throws a clear error when a manager only files 13F-NT notices or has
+ * no holdings report at all.
+ */
+function selectFilingForm(
+  requested: string | undefined,
+  filings: RecentFiling[],
+  resolved: Company,
+  name: string,
+  company: string,
+): { accession: string; form: string } {
+  if (requested) {
+    const accession = normalizeAccession(requested);
+    return { accession, form: filings.find((f) => f.accession === accession)?.form ?? '13F' };
+  }
+  const hr = filings.find((f) => f.form === '13F-HR' || f.form === '13F-HR/A');
+  if (!hr) {
+    const nt = filings.find((f) => f.form.startsWith('13F-NT'));
+    throw new ToolError(
+      nt
+        ? `${name || company} files 13F-NT notices — its holdings are reported by ` +
+            'another manager, so there is no information table here.'
+        : `No 13F-HR filings found for ${name || company} (CIK ${resolved.cik}). ` +
+            'Only institutional managers with $100M+ in US equities file 13Fs.',
+      { retryable: false },
+    );
+  }
+  return { accession: hr.accession, form: hr.form };
+}
+
+/**
+ * Fetch a 13F filing's cover page and information table from its XML
+ * attachments, identifying each by content (tolerating namespace prefixes).
+ * Deliberately sequential: the shared egress client already throttles to the
+ * SEC's fair-access rate, so parallel fetches would only queue there. Throws
+ * when the filing carries no information table.
+ */
+async function fetchThirteenFXml(
+  ctx: ToolContext,
+  cik: string,
+  accession: string,
+): Promise<{ coverXml: string; tableXml: string }> {
+  const entries = await listFilingDocuments(ctx, cik, accession);
+  const xmlEntries = entries.filter((entry) => entry.extension === 'xml');
+  let coverXml = '';
+  let tableXml = '';
+  for (const entry of xmlEntries) {
+    const body = await edgarDocument(
+      ctx,
+      `${filingDirUrl(cik, accession)}/${entry.name}`,
+      `Document ${entry.name} missing from ${accession}.`,
+    );
+    if (/<(?:\w+:)?infoTable[\s>]/.test(body)) tableXml = body;
+    else if (/<(?:\w+:)?edgarSubmission[\s>]/.test(body)) coverXml = body;
+  }
+  if (!tableXml) {
+    throw new ToolError(
+      `Filing ${accession} has no 13F information table (13F-NT notices and some ` +
+        'amendments carry none).',
+      { retryable: false },
+    );
+  }
+  return { coverXml, tableXml };
+}
+
+/** Render the holdings summary and the numbered top-holdings list. */
+function formatHoldingsText(opts: {
+  manager: string;
+  form: string;
+  amendmentType: string | null;
+  periodOfReport: string | null;
+  positions: number;
+  totalValue: number;
+  totalCheckOk: boolean | null;
+  top: TopHolding[];
+}): string {
+  const lines = opts.top
+    .map((h, i) => {
+      const flag = h.putCall ? ` [${h.putCall}]` : '';
+      const shares = h.shares === null ? '' : ` · ${h.shares.toLocaleString('en-US')} sh`;
+      return `  ${i + 1}. ${h.issuer ?? '?'}${flag} — ${fmtMoney(h.value, 'USD')} (${h.percent}%)${shares}`;
+    })
+    .join('\n');
+  const amendment = opts.amendmentType ? ` (${opts.amendmentType} amendment)` : '';
+  const check = opts.totalCheckOk === false ? ' ⚠ sum differs from the declared total' : '';
+  return (
+    `${opts.manager} — ${opts.form}${amendment} for period ending ${opts.periodOfReport ?? '?'}: ` +
+    `${opts.positions} position(s), ${fmtMoney(opts.totalValue, 'USD')} total${check}.\n` +
+    `Top ${opts.top.length}:\n${lines}`
+  );
+}
 
 export const getFundHoldings: ToolDefinition = {
   name: 'get_fund_holdings',
@@ -72,52 +178,8 @@ export const getFundHoldings: ToolDefinition = {
     const resolved = await requireCompany(ctx, company);
     const { name, filings } = await recentFilings(ctx, resolved.cik);
 
-    let accession = args.accession;
-    let form = '13F-HR';
-    if (accession) {
-      accession = normalizeAccession(accession);
-      form = filings.find((f) => f.accession === accession)?.form ?? '13F';
-    } else {
-      const hr = filings.find((f) => f.form === '13F-HR' || f.form === '13F-HR/A');
-      if (!hr) {
-        const nt = filings.find((f) => f.form.startsWith('13F-NT'));
-        throw new ToolError(
-          nt
-            ? `${name || company} files 13F-NT notices — its holdings are reported by ` +
-                'another manager, so there is no information table here.'
-            : `No 13F-HR filings found for ${name || company} (CIK ${resolved.cik}). ` +
-                'Only institutional managers with $100M+ in US equities file 13Fs.',
-          { retryable: false },
-        );
-      }
-      accession = hr.accession;
-      form = hr.form;
-    }
-
-    // The information table is the non-primary XML attachment; identify it
-    // by content, tolerating namespace prefixes. Deliberately sequential:
-    // the shared egress client already throttles to the SEC's fair-access
-    // rate, so parallel fetches would only queue there.
-    const entries = await listFilingDocuments(ctx, resolved.cik, accession);
-    const xmlEntries = entries.filter((entry) => entry.extension === 'xml');
-    let coverXml = '';
-    let tableXml = '';
-    for (const entry of xmlEntries) {
-      const body = await edgarDocument(
-        ctx,
-        `${filingDirUrl(resolved.cik, accession)}/${entry.name}`,
-        `Document ${entry.name} missing from ${accession}.`,
-      );
-      if (/<(?:\w+:)?infoTable[\s>]/.test(body)) tableXml = body;
-      else if (/<(?:\w+:)?edgarSubmission[\s>]/.test(body)) coverXml = body;
-    }
-    if (!tableXml) {
-      throw new ToolError(
-        `Filing ${accession} has no 13F information table (13F-NT notices and some ` +
-          'amendments carry none).',
-        { retryable: false },
-      );
-    }
+    const { accession, form } = selectFilingForm(args.accession, filings, resolved, name, company);
+    const { coverXml, tableXml } = await fetchThirteenFXml(ctx, resolved.cik, accession);
 
     const cover = parseCoverPage(coverXml);
     const table = parseInfoTable(tableXml, cover.periodOfReport);
@@ -131,7 +193,7 @@ export const getFundHoldings: ToolDefinition = {
       declaredTotal === null || totalValue === 0
         ? null
         : Math.abs(totalValue - declaredTotal) <= Math.abs(declaredTotal) * 0.01;
-    const top = aggregated.slice(0, limit).map((h) => ({
+    const top: TopHolding[] = aggregated.slice(0, limit).map((h) => ({
       issuer: h.issuer,
       titleOfClass: h.titleOfClass,
       cusip: h.cusip,
@@ -143,20 +205,17 @@ export const getFundHoldings: ToolDefinition = {
     }));
 
     const manager = cover.manager ?? name ?? company;
-    const lines = top
-      .map((h, i) => {
-        const flag = h.putCall ? ` [${h.putCall}]` : '';
-        const shares = h.shares === null ? '' : ` · ${h.shares.toLocaleString('en-US')} sh`;
-        return `  ${i + 1}. ${h.issuer ?? '?'}${flag} — ${fmtMoney(h.value, 'USD')} (${h.percent}%)${shares}`;
-      })
-      .join('\n');
-    const amendment = cover.amendmentType ? ` (${cover.amendmentType} amendment)` : '';
-    const check = totalCheckOk === false ? ' ⚠ sum differs from the declared total' : '';
     return {
-      text:
-        `${manager} — ${form}${amendment} for period ending ${cover.periodOfReport ?? '?'}: ` +
-        `${aggregated.length} position(s), ${fmtMoney(totalValue, 'USD')} total${check}.\n` +
-        `Top ${top.length}:\n${lines}`,
+      text: formatHoldingsText({
+        manager,
+        form,
+        amendmentType: cover.amendmentType,
+        periodOfReport: cover.periodOfReport,
+        positions: aggregated.length,
+        totalValue,
+        totalCheckOk,
+        top,
+      }),
       structured: {
         company: manager,
         cik: resolved.cik,

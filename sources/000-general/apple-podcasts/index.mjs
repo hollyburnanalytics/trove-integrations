@@ -79,6 +79,44 @@ async function openLibrary(databasePath) {
   }
 }
 
+/**
+ * Turn subscribed-show episode rows (oldest-first) into audio documents, up to
+ * the per-run cap. Rows without an audio enclosure are skipped and logged; the
+ * returned counts let the caller advance the watermark past what it processed.
+ *
+ * @param {any[]} rows - episode rows from the Podcasts library, oldest-first
+ * @param {any} context - the sync context (log + progress)
+ * @returns {{ documents: any[], skipped: number }}
+ */
+function collectEpisodes(rows, context) {
+  const documents = [];
+  let skipped = 0;
+  for (const row of rows) {
+    if (documents.length >= MAX_EPISODES_PER_RUN) break;
+    if (!row.enclosureUrl) {
+      // No audio to transcribe (e.g. a paid show whose feed withholds the
+      // enclosure). The watermark still moves past it via later episodes.
+      context.log.warn(`No audio enclosure for "${row.title ?? row.guid}" — skipping`);
+      skipped += 1;
+      continue;
+    }
+    documents.push({
+      id: stableId('apple-podcasts', row.guid || row.uuid),
+      title: row.title || 'Untitled episode',
+      author: row.showTitle || undefined,
+      url: row.webpageUrl || row.enclosureUrl,
+      date: appleDateToIso(row.pubdate),
+      audio_url: row.enclosureUrl,
+    });
+    const show = row.showTitle ? ` — ${row.showTitle}` : '';
+    context.progress(
+      documents.length,
+      `Queued ${documents.length}: "${row.title || 'Untitled episode'}"${show}`,
+    );
+  }
+  return { documents, skipped };
+}
+
 export async function sync(context) {
   const home = process.env.HOME || homedir();
   const libraryRoot = context.config.libraryRoot || path.join(home, LIBRARY_RELATIVE_PATH);
@@ -113,31 +151,7 @@ export async function sync(context) {
     `${rows.length} episode(s) newer than ${since.toISOString()} across subscribed shows`,
   );
 
-  const documents = [];
-  let skipped = 0;
-  for (const row of rows) {
-    if (documents.length >= MAX_EPISODES_PER_RUN) break;
-    if (!row.enclosureUrl) {
-      // No audio to transcribe (e.g. a paid show whose feed withholds the
-      // enclosure). The watermark still moves past it via later episodes.
-      context.log.warn(`No audio enclosure for "${row.title ?? row.guid}" — skipping`);
-      skipped += 1;
-      continue;
-    }
-    documents.push({
-      id: stableId('apple-podcasts', row.guid || row.uuid),
-      title: row.title || 'Untitled episode',
-      author: row.showTitle || undefined,
-      url: row.webpageUrl || row.enclosureUrl,
-      date: appleDateToIso(row.pubdate),
-      audio_url: row.enclosureUrl,
-    });
-    const show = row.showTitle ? ` — ${row.showTitle}` : '';
-    context.progress(
-      documents.length,
-      `Queued ${documents.length}: "${row.title || 'Untitled episode'}"${show}`,
-    );
-  }
+  const { documents, skipped } = collectEpisodes(rows, context);
 
   const processed = documents.length + skipped;
   const remaining = rows.length - processed;
