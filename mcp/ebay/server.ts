@@ -104,6 +104,58 @@ function shippingCost(options: unknown): { value: number | null; currency: strin
   return money(first.shippingCost);
 }
 
+/** Item specifics (brand, model, aspects) as name/value pairs, capped at 15. */
+function itemAspects(body: Record<string, unknown>): { name: string; value: string }[] {
+  const rawAspects = Array.isArray(body.localizedAspects) ? body.localizedAspects : [];
+  return rawAspects
+    .map((a) => a as Record<string, unknown>)
+    .filter((a) => typeof a.name === 'string' && typeof a.value === 'string')
+    .slice(0, 15)
+    .map((a) => ({ name: a.name as string, value: a.value as string }));
+}
+
+/** Map an eBay item-detail response to the tool-facing result. */
+function mapItemDetail(body: Record<string, unknown>, itemId: string) {
+  const price = money(body.price);
+  const ship = shippingCost(body.shippingOptions);
+  const returnTerms = (body.returnTerms ?? {}) as Record<string, unknown>;
+  return {
+    itemId: typeof body.itemId === 'string' ? body.itemId : itemId,
+    title: typeof body.title === 'string' ? body.title : 'Untitled',
+    price: price.value,
+    currency: price.currency,
+    condition: typeof body.condition === 'string' ? body.condition : null,
+    shortDescription:
+      typeof body.shortDescription === 'string'
+        ? body.shortDescription
+        : typeof body.subtitle === 'string'
+          ? body.subtitle
+          : null,
+    aspects: itemAspects(body),
+    seller: nestedStr(body.seller, 'username'),
+    sellerFeedbackPct: nestedStr(body.seller, 'feedbackPercentage'),
+    shippingCost: ship.value,
+    returnsAccepted:
+      typeof returnTerms.returnsAccepted === 'boolean' ? returnTerms.returnsAccepted : null,
+    location: nestedStr(body.itemLocation, 'country'),
+    imageUrl: nestedStr(body.image, 'imageUrl'),
+    url: typeof body.itemWebUrl === 'string' ? body.itemWebUrl : null,
+  };
+}
+
+/** One-item detail summary for the human-readable text. */
+function formatItemDetail(result: ReturnType<typeof mapItemDetail>): string {
+  const aspectLine = result.aspects
+    .slice(0, 6)
+    .map((a) => `${a.name}: ${a.value}`)
+    .join(' · ');
+  return (
+    `"${result.title}" — ${result.currency ?? ''}${result.price ?? '?'} [${result.condition ?? '?'}]` +
+    `${result.seller ? `\n  Seller: ${result.seller}${result.sellerFeedbackPct ? ` (${result.sellerFeedbackPct}%)` : ''}` : ''}` +
+    `${aspectLine ? `\n  ${aspectLine}` : ''}`
+  );
+}
+
 export default defineMcpServer({
   auth: {
     type: 'oauth2_client_credentials',
@@ -271,46 +323,9 @@ export default defineMcpServer({
           marketplace,
           ctx,
         );
-        const price = money(body.price);
-        const ship = shippingCost(body.shippingOptions);
-        const rawAspects = Array.isArray(body.localizedAspects) ? body.localizedAspects : [];
-        const aspects = rawAspects
-          .map((a) => a as Record<string, unknown>)
-          .filter((a) => typeof a.name === 'string' && typeof a.value === 'string')
-          .slice(0, 15)
-          .map((a) => ({ name: a.name as string, value: a.value as string }));
-        const returnTerms = (body.returnTerms ?? {}) as Record<string, unknown>;
-        const result = {
-          itemId: typeof body.itemId === 'string' ? body.itemId : itemId,
-          title: typeof body.title === 'string' ? body.title : 'Untitled',
-          price: price.value,
-          currency: price.currency,
-          condition: typeof body.condition === 'string' ? body.condition : null,
-          shortDescription:
-            typeof body.shortDescription === 'string'
-              ? body.shortDescription
-              : typeof body.subtitle === 'string'
-                ? body.subtitle
-                : null,
-          aspects,
-          seller: nestedStr(body.seller, 'username'),
-          sellerFeedbackPct: nestedStr(body.seller, 'feedbackPercentage'),
-          shippingCost: ship.value,
-          returnsAccepted:
-            typeof returnTerms.returnsAccepted === 'boolean' ? returnTerms.returnsAccepted : null,
-          location: nestedStr(body.itemLocation, 'country'),
-          imageUrl: nestedStr(body.image, 'imageUrl'),
-          url: typeof body.itemWebUrl === 'string' ? body.itemWebUrl : null,
-        };
-        const aspectLine = aspects
-          .slice(0, 6)
-          .map((a) => `${a.name}: ${a.value}`)
-          .join(' · ');
+        const result = mapItemDetail(body, itemId);
         return {
-          text:
-            `"${result.title}" — ${result.currency ?? ''}${result.price ?? '?'} [${result.condition ?? '?'}]` +
-            `${result.seller ? `\n  Seller: ${result.seller}${result.sellerFeedbackPct ? ` (${result.sellerFeedbackPct}%)` : ''}` : ''}` +
-            `${aspectLine ? `\n  ${aspectLine}` : ''}`,
+          text: formatItemDetail(result),
           structured: result,
         };
       },

@@ -135,6 +135,18 @@ export interface InsiderSummary {
 }
 
 /**
+ * The open-market bucket a transaction counts toward, or null if it doesn't:
+ * only non-derivative P (purchase) and S (sale) rows with reported shares
+ * qualify.
+ */
+function openMarketBucket(txn: InsiderTransaction): 'purchase' | 'sale' | null {
+  if (txn.derivative || txn.shares === null) return null;
+  if (txn.code === 'P') return 'purchase';
+  if (txn.code === 'S') return 'sale';
+  return null;
+}
+
+/**
  * Aggregate open-market activity across filings. Only non-derivative P
  * (purchase) and S (sale) rows count — the conventional definition of insider
  * buying/selling conviction.
@@ -144,11 +156,11 @@ export function summarizeOpenMarket(filings: OwnershipFiling[]): InsiderSummary 
   const sells = { transactions: 0, shares: 0, value: 0 };
   for (const filing of filings) {
     for (const txn of filing.transactions) {
-      if (txn.derivative || txn.shares === null) continue;
-      const bucket = txn.code === 'P' ? buys : txn.code === 'S' ? sells : null;
-      if (!bucket) continue;
+      const kind = openMarketBucket(txn);
+      if (kind === null) continue;
+      const bucket = kind === 'purchase' ? buys : sells;
       bucket.transactions += 1;
-      bucket.shares += txn.shares;
+      bucket.shares += txn.shares ?? 0;
       bucket.value += txn.value ?? 0;
     }
   }

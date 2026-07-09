@@ -206,27 +206,32 @@ function extractArxivIds(references: string[]): string[] {
   return [...ids];
 }
 
-/**
- * Parse LaTeXML full-text HTML (from arXiv's HTML view or ar5iv) into an
- * abstract, titled sections, and the reference list. Best-effort: papers whose
- * HTML lacks section markup degrade to a single "Full text" section.
- */
-function parseHtmlContent(html: string): PaperContent {
+/** Extract the abstract block's text (its heading stripped), or `''`. */
+function parseAbstract(html: string): string {
   const absMatch = /<div\b[^>]*\bclass="[^"]*\bltx_abstract\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(
     html,
   );
-  const abstract = absMatch
+  return absMatch
     ? htmlToText((absMatch[1] ?? '').replace(/<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>/i, ''))
     : '';
+}
 
-  // The bibliography ends the body; references live after it.
-  const biblioMatch =
+/**
+ * Locate the bibliography; references live from its offset to end-of-document.
+ * Returns `matched: false` (and the full length) when a paper has no bibliography.
+ */
+function locateBibliography(html: string): { matched: boolean; at: number } {
+  const match =
     /<section\b[^>]*\bclass="[^"]*\bltx_bibliography\b[^"]*"/i.exec(html) ??
     /<(?:section|div|ul)\b[^>]*\bclass="[^"]*\bltx_biblist\b[^"]*"/i.exec(html);
-  const biblioAt = biblioMatch ? biblioMatch.index : html.length;
-  const body = html.slice(0, biblioAt);
+  return { matched: match !== null, at: match ? match.index : html.length };
+}
 
-  // Top-level section headings.
+/**
+ * Split body HTML into titled top-level sections; papers whose HTML lacks
+ * section markup degrade to a single "Full text" section.
+ */
+function parseSections(body: string): PaperSection[] {
   const headingRe = /<h2\b[^>]*\bclass="[^"]*\bltx_title_section\b[^"]*"[^>]*>([\s\S]*?)<\/h2>/gi;
   const heads: { title: string; start: number; end: number }[] = [];
   for (let m = headingRe.exec(body); m !== null; m = headingRe.exec(body)) {
@@ -234,30 +239,44 @@ function parseHtmlContent(html: string): PaperContent {
     heads.push({ title, start: m.index, end: headingRe.lastIndex });
   }
 
-  const sections: PaperSection[] = [];
-  if (heads.length > 0) {
-    for (let i = 0; i < heads.length; i++) {
-      const from = heads[i]?.end ?? 0;
-      const to = heads[i + 1]?.start ?? body.length;
-      const text = htmlToText(body.slice(from, to));
-      const title = heads[i]?.title ?? 'Section';
-      if (text) sections.push({ title, kind: classifySection(title), text });
-    }
-  } else {
+  if (heads.length === 0) {
     const text = htmlToText(body);
-    if (text) sections.push({ title: 'Full text', kind: 'other', text });
+    return text ? [{ title: 'Full text', kind: 'other', text }] : [];
   }
 
+  const sections: PaperSection[] = [];
+  for (let i = 0; i < heads.length; i++) {
+    const from = heads[i]?.end ?? 0;
+    const to = heads[i + 1]?.start ?? body.length;
+    const text = htmlToText(body.slice(from, to));
+    const title = heads[i]?.title ?? 'Section';
+    if (text) sections.push({ title, kind: classifySection(title), text });
+  }
+  return sections;
+}
+
+/** Parse the reference list out of the bibliography portion of the HTML. */
+function parseReferences(biblioHtml: string): string[] {
   const references: string[] = [];
-  if (biblioMatch) {
-    const biblioHtml = html.slice(biblioAt);
-    const bibRe = /<li\b[^>]*\bclass="[^"]*\bltx_bibitem\b[^"]*"[^>]*>([\s\S]*?)<\/li>/gi;
-    for (let m = bibRe.exec(biblioHtml); m !== null; m = bibRe.exec(biblioHtml)) {
-      const ref = htmlToText(m[1] ?? '');
-      if (ref) references.push(ref);
-    }
+  const bibRe = /<li\b[^>]*\bclass="[^"]*\bltx_bibitem\b[^"]*"[^>]*>([\s\S]*?)<\/li>/gi;
+  for (let m = bibRe.exec(biblioHtml); m !== null; m = bibRe.exec(biblioHtml)) {
+    const ref = htmlToText(m[1] ?? '');
+    if (ref) references.push(ref);
   }
+  return references;
+}
 
+/**
+ * Parse LaTeXML full-text HTML (from arXiv's HTML view or ar5iv) into an
+ * abstract, titled sections, and the reference list. Best-effort: papers whose
+ * HTML lacks section markup degrade to a single "Full text" section.
+ */
+function parseHtmlContent(html: string): PaperContent {
+  const abstract = parseAbstract(html);
+  // The bibliography ends the body; references live after it.
+  const biblio = locateBibliography(html);
+  const sections = parseSections(html.slice(0, biblio.at));
+  const references = biblio.matched ? parseReferences(html.slice(biblio.at)) : [];
   return { abstract, sections, references, citedArxivIds: extractArxivIds(references) };
 }
 

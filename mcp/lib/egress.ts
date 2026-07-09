@@ -159,6 +159,30 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     return Math.min(2_000, backoffBaseMs * 2 ** (attempt - 1));
   }
 
+  /** Rate-limit branch: retry (honoring Retry-After) until the final attempt, then throw. */
+  function handleRateLimit(res: Response, isLastAttempt: boolean): ResponseDecision {
+    const retryAfter = parseRetryAfter(res.headers.get('retry-after'));
+    if (!isLastAttempt) return { retryAfterMs: retryAfter };
+    throw new ToolError(
+      `${service} is rate-limiting requests right now. Wait a few seconds and try again.`,
+      {
+        retryable: true,
+        data: retryAfter ? { retryAfterSeconds: Math.ceil(retryAfter / 1000) } : undefined,
+      },
+    );
+  }
+
+  /** 5xx branch: retry until the final attempt, then throw a retryable outage error. */
+  function handleServerError(isLastAttempt: boolean): ResponseDecision {
+    if (!isLastAttempt) return {};
+    throw new ToolError(
+      `${service} is temporarily unavailable (server error). Try again shortly.`,
+      {
+        retryable: true,
+      },
+    );
+  }
+
   /**
    * Classify a response into "use this result" or "retry". Throws a typed
    * {@link ToolError} for terminal cases — a rate-limit or outage on the final
@@ -168,26 +192,8 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     res: Response,
     isLastAttempt: boolean,
   ): Promise<ResponseDecision> {
-    if (limitStatuses.has(res.status)) {
-      const retryAfter = parseRetryAfter(res.headers.get('retry-after'));
-      if (!isLastAttempt) return { retryAfterMs: retryAfter };
-      throw new ToolError(
-        `${service} is rate-limiting requests right now. Wait a few seconds and try again.`,
-        {
-          retryable: true,
-          data: retryAfter ? { retryAfterSeconds: Math.ceil(retryAfter / 1000) } : undefined,
-        },
-      );
-    }
-    if (res.status >= 500) {
-      if (!isLastAttempt) return {};
-      throw new ToolError(
-        `${service} is temporarily unavailable (server error). Try again shortly.`,
-        {
-          retryable: true,
-        },
-      );
-    }
+    if (limitStatuses.has(res.status)) return handleRateLimit(res, isLastAttempt);
+    if (res.status >= 500) return handleServerError(isLastAttempt);
     if (res.status === 400 || res.status === 404) {
       return { result: { status: res.status, body: '' } };
     }
@@ -199,19 +205,56 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     return { result: { status: res.status, body: await res.text() } };
   }
 
+  /**
+   * Run one fetch attempt. Returns the final result, or a delay to wait before
+   * the next attempt. Throws a terminal {@link ToolError} when the request fails
+   * on the last attempt (network error) or classifies as an un-retryable status.
+   */
+  async function attemptFetch(
+    ctx: ToolContext,
+    url: string,
+    requestHeaders: Record<string, string>,
+    attempt: number,
+    isLast: boolean,
+  ): Promise<{ result: FetchResult } | { retryAfterMs: number }> {
+    let decision: ResponseDecision;
+    try {
+      const res = await ctx.fetch(url, { headers: requestHeaders });
+      decision = await classifyResponse(res, isLast);
+    } catch (error) {
+      if (error instanceof ToolError) throw error;
+      if (isLast) {
+        throw new ToolError(`Could not reach ${service} (network error). Try again shortly.`, {
+          retryable: true,
+        });
+      }
+      return { retryAfterMs: backoffMs(attempt) };
+    }
+    if ('result' in decision) return { result: decision.result };
+    return { retryAfterMs: decision.retryAfterMs ?? backoffMs(attempt) };
+  }
+
+  /** Serve a cacheable request from the in-isolate cache, logging a hit. */
+  function servedFromCache(
+    ctx: ToolContext,
+    url: string,
+    cacheable: boolean,
+  ): FetchResult | undefined {
+    if (!cacheable) return undefined;
+    const cached = cacheGet(url);
+    if (!cached) return undefined;
+    ctx.log(`${service} cache hit`, { url });
+    return cached;
+  }
+
   async function resilientFetch(
     ctx: ToolContext,
     url: string,
     requestOptions: EgressRequestOptions = {},
   ): Promise<FetchResult> {
     const cacheable = requestOptions.cacheable ?? true;
-    if (cacheable) {
-      const cached = cacheGet(url);
-      if (cached) {
-        ctx.log(`${service} cache hit`, { url });
-        return cached;
-      }
-    }
+    const cached = servedFromCache(ctx, url, cacheable);
+    if (cached) return cached;
 
     const requestHeaders = requestOptions.accept
       ? { ...headers, accept: requestOptions.accept }
@@ -220,28 +263,19 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     const MAX_ATTEMPTS = 3;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       await throttle();
-      const isLast = attempt === MAX_ATTEMPTS;
-
-      let decision: ResponseDecision;
-      try {
-        const res = await ctx.fetch(url, { headers: requestHeaders });
-        decision = await classifyResponse(res, isLast);
-      } catch (error) {
-        if (error instanceof ToolError) throw error;
-        if (isLast) {
-          throw new ToolError(`Could not reach ${service} (network error). Try again shortly.`, {
-            retryable: true,
-          });
-        }
-        await sleep(backoffMs(attempt));
+      const outcome = await attemptFetch(
+        ctx,
+        url,
+        requestHeaders,
+        attempt,
+        attempt === MAX_ATTEMPTS,
+      );
+      if (!('result' in outcome)) {
+        await sleep(outcome.retryAfterMs);
         continue;
       }
-
-      if ('result' in decision) {
-        if (cacheable && decision.result.status === 200) cacheSet(url, decision.result);
-        return decision.result;
-      }
-      await sleep(decision.retryAfterMs ?? backoffMs(attempt));
+      if (cacheable && outcome.result.status === 200) cacheSet(url, outcome.result);
+      return outcome.result;
     }
     // Unreachable: the loop either returns or throws on the final attempt.
     throw new ToolError(`${service} request failed.`, { retryable: true });

@@ -85,6 +85,41 @@ function collectStatements(
   return statements;
 }
 
+/** A statement as returned by {@link collectStatements}. */
+type Statement = { property: string; values: { text: string; ref?: string }[] };
+
+/** English aliases for an entity (up to 8), from a wbgetentities aliases bag. */
+function extractAliases(entity: Record<string, unknown>): string[] {
+  const aliasList = ((entity.aliases ?? {}) as { en?: unknown }).en;
+  return (Array.isArray(aliasList) ? aliasList : [])
+    .map((alias) => str((alias as { value?: unknown }).value))
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+/** Every Q/P-id referenced by a statement list (property ids + entity-valued targets). */
+function collectReferences(statements: Statement[]): Set<string> {
+  const references = new Set<string>();
+  for (const statement of statements) {
+    references.add(statement.property);
+    for (const value of statement.values) if (value.ref) references.add(value.ref);
+  }
+  return references;
+}
+
+/** Resolve statement property names and entity-valued targets to readable labels. */
+function labelStatements(
+  statements: Statement[],
+  labels: Map<string, string>,
+): { property: string; values: string[] }[] {
+  return statements.map((statement) => ({
+    property: labels.get(statement.property) ?? statement.property,
+    values: statement.values.map((value) =>
+      value.ref ? (labels.get(value.ref) ?? value.ref) : value.text,
+    ),
+  }));
+}
+
 /** Batch-resolve Q/P-ids to English labels (chunked to the API's per-call cap). */
 async function resolveLabels(ids: string[], ctx: ToolContext): Promise<Map<string, string>> {
   const labels = new Map<string, string>();
@@ -213,25 +248,11 @@ export default defineMcpServer({
         }
         const label = ((entity.labels ?? {}) as { en?: { value?: unknown } }).en?.value;
         const description = ((entity.descriptions ?? {}) as { en?: { value?: unknown } }).en?.value;
-        const aliasList = ((entity.aliases ?? {}) as { en?: unknown }).en;
-        const aliases = (Array.isArray(aliasList) ? aliasList : [])
-          .map((alias) => str((alias as { value?: unknown }).value))
-          .filter(Boolean)
-          .slice(0, 8);
+        const aliases = extractAliases(entity);
 
         const statements = collectStatements((entity.claims ?? {}) as Record<string, unknown>);
-        const references = new Set<string>();
-        for (const statement of statements) {
-          references.add(statement.property);
-          for (const value of statement.values) if (value.ref) references.add(value.ref);
-        }
-        const labels = await resolveLabels([...references], ctx);
-        const facts = statements.map((statement) => ({
-          property: labels.get(statement.property) ?? statement.property,
-          values: statement.values.map((value) =>
-            value.ref ? (labels.get(value.ref) ?? value.ref) : value.text,
-          ),
-        }));
+        const labels = await resolveLabels([...collectReferences(statements)], ctx);
+        const facts = labelStatements(statements, labels);
 
         const result = {
           id,

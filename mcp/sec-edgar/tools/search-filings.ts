@@ -14,6 +14,22 @@ interface SearchFiling {
   accession: string;
 }
 
+/** Turn one efts hit's `_source` into a search-filing row. */
+function toSearchFiling(src: Record<string, unknown>, accession: string): SearchFiling {
+  const names = Array.isArray(src.display_names) ? src.display_names : [];
+  // `form` is the filing form (e.g. 10-K); `file_type` is the exhibit
+  // type (e.g. EX-21.1). Prefer the form, fall back to the exhibit.
+  let form = '?';
+  if (typeof src.form === 'string') form = src.form;
+  else if (typeof src.file_type === 'string') form = src.file_type;
+  return {
+    company: typeof names[0] === 'string' ? names[0] : '?',
+    form,
+    filedDate: typeof src.file_date === 'string' ? src.file_date : '?',
+    accession,
+  };
+}
+
 /**
  * Parse efts.sec.gov search hits into filings. One filing exposes many
  * matching documents (the filing itself plus exhibits), so hits are deduped
@@ -24,26 +40,35 @@ function parseSearchHits(rawHits: unknown[]): SearchFiling[] {
   const filings: SearchFiling[] = [];
   for (const h of rawHits) {
     const hit = h as { _id?: unknown; _source?: unknown };
-    const src = (hit._source ?? {}) as Record<string, unknown>;
     const accession = typeof hit._id === 'string' ? (hit._id.split(':')[0] ?? '') : '';
     if (accession && seen.has(accession)) continue;
     seen.add(accession);
-    const names = Array.isArray(src.display_names) ? src.display_names : [];
-    filings.push({
-      company: typeof names[0] === 'string' ? names[0] : '?',
-      // `form` is the filing form (e.g. 10-K); `file_type` is the exhibit
-      // type (e.g. EX-21.1). Prefer the form, fall back to the exhibit.
-      form:
-        typeof src.form === 'string'
-          ? src.form
-          : typeof src.file_type === 'string'
-            ? src.file_type
-            : '?',
-      filedDate: typeof src.file_date === 'string' ? src.file_date : '?',
-      accession,
-    });
+    filings.push(toSearchFiling((hit._source ?? {}) as Record<string, unknown>, accession));
   }
   return filings;
+}
+
+/** Build the efts.sec.gov query string from resolved search arguments. */
+function buildSearchParams(opts: {
+  query: string;
+  cik: string | null;
+  forms?: string;
+  startDate?: string;
+  endDate?: string;
+  from: number;
+}): URLSearchParams {
+  const params = new URLSearchParams({ q: opts.query });
+  if (opts.cik) params.set('ciks', opts.cik);
+  if (opts.forms) params.set('forms', opts.forms);
+  if (opts.startDate || opts.endDate) {
+    // EDGAR's full-text search uses dateRange=custom with either bound
+    // optional; previously a lone startDate/endDate was silently dropped.
+    params.set('dateRange', 'custom');
+    if (opts.startDate) params.set('startdt', opts.startDate);
+    if (opts.endDate) params.set('enddt', opts.endDate);
+  }
+  if (opts.from > 0) params.set('from', String(opts.from));
+  return params;
 }
 
 export const searchFilings: ToolDefinition = {
@@ -103,17 +128,7 @@ export const searchFilings: ToolDefinition = {
       const resolved = await requireCompany(ctx, company);
       cik = resolved.cik;
     }
-    const params = new URLSearchParams({ q: query });
-    if (cik) params.set('ciks', cik);
-    if (forms) params.set('forms', forms);
-    if (startDate || endDate) {
-      // EDGAR's full-text search uses dateRange=custom with either bound
-      // optional; previously a lone startDate/endDate was silently dropped.
-      params.set('dateRange', 'custom');
-      if (startDate) params.set('startdt', startDate);
-      if (endDate) params.set('enddt', endDate);
-    }
-    if (from > 0) params.set('from', String(from));
+    const params = buildSearchParams({ query, cik, forms, startDate, endDate, from });
     const body = await edgarJson(
       ctx,
       `https://efts.sec.gov/LATEST/search-index?${params}`,

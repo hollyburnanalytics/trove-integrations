@@ -2,6 +2,7 @@ import { type ToolContext, type ToolDefinition, ToolError, z } from '@ontrove/mc
 import { edgarDocument, filingDirUrl, fmtMoney, requireCompany, resolveOwner } from '../client.ts';
 import { listFilingDocuments } from '../documents.ts';
 import {
+  type InsiderSummary,
   type InsiderTransaction,
   type OwnershipFiling,
   parseOwnershipXml,
@@ -42,6 +43,79 @@ function renderTransaction(txn: InsiderTransaction): string {
   const value = txn.value === null || txn.value === 0 ? '' : ` (${fmtMoney(txn.value, 'USD')})`;
   const label = txn.codeDescription ?? txn.code ?? '?';
   return `${label}: ${shares}${txn.derivative ? ' (derivative)' : ''}${price}${value}`;
+}
+
+/** One decoded ownership filing as returned in the `filings` array. */
+interface FilingRow {
+  form: string;
+  filedDate: string;
+  accession: string;
+  issuer: string | null;
+  issuerTicker: string | null;
+  owners: string[];
+  officerTitle: string | null;
+  isDirector: boolean;
+  isOfficer: boolean;
+  isTenPercentOwner: boolean;
+  periodOfReport: string | null;
+  planned10b5One: boolean;
+  transactions: InsiderTransaction[];
+}
+
+/** Render one filing block: a header line plus its indented transaction list. */
+function formatFilingRow(row: FilingRow, byOwner: boolean): string {
+  const role = row.officerTitle ?? (row.isDirector ? 'Director' : null);
+  // By-owner reads list the issuer per filing; by-company reads the insider.
+  const head = byOwner
+    ? `${row.issuer ?? '?'}${row.issuerTicker ? ` (${row.issuerTicker})` : ''}`
+    : `${row.owners.join(' / ') || '?'}${role ? ` (${role})` : ''}`;
+  const txns =
+    row.transactions.length > 0
+      ? row.transactions.map((t) => `    ${renderTransaction(t)}`).join('\n')
+      : '    (no transactions — holdings-only report)';
+  const plan = row.planned10b5One ? ' [10b5-1 plan]' : '';
+  return `  ${row.filedDate} ${row.form} — ${head}${plan}\n${txns}`;
+}
+
+/** One-line open-market buy/sell recap with net share direction. */
+function formatOpenMarketSummary(summary: InsiderSummary): string {
+  const net =
+    summary.netShares === 0
+      ? 'net flat'
+      : summary.netShares > 0
+        ? `net +${summary.netShares.toLocaleString('en-US')} shares bought`
+        : `net ${summary.netShares.toLocaleString('en-US')} shares sold`;
+  return (
+    `Open-market summary across these filings: ${summary.openMarketPurchases.transactions} ` +
+    `buy(s) (${fmtMoney(summary.openMarketPurchases.value, 'USD')}), ` +
+    `${summary.openMarketSales.transactions} sale(s) ` +
+    `(${fmtMoney(summary.openMarketSales.value, 'USD')}) — ${net}.`
+  );
+}
+
+/**
+ * Resolve which CIK's filing feed to walk. The owner's own CIK indexes their
+ * Form 4s too, so it is the subject when given (optionally filtered to one
+ * issuer); otherwise the issuer company is the subject.
+ */
+async function resolveSubject(
+  ctx: ToolContext,
+  company: string | undefined,
+  owner: string | undefined,
+): Promise<{ subjectCik: string; issuerFilter: string | null }> {
+  if (owner) {
+    const ownerCik = await resolveOwner(ctx, owner);
+    if (!ownerCik) {
+      throw new ToolError(
+        `No SEC filer found for owner "${owner}". Individuals are indexed as ` +
+          '"Last First" (e.g. "Cook Timothy"); a CIK also works.',
+        { retryable: false },
+      );
+    }
+    const issuerFilter = company ? (await requireCompany(ctx, company)).cik : null;
+    return { subjectCik: ownerCik, issuerFilter };
+  }
+  return { subjectCik: (await requireCompany(ctx, company as string)).cik, issuerFilter: null };
 }
 
 const transactionShape = z.object({
@@ -145,24 +219,7 @@ export const insiderTransactions: ToolDefinition = {
       );
     }
 
-    // The subject whose filing feed we walk: the owner when given (their
-    // Form 4s index under their own CIK too), else the issuer.
-    let subjectCik: string;
-    let issuerFilter: string | null = null;
-    if (owner) {
-      const ownerCik = await resolveOwner(ctx, owner);
-      if (!ownerCik) {
-        throw new ToolError(
-          `No SEC filer found for owner "${owner}". Individuals are indexed as ` +
-            '"Last First" (e.g. "Cook Timothy"); a CIK also works.',
-          { retryable: false },
-        );
-      }
-      subjectCik = ownerCik;
-      if (company) issuerFilter = (await requireCompany(ctx, company)).cik;
-    } else {
-      subjectCik = (await requireCompany(ctx, company as string)).cik;
-    }
+    const { subjectCik, issuerFilter } = await resolveSubject(ctx, company, owner);
 
     const wanted = new Set(
       forms
@@ -197,7 +254,7 @@ export const insiderTransactions: ToolDefinition = {
     }
     const summary = summarizeOpenMarket(parsed.map((p) => p.ownership));
 
-    const filingRows = parsed.map(({ filing, ownership }) => ({
+    const filingRows: FilingRow[] = parsed.map(({ filing, ownership }) => ({
       form: filing.form,
       filedDate: filing.filedDate,
       accession: filing.accession,
@@ -213,32 +270,8 @@ export const insiderTransactions: ToolDefinition = {
       transactions: ownership.transactions,
     }));
 
-    const lines = filingRows
-      .map((row) => {
-        const role = row.officerTitle ?? (row.isDirector ? 'Director' : null);
-        // By-owner reads list the issuer per filing; by-company reads the insider.
-        const head = owner
-          ? `${row.issuer ?? '?'}${row.issuerTicker ? ` (${row.issuerTicker})` : ''}`
-          : `${row.owners.join(' / ') || '?'}${role ? ` (${role})` : ''}`;
-        const txns =
-          row.transactions.length > 0
-            ? row.transactions.map((t) => `    ${renderTransaction(t)}`).join('\n')
-            : '    (no transactions — holdings-only report)';
-        const plan = row.planned10b5One ? ' [10b5-1 plan]' : '';
-        return `  ${row.filedDate} ${row.form} — ${head}${plan}\n${txns}`;
-      })
-      .join('\n');
-    const net =
-      summary.netShares === 0
-        ? 'net flat'
-        : summary.netShares > 0
-          ? `net +${summary.netShares.toLocaleString('en-US')} shares bought`
-          : `net ${summary.netShares.toLocaleString('en-US')} shares sold`;
-    const summaryLine =
-      `Open-market summary across these filings: ${summary.openMarketPurchases.transactions} ` +
-      `buy(s) (${fmtMoney(summary.openMarketPurchases.value, 'USD')}), ` +
-      `${summary.openMarketSales.transactions} sale(s) ` +
-      `(${fmtMoney(summary.openMarketSales.value, 'USD')}) — ${net}.`;
+    const lines = filingRows.map((row) => formatFilingRow(row, Boolean(owner))).join('\n');
+    const summaryLine = formatOpenMarketSummary(summary);
     return {
       text: `${subject} (CIK ${subjectCik}) — ${filingRows.length} ownership filing(s):\n${lines}\n${summaryLine}`,
       structured: {
