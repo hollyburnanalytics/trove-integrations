@@ -1,4 +1,5 @@
 import { defineMcpServer, type ToolContext, ToolError, z } from '@ontrove/mcp';
+import { createEgressClient } from '../lib/egress.ts';
 
 /**
  * SEC EDGAR — a no-auth hosted MCP server over the public SEC EDGAR + XBRL APIs.
@@ -41,188 +42,30 @@ const companyConceptUrl = (cik: string, taxonomy: string, concept: string): stri
   `https://data.sec.gov/api/xbrl/companyconcept/CIK${cik}/${taxonomy}/${encodeURIComponent(concept)}.json`;
 
 // ---------------------------------------------------------------------------
-// Shared egress: in-isolate cache + throttle + retry/backoff
+// Egress: shared in-isolate cache + throttle + retry/backoff (mcp/lib/egress)
 // ---------------------------------------------------------------------------
 
 /**
- * A best-effort cache that lives for the life of a warm isolate. It is NOT a
- * durable cache — it only collapses duplicate requests handled by the same
- * instance — but EDGAR data is highly cacheable (filings never change; the
- * ticker map and fact sets update at most daily), so it makes repeat lookups
- * instant and keeps us well inside the SEC's fair-access rate. Bounded by
- * entry count, per-entry size, total size, and TTL. Oversized bodies (the
- * multi-megabyte companyfacts responses) are deliberately never cached.
+ * EDGAR data is highly cacheable (filings never change; the ticker map and
+ * fact sets update at most daily), so repeats are served from the in-isolate
+ * cache. Oversized bodies (the multi-megabyte companyfacts responses) are
+ * deliberately never cached. The SEC's fair-access policy allows up to 10
+ * requests/second (throttled) and signals rate-limiting as 429 or as a 403
+ * "Request Rate Threshold Exceeded" page — both retried as transient.
  */
-const CACHE_TTL_MS = 15 * 60_000;
-const CACHE_MAX_ENTRIES = 64;
-const CACHE_MAX_ENTRY_BYTES = 2 * 1024 * 1024;
-const CACHE_MAX_TOTAL_BYTES = 12 * 1024 * 1024;
-interface CacheEntry {
-  at: number;
-  value: FetchResult;
-}
-const responseCache = new Map<string, CacheEntry>();
-let cacheTotalBytes = 0;
-
-function cacheDelete(url: string): void {
-  const hit = responseCache.get(url);
-  if (!hit) return;
-  cacheTotalBytes -= hit.value.body.length;
-  responseCache.delete(url);
-}
-
-function cacheGet(url: string): FetchResult | undefined {
-  const hit = responseCache.get(url);
-  if (!hit) return undefined;
-  if (Date.now() - hit.at > CACHE_TTL_MS) {
-    cacheDelete(url);
-    return undefined;
-  }
-  // Refresh recency (Map preserves insertion order → oldest is evicted first).
-  responseCache.delete(url);
-  responseCache.set(url, hit);
-  return hit.value;
-}
-
-function cacheSet(url: string, value: FetchResult): void {
-  if (value.body.length > CACHE_MAX_ENTRY_BYTES) return;
-  cacheDelete(url);
-  responseCache.set(url, { at: Date.now(), value });
-  cacheTotalBytes += value.body.length;
-  while (
-    responseCache.size > CACHE_MAX_ENTRIES ||
-    (cacheTotalBytes > CACHE_MAX_TOTAL_BYTES && responseCache.size > 1)
-  ) {
-    const oldest = responseCache.keys().next().value;
-    if (oldest === undefined) break;
-    cacheDelete(oldest);
-  }
-}
-
-/**
- * The SEC's fair-access policy allows up to 10 requests/second. A per-isolate
- * min-interval throttle keeps us under that in the hosted runtime; under the
- * test runtime (bun), where all egress is mocked, it is a no-op.
- */
-const inTestRuntime = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
-const THROTTLE_MS = inTestRuntime ? 0 : 120;
-let nextAllowedAt = 0;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Reserve the next request slot, waiting if we are inside the min interval. */
-async function throttle(): Promise<void> {
-  if (THROTTLE_MS <= 0) return;
-  const now = Date.now();
-  const wait = Math.max(0, nextAllowedAt - now);
-  // Advance synchronously so concurrent callers get staggered, non-overlapping slots.
-  nextAllowedAt = Math.max(now, nextAllowedAt) + THROTTLE_MS;
-  if (wait > 0) await sleep(wait);
-}
-
-/** Deterministic exponential backoff (kept small so tests stay fast). */
-function backoffMs(attempt: number): number {
-  return Math.min(2_000, 100 * 2 ** (attempt - 1));
-}
-
-/** Parse a `Retry-After` header (delta-seconds or HTTP-date) to milliseconds. */
-function parseRetryAfter(header: string | null): number | undefined {
-  if (!header) return undefined;
-  const seconds = Number(header);
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
-  const when = Date.parse(header);
-  return Number.isFinite(when) ? Math.max(0, when - Date.now()) : undefined;
-}
-
-interface FetchResult {
-  status: number;
-  body: string;
-}
-
-/** A decision about an EDGAR response: hand back a result, or retry after a delay. */
-type ResponseDecision = { result: FetchResult } | { retryAfterMs?: number };
-
-/**
- * Classify an EDGAR response into "use this result" or "retry". The SEC signals
- * rate-limiting as 429 or as a 403 "Request Rate Threshold Exceeded" page, so
- * both are treated as transient. Throws a typed {@link ToolError} for terminal
- * cases — a rate-limit or outage on the final attempt (retryable), or an
- * un-retryable status.
- */
-async function classifyResponse(res: Response, isLastAttempt: boolean): Promise<ResponseDecision> {
-  if (res.status === 429 || res.status === 403) {
-    const retryAfter = parseRetryAfter(res.headers.get('retry-after'));
-    if (!isLastAttempt) return { retryAfterMs: retryAfter };
-    throw new ToolError(
-      'SEC EDGAR is rate-limiting requests right now. Wait a few seconds and try again.',
-      {
-        retryable: true,
-        data: retryAfter ? { retryAfterSeconds: Math.ceil(retryAfter / 1000) } : undefined,
-      },
-    );
-  }
-  if (res.status >= 500) {
-    if (!isLastAttempt) return {};
-    throw new ToolError('SEC EDGAR is temporarily unavailable (server error). Try again shortly.', {
-      retryable: true,
-    });
-  }
-  if (res.status === 400 || res.status === 404) return { result: { status: res.status, body: '' } };
-  if (!res.ok) {
-    throw new ToolError(`SEC EDGAR returned an unexpected status (${res.status}).`, {
-      retryable: false,
-    });
-  }
-  return { result: { status: res.status, body: await res.text() } };
-}
-
-/**
- * Fetch an EDGAR URL through the egress proxy with caching, throttling, and
- * retry/backoff, always carrying the SEC-required User-Agent. Returns
- * `{ status, body }` for 2xx/400/404 (callers map those to tool-specific
- * messages); throws a {@link ToolError} for rate-limits and genuine outages,
- * with `retryable` set correctly.
- */
-async function edgarFetch(ctx: ToolContext, url: string): Promise<FetchResult> {
-  const cached = cacheGet(url);
-  if (cached) {
-    ctx.log('edgar cache hit', { url });
-    return cached;
-  }
-
-  const MAX_ATTEMPTS = 3;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    await throttle();
-    const isLast = attempt === MAX_ATTEMPTS;
-
-    let decision: ResponseDecision;
-    try {
-      const res = await ctx.fetch(url, {
-        headers: { accept: 'application/json', 'user-agent': USER_AGENT },
-      });
-      decision = await classifyResponse(res, isLast);
-    } catch (error) {
-      if (error instanceof ToolError) throw error;
-      if (isLast) {
-        throw new ToolError('Could not reach SEC EDGAR (network error). Try again shortly.', {
-          retryable: true,
-        });
-      }
-      await sleep(backoffMs(attempt));
-      continue;
-    }
-
-    if ('result' in decision) {
-      if (decision.result.status === 200) cacheSet(url, decision.result);
-      return decision.result;
-    }
-    await sleep(decision.retryAfterMs ?? backoffMs(attempt));
-  }
-  // Unreachable: the loop either returns or throws on the final attempt.
-  throw new ToolError('SEC EDGAR request failed.', { retryable: true });
-}
+const edgar = createEgressClient({
+  service: 'SEC EDGAR',
+  headers: { accept: 'application/json', 'user-agent': USER_AGENT },
+  throttleMs: 120,
+  rateLimitStatuses: [403, 429],
+  backoffBaseMs: 100,
+  cache: {
+    ttlMs: 15 * 60_000,
+    maxEntries: 64,
+    maxEntryBytes: 2 * 1024 * 1024,
+    maxTotalBytes: 12 * 1024 * 1024,
+  },
+});
 
 /** Fetch + parse an EDGAR JSON body, mapping 400/404 to `notFound` (non-retryable). */
 async function edgarJson(
@@ -230,7 +73,7 @@ async function edgarJson(
   url: string,
   notFound: string,
 ): Promise<Record<string, unknown>> {
-  const { status, body } = await edgarFetch(ctx, url);
+  const { status, body } = await edgar.fetch(ctx, url);
   if (status === 400 || status === 404) throw new ToolError(notFound, { retryable: false });
   try {
     const parsed: unknown = JSON.parse(body);
