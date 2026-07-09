@@ -1,913 +1,159 @@
 import { defineMcpServer, type ToolContext, ToolError, z } from '@ontrove/mcp';
+import {
+  type Company,
+  companyConceptUrl,
+  companyFactsUrl,
+  companyNotFound,
+  edgarDocument,
+  edgarJson,
+  filingDirUrl,
+  fmtMoney,
+  resolveCompany,
+  submissionsUrl,
+} from './client.ts';
+import {
+  type FilingEntry,
+  fetchFilingText,
+  findInText,
+  isReadable,
+  listFilingDocuments,
+  pickPrimaryDocument,
+} from './documents.ts';
+import {
+  type InsiderTransaction,
+  type OwnershipFiling,
+  parseOwnershipXml,
+  summarizeOpenMarket,
+} from './ownership.ts';
+import { aggregateHoldings, parseCoverPage, parseInfoTable } from './thirteenf.ts';
+import {
+  assembleFinancials,
+  factsForUnit,
+  fiscalStampsTrusted,
+  kindOf,
+  latestFiledByPeriod,
+  METRICS,
+  pickUnitKey,
+  type Statement,
+  type StatementPeriod,
+} from './xbrl.ts';
 
 /**
- * SEC EDGAR — a no-auth hosted MCP server over the public SEC EDGAR + XBRL APIs.
+ * SEC EDGAR — a no-auth hosted MCP server over the public SEC EDGAR + XBRL
+ * APIs. Eight read-only surfaces, each mapped to a unit of analyst intent:
  *
- * Four read-only surfaces, each mapped to a unit of analyst intent:
- *  - `get_financials` — structured financial statements (income statement,
- *    balance sheet, cash flow) straight from a company's XBRL facts, with
- *    comparative periods and an accounting-identity sanity check;
- *  - `get_xbrl_concept` — one XBRL concept (e.g. `NetIncomeLoss`) across every
- *    period the company has ever reported, for trend analysis;
- *  - `search_filings` — full-text search across filings (efts.sec.gov),
- *    optionally scoped to one company, deduped and paginated;
- *  - `company_filings` — a company's recent filings, filterable by form type
- *    and date range.
+ *  - `get_financials` — structured financial statements from XBRL facts;
+ *  - `get_xbrl_concept` — one XBRL concept across every reported period;
+ *  - `get_filing_document` — read a filing's text (paginated, searchable);
+ *  - `insider_transactions` — decoded Form 3/4/5 insider activity;
+ *  - `get_fund_holdings` — a 13F institutional manager's portfolio;
+ *  - `get_company` — the SEC's registrant profile;
+ *  - `search_filings` — full-text search across all filings;
+ *  - `company_filings` — one company's filing history, filtered.
  *
- * Numbers come from the XBRL "company facts" data (data.sec.gov), which is the
- * same structured data behind the filings themselves — no HTML scraping. Facts
- * are matched by fiscal period regardless of which form reported them, so
- * foreign private issuers whose quarterly numbers arrive in 6-K furnishings
- * (rather than 10-Qs) are covered too.
- *
- * Egress is resilient: an in-isolate cache collapses repeat lookups (filings
- * are immutable; the fact sets change at most daily), requests are throttled
- * under the SEC's fair-access rate, and failures retry with backoff.
+ * Everything is deterministic parsing of the SEC's structured data (JSON APIs
+ * and fixed XML schemas) — no fuzzy scraping. Facts are matched by fiscal
+ * window regardless of which form reported them, so foreign private issuers
+ * whose numbers arrive in 6-K furnishings are covered too.
  */
-
-/**
- * SEC-required descriptive User-Agent (their fair-access policy). SEC blocks
- * non-deliverable contacts — including GitHub `noreply` addresses — with a 403,
- * so this must stay a real, monitored operator inbox.
- */
-const CONTACT_EMAIL = 'sec-edgar@ontrove.sh';
-const USER_AGENT = `Trove MCP (${CONTACT_EMAIL})`;
-
-const TICKER_MAP_URL = 'https://www.sec.gov/files/company_tickers.json';
-const submissionsUrl = (cik: string): string => `https://data.sec.gov/submissions/CIK${cik}.json`;
-const companyFactsUrl = (cik: string): string =>
-  `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`;
-const companyConceptUrl = (cik: string, taxonomy: string, concept: string): string =>
-  `https://data.sec.gov/api/xbrl/companyconcept/CIK${cik}/${taxonomy}/${encodeURIComponent(concept)}.json`;
 
 // ---------------------------------------------------------------------------
-// Shared egress: in-isolate cache + throttle + retry/backoff
+// Submissions helpers (shared by several tools)
 // ---------------------------------------------------------------------------
 
-/**
- * A best-effort cache that lives for the life of a warm isolate. It is NOT a
- * durable cache — it only collapses duplicate requests handled by the same
- * instance — but EDGAR data is highly cacheable (filings never change; the
- * ticker map and fact sets update at most daily), so it makes repeat lookups
- * instant and keeps us well inside the SEC's fair-access rate. Bounded by
- * entry count, per-entry size, total size, and TTL. Oversized bodies (the
- * multi-megabyte companyfacts responses) are deliberately never cached.
- */
-const CACHE_TTL_MS = 15 * 60_000;
-const CACHE_MAX_ENTRIES = 64;
-const CACHE_MAX_ENTRY_BYTES = 2 * 1024 * 1024;
-const CACHE_MAX_TOTAL_BYTES = 12 * 1024 * 1024;
-interface CacheEntry {
-  at: number;
-  value: FetchResult;
-}
-const responseCache = new Map<string, CacheEntry>();
-let cacheTotalBytes = 0;
-
-function cacheDelete(url: string): void {
-  const hit = responseCache.get(url);
-  if (!hit) return;
-  cacheTotalBytes -= hit.value.body.length;
-  responseCache.delete(url);
+interface RecentFiling {
+  form: string;
+  filedDate: string;
+  accession: string;
+  primaryDocument: string | null;
+  description: string | null;
+  items: string | null;
+  reportDate: string | null;
 }
 
-function cacheGet(url: string): FetchResult | undefined {
-  const hit = responseCache.get(url);
-  if (!hit) return undefined;
-  if (Date.now() - hit.at > CACHE_TTL_MS) {
-    cacheDelete(url);
-    return undefined;
-  }
-  // Refresh recency (Map preserves insertion order → oldest is evicted first).
-  responseCache.delete(url);
-  responseCache.set(url, hit);
-  return hit.value;
-}
-
-function cacheSet(url: string, value: FetchResult): void {
-  if (value.body.length > CACHE_MAX_ENTRY_BYTES) return;
-  cacheDelete(url);
-  responseCache.set(url, { at: Date.now(), value });
-  cacheTotalBytes += value.body.length;
-  while (
-    responseCache.size > CACHE_MAX_ENTRIES ||
-    (cacheTotalBytes > CACHE_MAX_TOTAL_BYTES && responseCache.size > 1)
-  ) {
-    const oldest = responseCache.keys().next().value;
-    if (oldest === undefined) break;
-    cacheDelete(oldest);
-  }
-}
-
-/**
- * The SEC's fair-access policy allows up to 10 requests/second. A per-isolate
- * min-interval throttle keeps us under that in the hosted runtime; under the
- * test runtime (bun), where all egress is mocked, it is a no-op.
- */
-const inTestRuntime = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
-const THROTTLE_MS = inTestRuntime ? 0 : 120;
-let nextAllowedAt = 0;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Reserve the next request slot, waiting if we are inside the min interval. */
-async function throttle(): Promise<void> {
-  if (THROTTLE_MS <= 0) return;
-  const now = Date.now();
-  const wait = Math.max(0, nextAllowedAt - now);
-  // Advance synchronously so concurrent callers get staggered, non-overlapping slots.
-  nextAllowedAt = Math.max(now, nextAllowedAt) + THROTTLE_MS;
-  if (wait > 0) await sleep(wait);
-}
-
-/** Deterministic exponential backoff (kept small so tests stay fast). */
-function backoffMs(attempt: number): number {
-  return Math.min(2_000, 100 * 2 ** (attempt - 1));
-}
-
-/** Parse a `Retry-After` header (delta-seconds or HTTP-date) to milliseconds. */
-function parseRetryAfter(header: string | null): number | undefined {
-  if (!header) return undefined;
-  const seconds = Number(header);
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
-  const when = Date.parse(header);
-  return Number.isFinite(when) ? Math.max(0, when - Date.now()) : undefined;
-}
-
-interface FetchResult {
-  status: number;
-  body: string;
-}
-
-/** A decision about an EDGAR response: hand back a result, or retry after a delay. */
-type ResponseDecision = { result: FetchResult } | { retryAfterMs?: number };
-
-/**
- * Classify an EDGAR response into "use this result" or "retry". The SEC signals
- * rate-limiting as 429 or as a 403 "Request Rate Threshold Exceeded" page, so
- * both are treated as transient. Throws a typed {@link ToolError} for terminal
- * cases — a rate-limit or outage on the final attempt (retryable), or an
- * un-retryable status.
- */
-async function classifyResponse(res: Response, isLastAttempt: boolean): Promise<ResponseDecision> {
-  if (res.status === 429 || res.status === 403) {
-    const retryAfter = parseRetryAfter(res.headers.get('retry-after'));
-    if (!isLastAttempt) return { retryAfterMs: retryAfter };
-    throw new ToolError(
-      'SEC EDGAR is rate-limiting requests right now. Wait a few seconds and try again.',
-      {
-        retryable: true,
-        data: retryAfter ? { retryAfterSeconds: Math.ceil(retryAfter / 1000) } : undefined,
-      },
-    );
-  }
-  if (res.status >= 500) {
-    if (!isLastAttempt) return {};
-    throw new ToolError('SEC EDGAR is temporarily unavailable (server error). Try again shortly.', {
-      retryable: true,
-    });
-  }
-  if (res.status === 400 || res.status === 404) return { result: { status: res.status, body: '' } };
-  if (!res.ok) {
-    throw new ToolError(`SEC EDGAR returned an unexpected status (${res.status}).`, {
-      retryable: false,
-    });
-  }
-  return { result: { status: res.status, body: await res.text() } };
-}
-
-/**
- * Fetch an EDGAR URL through the egress proxy with caching, throttling, and
- * retry/backoff, always carrying the SEC-required User-Agent. Returns
- * `{ status, body }` for 2xx/400/404 (callers map those to tool-specific
- * messages); throws a {@link ToolError} for rate-limits and genuine outages,
- * with `retryable` set correctly.
- */
-async function edgarFetch(ctx: ToolContext, url: string): Promise<FetchResult> {
-  const cached = cacheGet(url);
-  if (cached) {
-    ctx.log('edgar cache hit', { url });
-    return cached;
-  }
-
-  const MAX_ATTEMPTS = 3;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    await throttle();
-    const isLast = attempt === MAX_ATTEMPTS;
-
-    let decision: ResponseDecision;
-    try {
-      const res = await ctx.fetch(url, {
-        headers: { accept: 'application/json', 'user-agent': USER_AGENT },
-      });
-      decision = await classifyResponse(res, isLast);
-    } catch (error) {
-      if (error instanceof ToolError) throw error;
-      if (isLast) {
-        throw new ToolError('Could not reach SEC EDGAR (network error). Try again shortly.', {
-          retryable: true,
-        });
-      }
-      await sleep(backoffMs(attempt));
-      continue;
-    }
-
-    if ('result' in decision) {
-      if (decision.result.status === 200) cacheSet(url, decision.result);
-      return decision.result;
-    }
-    await sleep(decision.retryAfterMs ?? backoffMs(attempt));
-  }
-  // Unreachable: the loop either returns or throws on the final attempt.
-  throw new ToolError('SEC EDGAR request failed.', { retryable: true });
-}
-
-/** Fetch + parse an EDGAR JSON body, mapping 400/404 to `notFound` (non-retryable). */
-async function edgarJson(
+/** Fetch + flatten the parallel-array `filings.recent` block for a company. */
+async function recentFilings(
   ctx: ToolContext,
-  url: string,
-  notFound: string,
-): Promise<Record<string, unknown>> {
-  const { status, body } = await edgarFetch(ctx, url);
-  if (status === 400 || status === 404) throw new ToolError(notFound, { retryable: false });
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (typeof parsed === 'object' && parsed !== null) return parsed as Record<string, unknown>;
-  } catch {
-    // fall through to the malformed-data error
-  }
-  throw new ToolError('SEC EDGAR returned malformed data; try again shortly.', {
-    retryable: true,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Entity resolution (ticker / CIK / company name → zero-padded CIK)
-// ---------------------------------------------------------------------------
-
-interface Company {
-  cik: string;
-  name: string;
-}
-
-/**
- * Resolve a company identifier to its 10-digit zero-padded CIK. Accepts a bare
- * CIK number, an exact ticker (share-class dots normalized, so "BRK.B" matches
- * EDGAR's "BRK-B"), or — as a fallback — a company-name match against the SEC's
- * ticker map (exact name first, then prefix, then substring).
- */
-async function resolveCompany(ctx: ToolContext, query: string): Promise<Company | null> {
-  const trimmed = query.trim();
-  if (/^\d{1,10}$/.test(trimmed)) {
-    return { cik: trimmed.padStart(10, '0'), name: '' };
-  }
-  const map = await edgarJson(ctx, TICKER_MAP_URL, 'The SEC ticker map is unavailable.');
-  const entries: { cik: string; ticker: string; title: string }[] = [];
-  for (const value of Object.values(map)) {
-    const o = value as { cik_str?: unknown; ticker?: unknown; title?: unknown };
-    if (typeof o.ticker !== 'string' || typeof o.title !== 'string') continue;
-    entries.push({
-      cik: String(o.cik_str ?? '').padStart(10, '0'),
-      ticker: o.ticker.toUpperCase(),
-      title: o.title,
-    });
-  }
-
-  const target = trimmed.toUpperCase();
-  const dashed = target.replace(/\./g, '-');
-  for (const e of entries) {
-    if (e.ticker === target || e.ticker === dashed) return { cik: e.cik, name: e.title };
-  }
-
-  // Name fallback: exact (case-insensitive), then prefix, then substring.
-  const lower = trimmed.toLowerCase();
-  const byName =
-    entries.find((e) => e.title.toLowerCase() === lower) ??
-    entries.find((e) => e.title.toLowerCase().startsWith(lower)) ??
-    (lower.length >= 3 ? entries.find((e) => e.title.toLowerCase().includes(lower)) : undefined);
-  return byName ? { cik: byName.cik, name: byName.title } : null;
-}
-
-function companyNotFound(query: string): ToolError {
-  return new ToolError(
-    `No SEC company found for "${query}" (try a ticker like "AAPL", a company name, or a CIK).`,
-    { retryable: false },
+  cik: string,
+): Promise<{ name: string; filings: RecentFiling[] }> {
+  const body = await edgarJson(
+    ctx,
+    submissionsUrl(cik),
+    `SEC EDGAR has no filings record for CIK ${cik}.`,
   );
+  const name = typeof body.name === 'string' ? body.name : '';
+  const recent = ((body.filings ?? {}) as Record<string, unknown>).recent as
+    | Record<string, unknown>
+    | undefined;
+  const column = (key: string): unknown[] => (Array.isArray(recent?.[key]) ? recent[key] : []);
+  const str = (row: unknown): string | null => (typeof row === 'string' && row ? row : null);
+  const forms = column('form');
+  const dates = column('filingDate');
+  const accessions = column('accessionNumber');
+  const docs = column('primaryDocument');
+  const descriptions = column('primaryDocDescription');
+  const items = column('items');
+  const reportDates = column('reportDate');
+  const filings = forms.map((form, i) => ({
+    form: typeof form === 'string' ? form : '?',
+    filedDate: str(dates[i]) ?? '?',
+    accession: str(accessions[i]) ?? '',
+    primaryDocument: str(docs[i]),
+    description: str(descriptions[i]),
+    items: str(items[i]),
+    reportDate: str(reportDates[i]),
+  }));
+  return { name, filings };
+}
+
+/** Resolve a company or throw the standard not-found error. */
+async function requireCompany(ctx: ToolContext, query: string): Promise<Company> {
+  const resolved = await resolveCompany(ctx, query);
+  if (!resolved) throw companyNotFound(query);
+  return resolved;
+}
+
+/** 8-K item codes → plain-English event labels (fixed SEC definitions). */
+const ITEM_LABELS: Record<string, string> = {
+  '1.01': 'Material agreement',
+  '1.02': 'Termination of material agreement',
+  '1.03': 'Bankruptcy or receivership',
+  '1.05': 'Material cybersecurity incident',
+  '2.01': 'Acquisition or disposition of assets',
+  '2.02': 'Results of operations (earnings)',
+  '2.03': 'New direct financial obligation',
+  '2.04': 'Triggering event on financial obligation',
+  '2.05': 'Exit or disposal costs',
+  '2.06': 'Material impairments',
+  '3.01': 'Delisting or listing-rule noncompliance',
+  '3.02': 'Unregistered equity sales',
+  '3.03': 'Modification to security-holder rights',
+  '4.01': 'Change of auditor',
+  '4.02': 'Non-reliance on prior financials (restatement)',
+  '5.01': 'Change in control',
+  '5.02': 'Officer/director departure, election, or compensation',
+  '5.03': 'Charter/bylaw amendment or fiscal-year change',
+  '5.07': 'Shareholder vote results',
+  '5.08': 'Shareholder director nominations',
+  '7.01': 'Regulation FD disclosure',
+  '8.01': 'Other events',
+  '9.01': 'Financial statements and exhibits',
+};
+
+/** "2.02,9.01" → "2.02 Results of operations (earnings); 9.01 …". */
+function decodeItems(items: string | null): string | null {
+  if (!items) return null;
+  const parts = items
+    .split(',')
+    .map((code) => code.trim())
+    .filter(Boolean)
+    .map((code) => (ITEM_LABELS[code] ? `${code} ${ITEM_LABELS[code]}` : code));
+  return parts.length > 0 ? parts.join('; ') : null;
 }
 
 // ---------------------------------------------------------------------------
-// XBRL facts: parsing, period classification, and fact selection
+// get_financials presentation
 // ---------------------------------------------------------------------------
-
-/** One reported XBRL fact, normalized from the data.sec.gov shape. */
-interface Fact {
-  start: string | null;
-  end: string;
-  value: number;
-  fiscalYear: number | null;
-  fiscalPeriod: string | null;
-  form: string;
-  filed: string;
-  accession: string;
-  frame: string | null;
-}
-
-type PeriodKind = 'annual' | 'quarterly' | 'instant' | 'other';
-
-const DAY_MS = 86_400_000;
-
-/**
- * Classify a fact by its reporting window. Durations tolerate 52/53-week
- * fiscal calendars (annual years run 364–371 days, quarters 91–98). Facts with
- * other windows (six- and nine-month year-to-date figures in 10-Qs) are
- * excluded from period matching so YTD numbers never masquerade as quarters.
- */
-function kindOf(fact: Fact): PeriodKind {
-  if (fact.start === null) return 'instant';
-  const days = (Date.parse(fact.end) - Date.parse(fact.start)) / DAY_MS;
-  if (days >= 330 && days <= 400) return 'annual';
-  if (days >= 75 && days <= 115) return 'quarterly';
-  return 'other';
-}
-
-/** Normalize one raw `units` array entry into a {@link Fact} (or null if unusable). */
-function parseFact(raw: unknown): Fact | null {
-  const o = raw as Record<string, unknown>;
-  if (typeof o?.end !== 'string' || typeof o.val !== 'number' || typeof o.filed !== 'string') {
-    return null;
-  }
-  return {
-    start: typeof o.start === 'string' ? o.start : null,
-    end: o.end,
-    value: o.val,
-    fiscalYear: typeof o.fy === 'number' ? o.fy : null,
-    fiscalPeriod: typeof o.fp === 'string' ? o.fp : null,
-    form: typeof o.form === 'string' ? o.form : '?',
-    filed: o.filed,
-    accession: typeof o.accn === 'string' ? o.accn : '',
-    frame: typeof o.frame === 'string' ? o.frame : null,
-  };
-}
-
-/**
- * Pick the reporting unit for a concept's `units` map: the preferred keys in
- * order (e.g. `["USD"]` or `["USD/shares"]`), else the first unit present.
- */
-function pickUnitKey(units: Record<string, unknown>, preferred: string[]): string | null {
-  for (const key of preferred) if (Array.isArray(units[key])) return key;
-  const first = Object.keys(units).find((key) => Array.isArray(units[key]));
-  return first ?? null;
-}
-
-/** All normalized facts for one concept in one unit. */
-function factsForUnit(units: Record<string, unknown>, unitKey: string): Fact[] {
-  const raw = units[unitKey];
-  if (!Array.isArray(raw)) return [];
-  const facts: Fact[] = [];
-  for (const entry of raw) {
-    const fact = parseFact(entry);
-    if (fact) facts.push(fact);
-  }
-  return facts;
-}
-
-/** The identity of a fact's reporting window (instants have no start). */
-const periodKey = (start: string | null, end: string): string => `${start ?? ''}|${end}`;
-
-/**
- * Deduplicate facts that report the same window: the same period appears in
- * many filings (originals, comparatives, amendments); the latest-filed fact
- * wins so restated/amended figures are preferred.
- */
-function latestFiledByPeriod(facts: Fact[]): Map<string, Fact> {
-  const byPeriod = new Map<string, Fact>();
-  for (const fact of facts) {
-    const key = periodKey(fact.start, fact.end);
-    const existing = byPeriod.get(key);
-    if (!existing || fact.filed > existing.filed) byPeriod.set(key, fact);
-  }
-  return byPeriod;
-}
-
-// ---------------------------------------------------------------------------
-// get_financials: statement definitions and assembly
-// ---------------------------------------------------------------------------
-
-type Statement = 'income' | 'balance' | 'cashFlow';
-
-interface MetricDef {
-  /** Output key, e.g. "revenue". */
-  key: string;
-  /** Human label for the text rendering. */
-  label: string;
-  statement: Statement;
-  /** 'money' facts use the company currency; 'perShare' use `<currency>/shares`. */
-  unit: 'money' | 'perShare';
-  /** US-GAAP tags to try, in preference order (concepts drift across years). */
-  gaap: string[];
-  /** IFRS tags for foreign filers reporting under ifrs-full. */
-  ifrs: string[];
-}
-
-/**
- * The statement line items `get_financials` extracts, each with tag fallbacks:
- * companies switch concepts across taxonomy versions (e.g. `Revenues` →
- * `RevenueFromContractWithCustomerExcludingAssessedTax` after ASC 606), so
- * each line tries its tags in order per period.
- */
-const METRICS: MetricDef[] = [
-  {
-    key: 'revenue',
-    label: 'Revenue',
-    statement: 'income',
-    unit: 'money',
-    gaap: [
-      'RevenueFromContractWithCustomerExcludingAssessedTax',
-      'Revenues',
-      'SalesRevenueNet',
-      'RevenueFromContractWithCustomerIncludingAssessedTax',
-      'SalesRevenueGoodsNet',
-    ],
-    ifrs: ['Revenue', 'RevenueFromContractsWithCustomers'],
-  },
-  {
-    key: 'costOfRevenue',
-    label: 'Cost of revenue',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['CostOfRevenue', 'CostOfGoodsAndServicesSold', 'CostOfGoodsSold'],
-    ifrs: ['CostOfSales'],
-  },
-  {
-    key: 'grossProfit',
-    label: 'Gross profit',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['GrossProfit'],
-    ifrs: ['GrossProfit'],
-  },
-  {
-    key: 'researchAndDevelopment',
-    label: 'R&D expense',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['ResearchAndDevelopmentExpense'],
-    ifrs: ['ResearchAndDevelopmentExpense'],
-  },
-  {
-    key: 'sellingGeneralAndAdministrative',
-    label: 'SG&A expense',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['SellingGeneralAndAdministrativeExpense', 'GeneralAndAdministrativeExpense'],
-    ifrs: ['SellingGeneralAndAdministrativeExpense'],
-  },
-  {
-    key: 'operatingIncome',
-    label: 'Operating income',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['OperatingIncomeLoss'],
-    ifrs: ['ProfitLossFromOperatingActivities'],
-  },
-  {
-    key: 'incomeTaxExpense',
-    label: 'Income tax expense',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['IncomeTaxExpenseBenefit'],
-    ifrs: ['IncomeTaxExpenseContinuingOperations'],
-  },
-  {
-    key: 'netIncome',
-    label: 'Net income',
-    statement: 'income',
-    unit: 'money',
-    gaap: ['NetIncomeLoss', 'ProfitLoss'],
-    ifrs: ['ProfitLoss', 'ProfitLossAttributableToOwnersOfParent'],
-  },
-  {
-    key: 'epsBasic',
-    label: 'EPS (basic)',
-    statement: 'income',
-    unit: 'perShare',
-    gaap: ['EarningsPerShareBasic'],
-    ifrs: ['BasicEarningsLossPerShare'],
-  },
-  {
-    key: 'epsDiluted',
-    label: 'EPS (diluted)',
-    statement: 'income',
-    unit: 'perShare',
-    gaap: ['EarningsPerShareDiluted'],
-    ifrs: ['DilutedEarningsLossPerShare'],
-  },
-  {
-    key: 'cashAndEquivalents',
-    label: 'Cash & equivalents',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['CashAndCashEquivalentsAtCarryingValue'],
-    ifrs: ['CashAndCashEquivalents'],
-  },
-  {
-    key: 'currentAssets',
-    label: 'Current assets',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['AssetsCurrent'],
-    ifrs: ['CurrentAssets'],
-  },
-  {
-    key: 'totalAssets',
-    label: 'Total assets',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['Assets'],
-    ifrs: ['Assets'],
-  },
-  {
-    key: 'currentLiabilities',
-    label: 'Current liabilities',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['LiabilitiesCurrent'],
-    ifrs: ['CurrentLiabilities'],
-  },
-  {
-    key: 'longTermDebt',
-    label: 'Long-term debt',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['LongTermDebtNoncurrent', 'LongTermDebt'],
-    ifrs: ['NoncurrentPortionOfNoncurrentBorrowings', 'Borrowings'],
-  },
-  {
-    key: 'totalLiabilities',
-    label: 'Total liabilities',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['Liabilities'],
-    ifrs: ['Liabilities'],
-  },
-  {
-    key: 'stockholdersEquity',
-    label: 'Stockholders’ equity',
-    statement: 'balance',
-    unit: 'money',
-    gaap: [
-      'StockholdersEquity',
-      'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
-    ],
-    ifrs: ['Equity', 'EquityAttributableToOwnersOfParent'],
-  },
-  {
-    key: 'liabilitiesAndEquity',
-    label: 'Liabilities + equity',
-    statement: 'balance',
-    unit: 'money',
-    gaap: ['LiabilitiesAndStockholdersEquity'],
-    ifrs: ['EquityAndLiabilities'],
-  },
-  {
-    key: 'operatingCashFlow',
-    label: 'Operating cash flow',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: [
-      'NetCashProvidedByUsedInOperatingActivities',
-      'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations',
-    ],
-    ifrs: ['CashFlowsFromUsedInOperatingActivities'],
-  },
-  {
-    key: 'investingCashFlow',
-    label: 'Investing cash flow',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: [
-      'NetCashProvidedByUsedInInvestingActivities',
-      'NetCashProvidedByUsedInInvestingActivitiesContinuingOperations',
-    ],
-    ifrs: ['CashFlowsFromUsedInInvestingActivities'],
-  },
-  {
-    key: 'financingCashFlow',
-    label: 'Financing cash flow',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: [
-      'NetCashProvidedByUsedInFinancingActivities',
-      'NetCashProvidedByUsedInFinancingActivitiesContinuingOperations',
-    ],
-    ifrs: ['CashFlowsFromUsedInFinancingActivities'],
-  },
-  {
-    key: 'capitalExpenditures',
-    label: 'Capital expenditures',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: ['PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsToAcquireProductiveAssets'],
-    ifrs: ['PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities'],
-  },
-  {
-    key: 'dividendsPaid',
-    label: 'Dividends paid',
-    statement: 'cashFlow',
-    unit: 'money',
-    gaap: ['PaymentsOfDividends', 'PaymentsOfDividendsCommonStock'],
-    ifrs: ['DividendsPaidClassifiedAsFinancingActivities'],
-  },
-];
-
-/** The concepts that anchor period discovery (every filer reports net income). */
-const ANCHOR = METRICS.find((m) => m.key === 'netIncome') as MetricDef;
-
-/** One assembled reporting period. */
-interface StatementPeriod {
-  /** e.g. "FY2025" or "Q2 FY2026", falling back to the window end date. */
-  label: string;
-  start: string;
-  end: string;
-  fiscalYear: number | null;
-  fiscalPeriod: string | null;
-  /** The filing that first reported this period (its own 10-K/10-Q/6-K/20-F). */
-  form: string;
-  filed: string;
-  accession: string;
-  /** metric key → reported value (null when the company doesn't report it). */
-  values: Record<string, number | null>;
-  /** Assets = liabilities + equity, within rounding. Null when unavailable. */
-  identityOk: boolean | null;
-  identityDelta: number | null;
-}
-
-interface Financials {
-  taxonomy: 'us-gaap' | 'ifrs-full';
-  currency: string;
-  periods: StatementPeriod[];
-}
-
-/** The concept map for one taxonomy inside a companyfacts response. */
-type TaxonomyFacts = Record<string, { units?: Record<string, unknown> } | undefined>;
-
-type Taxonomy = Financials['taxonomy'];
-
-/** Tags for a metric in the given taxonomy. */
-const tagsFor = (def: MetricDef, taxonomy: Taxonomy): string[] =>
-  taxonomy === 'us-gaap' ? def.gaap : def.ifrs;
-
-/** Unit-key preference for a metric given the company currency. */
-const unitPreference = (def: MetricDef, currency: string): string[] =>
-  def.unit === 'perShare' ? [`${currency}/shares`] : [currency];
-
-/**
- * Merge a metric's facts across its fallback tags: an earlier (preferred) tag
- * wins a period outright; within one tag the latest-filed fact wins.
- */
-function metricFactsByPeriod(
-  taxFacts: TaxonomyFacts,
-  def: MetricDef,
-  taxonomy: Taxonomy,
-  currency: string,
-): Map<string, Fact> {
-  const byPeriod = new Map<string, Fact>();
-  const claimed = new Map<string, number>();
-  tagsFor(def, taxonomy).forEach((tag, rank) => {
-    const units = taxFacts[tag]?.units;
-    if (!units) return;
-    const unitKey = pickUnitKey(units, unitPreference(def, currency));
-    if (!unitKey) return;
-    for (const [key, fact] of latestFiledByPeriod(factsForUnit(units, unitKey))) {
-      if ((claimed.get(key) ?? Number.POSITIVE_INFINITY) < rank) continue;
-      byPeriod.set(key, fact);
-      claimed.set(key, rank);
-    }
-  });
-  return byPeriod;
-}
-
-/**
- * Whether a fact's fiscal-year/period stamps describe its own window. The
- * stamps are relative to the FILING, so a comparative re-reported a year later
- * carries the later filing's fy/fp — only facts filed shortly after their
- * window end (an original report or its amendment window) are trusted.
- */
-function fiscalStampsTrusted(kind: 'annual' | 'quarterly' | 'instant', fact: Fact): boolean {
-  const gapDays = (Date.parse(fact.filed) - Date.parse(fact.end)) / DAY_MS;
-  return gapDays <= (kind === 'annual' ? 365 : 180);
-}
-
-/** Human period label from the original filing's fiscal-year/period stamps. */
-function periodLabel(kind: 'annual' | 'quarterly', fact: Fact): string {
-  if (fact.fiscalYear !== null && fact.fiscalPeriod !== null && fiscalStampsTrusted(kind, fact)) {
-    return kind === 'annual' ? `FY${fact.fiscalYear}` : `${fact.fiscalPeriod} FY${fact.fiscalYear}`;
-  }
-  return `${kind === 'annual' ? 'FY' : 'Q'} ending ${fact.end}`;
-}
-
-/**
- * Discover the reporting periods to present, anchored on net income (the one
- * line every filer reports every period). For each window, the earliest filing
- * that reported it supplies the fiscal labels (fy/fp are stamped relative to
- * the filing, so only the original filing labels the period correctly).
- */
-function discoverPeriods(
-  taxFacts: TaxonomyFacts,
-  taxonomy: Taxonomy,
-  kind: 'annual' | 'quarterly',
-  limit: number,
-  currency: string,
-): Omit<StatementPeriod, 'values' | 'identityOk' | 'identityDelta'>[] {
-  const windows = new Map<string, Fact>();
-  for (const tag of tagsFor(ANCHOR, taxonomy)) {
-    const units = taxFacts[tag]?.units;
-    if (!units) continue;
-    const unitKey = pickUnitKey(units, [currency]);
-    if (!unitKey) continue;
-    for (const fact of factsForUnit(units, unitKey)) {
-      if (kindOf(fact) !== kind) continue;
-      const key = periodKey(fact.start, fact.end);
-      const existing = windows.get(key);
-      // Earliest filed = the filing where this window was the current period.
-      if (!existing || fact.filed < existing.filed) windows.set(key, fact);
-    }
-  }
-  return [...windows.values()]
-    .filter((fact) => {
-      // Some filers report trailing-twelve-month figures inside quarterly
-      // reports (a year-long window ending at a quarter end). Those are not
-      // fiscal years: drop annual-length windows whose own filing stamps them
-      // as a quarter.
-      if (kind !== 'annual') return true;
-      return !(
-        fiscalStampsTrusted(kind, fact) &&
-        fact.fiscalPeriod !== null &&
-        fact.fiscalPeriod !== 'FY'
-      );
-    })
-    .sort((a, b) => (a.end < b.end ? 1 : a.end > b.end ? -1 : 0))
-    .slice(0, limit)
-    .map((fact) => {
-      const trusted = fiscalStampsTrusted(kind, fact);
-      return {
-        label: periodLabel(kind, fact),
-        start: fact.start ?? fact.end,
-        end: fact.end,
-        fiscalYear: trusted ? fact.fiscalYear : null,
-        fiscalPeriod: trusted ? fact.fiscalPeriod : null,
-        form: fact.form,
-        filed: fact.filed,
-        accession: fact.accession,
-      };
-    });
-}
-
-/**
- * The reporting currency: the unit the anchor concept reports MOST facts in
- * (USD on ties). Foreign filers often carry a handful of convenience-USD facts
- * beside a full local-currency history; blindly preferring USD would hide
- * almost all of their periods.
- */
-function detectCurrency(taxFacts: TaxonomyFacts, taxonomy: Taxonomy): string {
-  const counts = new Map<string, number>();
-  for (const tag of tagsFor(ANCHOR, taxonomy)) {
-    const units = taxFacts[tag]?.units;
-    if (!units) continue;
-    for (const [key, facts] of Object.entries(units)) {
-      if (!Array.isArray(facts)) continue;
-      const bare = key.split('/')[0] ?? key;
-      counts.set(bare, (counts.get(bare) ?? 0) + facts.length);
-    }
-  }
-  let best = 'USD';
-  let bestCount = 0;
-  for (const [key, count] of counts) {
-    if (count > bestCount || (count === bestCount && key === 'USD')) {
-      best = key;
-      bestCount = count;
-    }
-  }
-  return best;
-}
-
-/** Look up one metric's value for one period (duration windows match exactly;
- * balance-sheet instants match the window's end date). */
-function valueFor(
-  facts: Map<string, Fact>,
-  def: MetricDef,
-  period: { start: string; end: string },
-): number | null {
-  const key =
-    def.statement === 'balance' ? periodKey(null, period.end) : periodKey(period.start, period.end);
-  return facts.get(key)?.value ?? null;
-}
-
-/**
- * Check the accounting identity assets = liabilities + equity for one period,
- * preferring the reported `LiabilitiesAndStockholdersEquity` total, falling
- * back to summing the two sides. Tolerates 0.5% for rounding-in-thousands.
- */
-function checkIdentity(values: Record<string, number | null>): {
-  identityOk: boolean | null;
-  identityDelta: number | null;
-} {
-  const assets = values.totalAssets;
-  if (assets === null || assets === undefined) return { identityOk: null, identityDelta: null };
-  const combined =
-    values.liabilitiesAndEquity ??
-    (values.totalLiabilities !== null &&
-    values.totalLiabilities !== undefined &&
-    values.stockholdersEquity !== null &&
-    values.stockholdersEquity !== undefined
-      ? values.totalLiabilities + values.stockholdersEquity
-      : null);
-  if (combined === null) return { identityOk: null, identityDelta: null };
-  const delta = assets - combined;
-  return {
-    identityOk: Math.abs(delta) <= Math.max(Math.abs(assets) * 0.005, 2),
-    identityDelta: delta,
-  };
-}
-
-/** Assemble the full statements from a companyfacts response. */
-function assembleFinancials(
-  factsBody: Record<string, unknown>,
-  kind: 'annual' | 'quarterly',
-  limit: number,
-): Financials {
-  const allFacts = (factsBody.facts ?? {}) as Record<string, unknown>;
-  const taxonomy: Financials['taxonomy'] = allFacts['us-gaap']
-    ? 'us-gaap'
-    : allFacts['ifrs-full']
-      ? 'ifrs-full'
-      : 'us-gaap';
-  if (!allFacts[taxonomy]) {
-    throw new ToolError(
-      'This filer has no US-GAAP or IFRS company facts (funds and trusts often report none).',
-      { retryable: false },
-    );
-  }
-  const taxFacts = allFacts[taxonomy] as TaxonomyFacts;
-
-  const currency = detectCurrency(taxFacts, taxonomy);
-  const bare = discoverPeriods(taxFacts, taxonomy, kind, limit, currency);
-
-  const metricFacts = new Map<string, Map<string, Fact>>();
-  for (const def of METRICS) {
-    metricFacts.set(def.key, metricFactsByPeriod(taxFacts, def, taxonomy, currency));
-  }
-
-  const periods: StatementPeriod[] = bare.map((period) => {
-    const values: Record<string, number | null> = {};
-    for (const def of METRICS) {
-      values[def.key] = valueFor(metricFacts.get(def.key) as Map<string, Fact>, def, period);
-    }
-    const ocf = values.operatingCashFlow;
-    const capex = values.capitalExpenditures;
-    values.freeCashFlow =
-      ocf !== null && ocf !== undefined && capex !== null && capex !== undefined
-        ? ocf - capex
-        : null;
-    // Many filers (Amazon, Alphabet, Meta, Netflix) present no gross-profit
-    // subtotal; derive it when both components are reported.
-    if (
-      values.grossProfit === null &&
-      values.revenue !== null &&
-      values.revenue !== undefined &&
-      values.costOfRevenue !== null &&
-      values.costOfRevenue !== undefined
-    ) {
-      values.grossProfit = values.revenue - values.costOfRevenue;
-    }
-    return { ...period, values, ...checkIdentity(values) };
-  });
-
-  return { taxonomy, currency, periods };
-}
-
-// ---------------------------------------------------------------------------
-// Formatting
-// ---------------------------------------------------------------------------
-
-/** Compact money rendering: 416160000000 → "$416.16B" (or "1.23B CAD"). */
-function fmtMoney(value: number, currency: string): string {
-  const abs = Math.abs(value);
-  const scaled =
-    abs >= 1e12
-      ? `${(abs / 1e12).toFixed(2)}T`
-      : abs >= 1e9
-        ? `${(abs / 1e9).toFixed(2)}B`
-        : abs >= 1e6
-          ? `${(abs / 1e6).toFixed(2)}M`
-          : abs >= 1e4
-            ? `${(abs / 1e3).toFixed(1)}K`
-            : abs.toFixed(2);
-  const signed = value < 0 ? `-${scaled}` : scaled;
-  return currency === 'USD' ? `$${signed}` : `${signed} ${currency}`;
-}
 
 /** One compact text block per period for the human-readable summary. */
 function renderPeriod(period: StatementPeriod, currency: string): string {
@@ -950,10 +196,6 @@ function renderPeriod(period: StatementPeriod, currency: string): string {
   ];
   return lines.filter((l): l is string => l !== null).join('\n');
 }
-
-// ---------------------------------------------------------------------------
-// Output shapes
-// ---------------------------------------------------------------------------
 
 const moneyValue = z.number().nullable();
 
@@ -1041,6 +283,10 @@ const conceptFactShape = z.object({
   frame: z.string().nullable(),
 });
 
+// ---------------------------------------------------------------------------
+// search_filings parsing
+// ---------------------------------------------------------------------------
+
 /** One row of full-text search output. */
 interface SearchFiling {
   company: string;
@@ -1082,6 +328,56 @@ function parseSearchHits(rawHits: unknown[]): SearchFiling[] {
 }
 
 // ---------------------------------------------------------------------------
+// insider_transactions helpers
+// ---------------------------------------------------------------------------
+
+/** Fetch and parse one ownership filing's XML (primary doc, XSL prefix stripped). */
+async function fetchOwnership(
+  ctx: ToolContext,
+  cik: string,
+  filing: RecentFiling,
+): Promise<OwnershipFiling | null> {
+  let name = filing.primaryDocument?.split('/').pop() ?? null;
+  if (!name?.endsWith('.xml')) {
+    const entries = await listFilingDocuments(ctx, cik, filing.accession);
+    name = entries.find((entry) => entry.extension === 'xml')?.name ?? null;
+  }
+  if (!name) return null;
+  const xml = await edgarDocument(
+    ctx,
+    `${filingDirUrl(cik, filing.accession)}/${name}`,
+    `Ownership document missing for ${filing.accession}.`,
+  );
+  return parseOwnershipXml(xml);
+}
+
+/** "+30,104 shares @ $255.30 ($7.69M)" one-liner for a transaction. */
+function renderTransaction(txn: InsiderTransaction): string {
+  const sign = txn.acquiredDisposed === 'D' ? '-' : '+';
+  const shares = txn.shares === null ? '?' : `${sign}${txn.shares.toLocaleString('en-US')}`;
+  const price = txn.pricePerShare === null ? '' : ` @ $${txn.pricePerShare.toFixed(2)}`;
+  const value = txn.value === null || txn.value === 0 ? '' : ` (${fmtMoney(txn.value, 'USD')})`;
+  const label = txn.codeDescription ?? txn.code ?? '?';
+  return `${label}: ${shares}${txn.derivative ? ' (derivative)' : ''}${price}${value}`;
+}
+
+const transactionShape = z.object({
+  security: z.string().nullable(),
+  date: z.string().nullable(),
+  code: z.string().nullable(),
+  codeDescription: z.string().nullable(),
+  acquiredDisposed: z.string().nullable(),
+  shares: z.number().nullable(),
+  pricePerShare: z.number().nullable(),
+  value: z.number().nullable(),
+  sharesOwnedAfter: z.number().nullable(),
+  ownership: z.string().nullable(),
+  derivative: z.boolean(),
+  underlyingSecurity: z.string().nullable(),
+  exercisePrice: z.number().nullable(),
+});
+
+// ---------------------------------------------------------------------------
 // The server
 // ---------------------------------------------------------------------------
 
@@ -1098,7 +394,7 @@ export default defineMcpServer({
         'totals; quarters furnished on 6-K by foreign private issuers are included). ' +
         "Values are as-reported in the company's filing currency, preferring the " +
         'latest amendment/restatement, and each period carries an assets = liabilities + ' +
-        'equity sanity check.',
+        'equity sanity check. For one metric across all of history, use get_xbrl_concept.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
         company: z.string().min(1).describe('Ticker ("AAPL", "BRK.B"), company name, or CIK.'),
@@ -1126,8 +422,7 @@ export default defineMcpServer({
       async handler(args, ctx) {
         const { company, period, limit } = args;
         ctx.log('get_financials', { company, period, limit });
-        const resolved = await resolveCompany(ctx, company);
-        if (!resolved) throw companyNotFound(company);
+        const resolved = await requireCompany(ctx, company);
         const body = await edgarJson(
           ctx,
           companyFactsUrl(resolved.cik),
@@ -1223,8 +518,7 @@ export default defineMcpServer({
       async handler(args, ctx) {
         const { company, concept, taxonomy, period, limit } = args;
         ctx.log('get_xbrl_concept', { company, concept, taxonomy, period });
-        const resolved = await resolveCompany(ctx, company);
-        if (!resolved) throw companyNotFound(company);
+        const resolved = await requireCompany(ctx, company);
         const body = await edgarJson(
           ctx,
           companyConceptUrl(resolved.cik, taxonomy, concept),
@@ -1251,13 +545,13 @@ export default defineMcpServer({
         const lines = facts
           .map((fact) => {
             const window = fact.start ? `${fact.start} → ${fact.end}` : `as of ${fact.end}`;
-            const kind = kindOf(fact);
+            const factKind = kindOf(fact);
             // fy/fp describe the FILING; only trust them for facts filed near
             // their window end (comparatives inherit the later filing's stamps).
             const trusted =
               fact.fiscalYear !== null &&
               fact.fiscalPeriod !== null &&
-              fiscalStampsTrusted(kind === 'annual' ? 'annual' : 'quarterly', fact);
+              fiscalStampsTrusted(factKind === 'annual' ? 'annual' : 'quarterly', fact);
             const fiscal = trusted
               ? fact.fiscalPeriod === 'FY'
                 ? ` (FY${fact.fiscalYear}, ${fact.form})`
@@ -1287,6 +581,527 @@ export default defineMcpServer({
       },
     },
     {
+      name: 'get_filing_document',
+      title: 'EDGAR: Read a filing',
+      description:
+        'Read the text of an SEC filing (10-K, 10-Q, 8-K, proxy, S-1, …) given its ' +
+        'accession number — from search_filings or company_filings. Returns clean plain ' +
+        'text with character-offset pagination (follow nextOffset for more), the list of ' +
+        'documents/exhibits in the filing (pass `document` to read a specific one), and ' +
+        'an optional literal `find` that returns each match with surrounding context and ' +
+        'its offset, so you can jump straight to a passage (e.g. find "risk factors" or ' +
+        '"climate"). For financial NUMBERS prefer get_financials/get_xbrl_concept.',
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      input: z.object({
+        company: z.string().min(1).describe('Ticker, company name, or CIK of the filer.'),
+        accession: z
+          .string()
+          .regex(/^\d{10}-?\d{2}-?\d{6}$/)
+          .describe('Accession number, e.g. "0000320193-25-000079".'),
+        document: z
+          .string()
+          .optional()
+          .describe('A specific document/exhibit filename from the documents list.'),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .default(0)
+          .describe('Character offset to start from; pass the returned nextOffset.'),
+        maxChars: z
+          .number()
+          .int()
+          .min(500)
+          .max(100_000)
+          .default(20_000)
+          .describe('Max characters of text to return (default 20000).'),
+        find: z
+          .string()
+          .optional()
+          .describe('Literal text to locate (case-insensitive); returns matches + offsets.'),
+      }),
+      output: z.object({
+        company: z.string(),
+        cik: z.string(),
+        accession: z.string(),
+        document: z.string(),
+        documents: z.array(
+          z.object({ name: z.string(), size: z.number().nullable(), extension: z.string() }),
+        ),
+        totalChars: z.number(),
+        offset: z.number(),
+        nextOffset: z.number().nullable(),
+        content: z.string(),
+        matches: z.array(z.object({ offset: z.number(), context: z.string() })),
+      }),
+      async handler(args, ctx) {
+        const { company, document, offset, maxChars, find } = args;
+        const accession = /-/.test(args.accession)
+          ? args.accession
+          : `${args.accession.slice(0, 10)}-${args.accession.slice(10, 12)}-${args.accession.slice(12)}`;
+        ctx.log('get_filing_document', { company, accession, document, find });
+        const resolved = await requireCompany(ctx, company);
+        const entries = await listFilingDocuments(ctx, resolved.cik, accession);
+
+        let entry: FilingEntry | null;
+        if (document) {
+          entry = entries.find((e) => e.name === document) ?? null;
+          if (!entry) {
+            const names = entries.map((e) => e.name).join(', ');
+            throw new ToolError(`No document "${document}" in ${accession}. Available: ${names}`, {
+              retryable: false,
+            });
+          }
+        } else {
+          const { filings } = await recentFilings(ctx, resolved.cik);
+          const declared = filings.find((f) => f.accession === accession)?.primaryDocument;
+          entry = pickPrimaryDocument(entries, declared);
+        }
+        if (!entry) {
+          throw new ToolError(`Filing ${accession} has no readable primary document.`, {
+            retryable: false,
+          });
+        }
+        if (!isReadable(entry)) {
+          throw new ToolError(
+            `"${entry.name}" is a ${entry.extension.toUpperCase()} file, which cannot be ` +
+              'rendered as text here. Pick an .htm/.txt/.xml document from the documents list.',
+            { retryable: false },
+          );
+        }
+
+        const text = await fetchFilingText(ctx, resolved.cik, accession, entry);
+        const matches = find ? findInText(text, find) : [];
+        const content = text.slice(offset, offset + maxChars);
+        const nextOffset = offset + content.length < text.length ? offset + content.length : null;
+        const documents = entries.map(({ name, size, extension }) => ({ name, size, extension }));
+
+        const matchText =
+          find === undefined
+            ? ''
+            : matches.length > 0
+              ? `\n${matches.length} match(es) for "${find}":\n${matches
+                  .map((m) => `  [offset ${m.offset}] ${m.context}`)
+                  .join('\n')}\n`
+              : `\nNo matches for "${find}".\n`;
+        const moreText =
+          nextOffset === null ? '' : `\n(more — call again with offset=${nextOffset})`;
+        return {
+          text:
+            `${entry.name} in ${accession} (${resolved.name || company}) — ` +
+            `${text.length.toLocaleString('en-US')} chars total, showing ${offset}–${offset + content.length}:` +
+            `${matchText}\n${content}${moreText}`,
+          structured: {
+            company: resolved.name || company,
+            cik: resolved.cik,
+            accession,
+            document: entry.name,
+            documents,
+            totalChars: text.length,
+            offset,
+            nextOffset,
+            content,
+            matches,
+          },
+        };
+      },
+    },
+    {
+      name: 'insider_transactions',
+      title: 'EDGAR: Insider transactions (Forms 3/4/5)',
+      description:
+        'Insider (officer/director/10% owner) trading activity decoded from SEC ownership ' +
+        'filings: who traded, their role, transaction codes decoded to plain English ' +
+        '(open-market purchase/sale, option exercise, grant, tax withholding, gift, …), ' +
+        'shares, prices, and post-transaction holdings, plus an open-market buy/sell ' +
+        'summary with net shares. Direction comes from the acquired/disposed code, and ' +
+        'only true open-market trades (codes P/S) count toward the buy/sell summary — ' +
+        'grants and option exercises never masquerade as conviction trades.',
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      input: z.object({
+        company: z.string().min(1).describe('Ticker, company name, or CIK.'),
+        forms: z
+          .string()
+          .default('4,4/A')
+          .describe('Ownership form types to include, e.g. "4", "4,4/A", or "3,4,5".'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(25)
+          .default(10)
+          .describe('How many most-recent ownership filings to decode (1–25).'),
+      }),
+      output: z.object({
+        company: z.string(),
+        cik: z.string(),
+        count: z.number(),
+        filings: z.array(
+          z.object({
+            form: z.string(),
+            filedDate: z.string(),
+            accession: z.string(),
+            owners: z.array(z.string()),
+            officerTitle: z.string().nullable(),
+            isDirector: z.boolean(),
+            isOfficer: z.boolean(),
+            isTenPercentOwner: z.boolean(),
+            periodOfReport: z.string().nullable(),
+            planned10b5One: z.boolean(),
+            transactions: z.array(transactionShape),
+          }),
+        ),
+        summary: z.object({
+          openMarketPurchases: z.object({
+            transactions: z.number(),
+            shares: z.number(),
+            value: z.number(),
+          }),
+          openMarketSales: z.object({
+            transactions: z.number(),
+            shares: z.number(),
+            value: z.number(),
+          }),
+          netShares: z.number(),
+        }),
+      }),
+      async handler(args, ctx) {
+        const { company, forms, limit } = args;
+        ctx.log('insider_transactions', { company, forms, limit });
+        const resolved = await requireCompany(ctx, company);
+        const wanted = new Set(
+          forms
+            .split(',')
+            .map((f: string) => f.trim().toUpperCase())
+            .filter(Boolean),
+        );
+        const { name, filings: all } = await recentFilings(ctx, resolved.cik);
+        const targets = all.filter((f) => wanted.has(f.form.toUpperCase())).slice(0, limit);
+        if (targets.length === 0) {
+          return {
+            text: `No recent ${forms} filings for ${name || company} (CIK ${resolved.cik}).`,
+            structured: {
+              company: name || company,
+              cik: resolved.cik,
+              count: 0,
+              filings: [],
+              summary: summarizeOpenMarket([]),
+            },
+          };
+        }
+
+        const parsed: { filing: RecentFiling; ownership: OwnershipFiling }[] = [];
+        for (const filing of targets) {
+          const ownership = await fetchOwnership(ctx, resolved.cik, filing);
+          if (ownership) parsed.push({ filing, ownership });
+        }
+        const summary = summarizeOpenMarket(parsed.map((p) => p.ownership));
+
+        const filingRows = parsed.map(({ filing, ownership }) => ({
+          form: filing.form,
+          filedDate: filing.filedDate,
+          accession: filing.accession,
+          owners: ownership.owners,
+          officerTitle: ownership.officerTitle,
+          isDirector: ownership.isDirector,
+          isOfficer: ownership.isOfficer,
+          isTenPercentOwner: ownership.isTenPercentOwner,
+          periodOfReport: ownership.periodOfReport,
+          planned10b5One: ownership.planned10b5One,
+          transactions: ownership.transactions,
+        }));
+
+        const lines = filingRows
+          .map((row) => {
+            const role = row.officerTitle ?? (row.isDirector ? 'Director' : null);
+            const who = `${row.owners.join(' / ') || '?'}${role ? ` (${role})` : ''}`;
+            const txns =
+              row.transactions.length > 0
+                ? row.transactions.map((t) => `    ${renderTransaction(t)}`).join('\n')
+                : '    (no transactions — holdings-only report)';
+            const plan = row.planned10b5One ? ' [10b5-1 plan]' : '';
+            return `  ${row.filedDate} ${row.form} — ${who}${plan}\n${txns}`;
+          })
+          .join('\n');
+        const net =
+          summary.netShares === 0
+            ? 'net flat'
+            : summary.netShares > 0
+              ? `net +${summary.netShares.toLocaleString('en-US')} shares bought`
+              : `net ${summary.netShares.toLocaleString('en-US')} shares sold`;
+        const summaryLine =
+          `Open-market summary across these filings: ${summary.openMarketPurchases.transactions} ` +
+          `buy(s) (${fmtMoney(summary.openMarketPurchases.value, 'USD')}), ` +
+          `${summary.openMarketSales.transactions} sale(s) ` +
+          `(${fmtMoney(summary.openMarketSales.value, 'USD')}) — ${net}.`;
+        return {
+          text: `${name || company} (CIK ${resolved.cik}) — ${filingRows.length} ownership filing(s):\n${lines}\n${summaryLine}`,
+          structured: {
+            company: name || company,
+            cik: resolved.cik,
+            count: filingRows.length,
+            filings: filingRows,
+            summary,
+          },
+        };
+      },
+    },
+    {
+      name: 'get_fund_holdings',
+      title: 'EDGAR: 13F fund holdings',
+      description:
+        "An institutional manager's portfolio from its latest 13F-HR filing (or a " +
+        'specific one by accession): top holdings by market value with shares, put/call ' +
+        'flags, and portfolio percentages. Works for hedge funds and asset managers ' +
+        '(e.g. "Berkshire Hathaway", "BlackRock") — 13Fs exist only for managers with ' +
+        '$100M+ in US-listed equities, and report long US equity positions quarterly ' +
+        '(45-day lag), not shorts or most bonds. Values are normalized to whole dollars.',
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      input: z.object({
+        company: z.string().min(1).describe('Fund manager name, ticker, or CIK.'),
+        accession: z
+          .string()
+          .regex(/^\d{10}-?\d{2}-?\d{6}$/)
+          .optional()
+          .describe('A specific 13F filing accession (defaults to the most recent 13F-HR).'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(200)
+          .default(25)
+          .describe('How many top holdings to return (1–200).'),
+      }),
+      output: z.object({
+        company: z.string(),
+        cik: z.string(),
+        form: z.string(),
+        accession: z.string(),
+        periodOfReport: z.string().nullable(),
+        amendmentType: z.string().nullable(),
+        valueUnits: z.string(),
+        totalValue: z.number(),
+        totalCheckOk: z.boolean().nullable(),
+        positions: z.number(),
+        count: z.number(),
+        holdings: z.array(
+          z.object({
+            issuer: z.string().nullable(),
+            titleOfClass: z.string().nullable(),
+            cusip: z.string().nullable(),
+            value: z.number(),
+            shares: z.number().nullable(),
+            sharesType: z.string().nullable(),
+            putCall: z.string().nullable(),
+            percent: z.number(),
+          }),
+        ),
+      }),
+      async handler(args, ctx) {
+        const { company, limit } = args;
+        ctx.log('get_fund_holdings', { company, accession: args.accession, limit });
+        const resolved = await requireCompany(ctx, company);
+        const { name, filings } = await recentFilings(ctx, resolved.cik);
+
+        let accession = args.accession;
+        let form = '13F-HR';
+        if (accession) {
+          if (!accession.includes('-')) {
+            accession = `${accession.slice(0, 10)}-${accession.slice(10, 12)}-${accession.slice(12)}`;
+          }
+          form = filings.find((f) => f.accession === accession)?.form ?? '13F';
+        } else {
+          const hr = filings.find((f) => f.form === '13F-HR' || f.form === '13F-HR/A');
+          if (!hr) {
+            const nt = filings.find((f) => f.form.startsWith('13F-NT'));
+            throw new ToolError(
+              nt
+                ? `${name || company} files 13F-NT notices — its holdings are reported by ` +
+                    'another manager, so there is no information table here.'
+                : `No 13F-HR filings found for ${name || company} (CIK ${resolved.cik}). ` +
+                    'Only institutional managers with $100M+ in US equities file 13Fs.',
+              { retryable: false },
+            );
+          }
+          accession = hr.accession;
+          form = hr.form;
+        }
+
+        // The information table is the non-primary XML attachment; identify it
+        // by content, tolerating namespace prefixes.
+        const entries = await listFilingDocuments(ctx, resolved.cik, accession);
+        const xmlEntries = entries.filter((entry) => entry.extension === 'xml');
+        let coverXml = '';
+        let tableXml = '';
+        for (const entry of xmlEntries) {
+          const body = await edgarDocument(
+            ctx,
+            `${filingDirUrl(resolved.cik, accession)}/${entry.name}`,
+            `Document ${entry.name} missing from ${accession}.`,
+          );
+          if (/<(?:\w+:)?infoTable[\s>]/.test(body)) tableXml = body;
+          else if (/<(?:\w+:)?edgarSubmission[\s>]/.test(body)) coverXml = body;
+        }
+        if (!tableXml) {
+          throw new ToolError(
+            `Filing ${accession} has no 13F information table (13F-NT notices and some ` +
+              'amendments carry none).',
+            { retryable: false },
+          );
+        }
+
+        const cover = parseCoverPage(coverXml);
+        const table = parseInfoTable(tableXml, cover.periodOfReport);
+        const aggregated = aggregateHoldings(table.holdings);
+        const totalValue = aggregated.reduce((sum, h) => sum + h.value, 0);
+        const declaredTotal =
+          cover.tableValueTotal === null
+            ? null
+            : cover.tableValueTotal * (table.valueUnits === 'thousands' ? 1000 : 1);
+        const totalCheckOk =
+          declaredTotal === null || totalValue === 0
+            ? null
+            : Math.abs(totalValue - declaredTotal) <= Math.abs(declaredTotal) * 0.01;
+        const top = aggregated.slice(0, limit).map((h) => ({
+          issuer: h.issuer,
+          titleOfClass: h.titleOfClass,
+          cusip: h.cusip,
+          value: h.value,
+          shares: h.shares,
+          sharesType: h.sharesType,
+          putCall: h.putCall,
+          percent: totalValue > 0 ? Math.round((h.value / totalValue) * 10_000) / 100 : 0,
+        }));
+
+        const manager = cover.manager ?? name ?? company;
+        const lines = top
+          .map((h, i) => {
+            const flag = h.putCall ? ` [${h.putCall}]` : '';
+            const shares = h.shares === null ? '' : ` · ${h.shares.toLocaleString('en-US')} sh`;
+            return `  ${i + 1}. ${h.issuer ?? '?'}${flag} — ${fmtMoney(h.value, 'USD')} (${h.percent}%)${shares}`;
+          })
+          .join('\n');
+        const amendment = cover.amendmentType ? ` (${cover.amendmentType} amendment)` : '';
+        const check = totalCheckOk === false ? ' ⚠ sum differs from the declared total' : '';
+        return {
+          text:
+            `${manager} — ${form}${amendment} for period ending ${cover.periodOfReport ?? '?'}: ` +
+            `${aggregated.length} position(s), ${fmtMoney(totalValue, 'USD')} total${check}.\n` +
+            `Top ${top.length}:\n${lines}`,
+          structured: {
+            company: manager,
+            cik: resolved.cik,
+            form,
+            accession,
+            periodOfReport: cover.periodOfReport,
+            amendmentType: cover.amendmentType,
+            valueUnits: table.valueUnits,
+            totalValue,
+            totalCheckOk,
+            positions: aggregated.length,
+            count: top.length,
+            holdings: top,
+          },
+        };
+      },
+    },
+    {
+      name: 'get_company',
+      title: 'EDGAR: Company profile',
+      description:
+        "The SEC's registrant profile for a company: legal name, CIK, tickers and " +
+        'exchanges, SIC industry classification, entity type and filer category, state ' +
+        'of incorporation, fiscal-year end, website/phone, and former names. Useful to ' +
+        'confirm you have the right entity before pulling financials or filings.',
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      input: z.object({
+        company: z.string().min(1).describe('Ticker, company name, or CIK.'),
+      }),
+      output: z.object({
+        company: z.string(),
+        cik: z.string(),
+        tickers: z.array(z.string()),
+        exchanges: z.array(z.string()),
+        sic: z.string().nullable(),
+        sicDescription: z.string().nullable(),
+        entityType: z.string().nullable(),
+        category: z.string().nullable(),
+        stateOfIncorporation: z.string().nullable(),
+        fiscalYearEnd: z.string().nullable(),
+        website: z.string().nullable(),
+        phone: z.string().nullable(),
+        formerNames: z.array(z.object({ name: z.string(), from: z.string(), to: z.string() })),
+      }),
+      async handler(args, ctx) {
+        ctx.log('get_company', { company: args.company });
+        const resolved = await requireCompany(ctx, args.company);
+        const body = await edgarJson(
+          ctx,
+          submissionsUrl(resolved.cik),
+          `SEC EDGAR has no record for CIK ${resolved.cik}.`,
+        );
+        const str = (key: string): string | null =>
+          typeof body[key] === 'string' && body[key] ? (body[key] as string) : null;
+        const strings = (key: string): string[] =>
+          Array.isArray(body[key])
+            ? (body[key] as unknown[]).filter((v) => typeof v === 'string')
+            : [];
+        const formerNames = (Array.isArray(body.formerNames) ? body.formerNames : [])
+          .map((raw) => {
+            const item = raw as { name?: unknown; from?: unknown; to?: unknown };
+            if (typeof item.name !== 'string') return null;
+            return {
+              name: item.name,
+              from: typeof item.from === 'string' ? item.from.slice(0, 10) : '',
+              to: typeof item.to === 'string' ? item.to.slice(0, 10) : '',
+            };
+          })
+          .filter((item): item is { name: string; from: string; to: string } => item !== null);
+        // fiscalYearEnd arrives as "MMDD" — render as MM-DD.
+        const fye = str('fiscalYearEnd');
+        const fiscalYearEnd =
+          fye && /^\d{4}$/.test(fye) ? `${fye.slice(0, 2)}-${fye.slice(2)}` : fye;
+        const name = str('name') ?? resolved.name;
+        const tickers = strings('tickers');
+        const exchanges = strings('exchanges');
+
+        const parts = [
+          `${name} (CIK ${resolved.cik})`,
+          tickers.length > 0
+            ? `Listed: ${tickers.map((t, i) => `${t}${exchanges[i] ? ` (${exchanges[i]})` : ''}`).join(', ')}`
+            : 'No listed tickers',
+          str('sicDescription') ? `Industry: ${str('sicDescription')} (SIC ${str('sic')})` : null,
+          str('entityType') ? `Entity type: ${str('entityType')}` : null,
+          str('category') ? `Filer category: ${str('category')}` : null,
+          str('stateOfIncorporation') ? `Incorporated: ${str('stateOfIncorporation')}` : null,
+          fiscalYearEnd ? `Fiscal year ends: ${fiscalYearEnd}` : null,
+          str('website') ? `Website: ${str('website')}` : null,
+          formerNames.length > 0
+            ? `Former names: ${formerNames.map((f) => `${f.name} (${f.from} → ${f.to})`).join('; ')}`
+            : null,
+        ].filter((part): part is string => part !== null);
+
+        return {
+          text: parts.join('\n'),
+          structured: {
+            company: name,
+            cik: resolved.cik,
+            tickers,
+            exchanges,
+            sic: str('sic'),
+            sicDescription: str('sicDescription'),
+            entityType: str('entityType'),
+            category: str('category'),
+            stateOfIncorporation: str('stateOfIncorporation'),
+            fiscalYearEnd,
+            website: str('website'),
+            phone: str('phone'),
+            formerNames,
+          },
+        };
+      },
+    },
+    {
       name: 'search_filings',
       title: 'EDGAR: Search filings',
       description:
@@ -1294,7 +1109,8 @@ export default defineMcpServer({
         'company (ticker/name/CIK), restrict by form type(s) (e.g. "10-K", "8-K", ' +
         '"10-K,10-Q") and a date range, and page with `from`. Matches filings that ' +
         'merely mention the terms — scope by company for precision. Returns company, ' +
-        'form, filing date, and accession number per hit, deduped by filing.',
+        'form, filing date, and accession number per hit, deduped by filing. Read any ' +
+        'result with get_filing_document.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
         query: z.string().min(1).describe('Search text, e.g. "climate risk" or "supply chain".'),
@@ -1342,8 +1158,7 @@ export default defineMcpServer({
         ctx.log('search_filings', { query, company, forms, from });
         let cik: string | null = null;
         if (company) {
-          const resolved = await resolveCompany(ctx, company);
-          if (!resolved) throw companyNotFound(company);
+          const resolved = await requireCompany(ctx, company);
           cik = resolved.cik;
         }
         const params = new URLSearchParams({ q: query });
@@ -1391,8 +1206,10 @@ export default defineMcpServer({
       description:
         'List a company\'s recent SEC filings by ticker (e.g. "AAPL"), company name, or ' +
         'CIK, filterable by form type(s) (e.g. "10-K" or "10-K,10-Q,8-K") and filing-date ' +
-        'range. Returns form type, filing date, accession number, and primary document. ' +
-        "Filter by forms to skip the Form 4/144 noise that dominates most companies' feeds.",
+        'range. Returns form type, filing date, accession number, primary document, and — ' +
+        'for 8-Ks — the material-event item codes decoded to plain English (2.02 earnings, ' +
+        '5.02 officer changes, …). Filter by forms to skip the Form 4/144 noise that ' +
+        "dominates most companies' feeds. Read any filing with get_filing_document.",
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
         company: z.string().min(1).describe('Ticker, company name, or CIK, e.g. "AAPL".'),
@@ -1424,30 +1241,16 @@ export default defineMcpServer({
             accession: z.string(),
             primaryDocument: z.string().nullable(),
             description: z.string().nullable(),
+            items: z.string().nullable(),
           }),
         ),
       }),
       async handler(args, ctx) {
         const { company, forms, startDate, endDate, limit } = args;
         ctx.log('company_filings', { company, forms, limit });
-        const resolved = await resolveCompany(ctx, company);
-        if (!resolved) throw companyNotFound(company);
-        const body = await edgarJson(
-          ctx,
-          submissionsUrl(resolved.cik),
-          `SEC EDGAR has no filings record for CIK ${resolved.cik}.`,
-        );
-        const name = typeof body.name === 'string' ? body.name : resolved.name;
-        const recent = ((body.filings ?? {}) as Record<string, unknown>).recent as
-          | Record<string, unknown>
-          | undefined;
-        const formList = Array.isArray(recent?.form) ? recent.form : [];
-        const dates = Array.isArray(recent?.filingDate) ? recent.filingDate : [];
-        const accs = Array.isArray(recent?.accessionNumber) ? recent.accessionNumber : [];
-        const docs = Array.isArray(recent?.primaryDocument) ? recent.primaryDocument : [];
-        const descs = Array.isArray(recent?.primaryDocDescription)
-          ? recent.primaryDocDescription
-          : [];
+        const resolved = await requireCompany(ctx, company);
+        const { name, filings: all } = await recentFilings(ctx, resolved.cik);
+        const displayName = name || resolved.name;
         const wanted = forms
           ? new Set(
               forms
@@ -1456,36 +1259,45 @@ export default defineMcpServer({
                 .filter(Boolean),
             )
           : null;
-        const all = formList.map((f, i) => ({
-          form: typeof f === 'string' ? f : '?',
-          filedDate: typeof dates[i] === 'string' ? (dates[i] as string) : '?',
-          accession: typeof accs[i] === 'string' ? (accs[i] as string) : '',
-          primaryDocument: typeof docs[i] === 'string' ? (docs[i] as string) : null,
-          description: typeof descs[i] === 'string' && descs[i] ? (descs[i] as string) : null,
-        }));
         const matching = all.filter(
           (f) =>
             (!wanted || wanted.has(f.form.toUpperCase())) &&
             (!startDate || f.filedDate >= startDate) &&
             (!endDate || f.filedDate <= endDate),
         );
-        const filings = matching.slice(0, limit);
+        const filings = matching.slice(0, limit).map((f) => ({
+          form: f.form,
+          filedDate: f.filedDate,
+          accession: f.accession,
+          primaryDocument: f.primaryDocument,
+          description: f.description,
+          items: f.items,
+        }));
         if (filings.length === 0) {
           const filterNote = wanted || startDate || endDate ? ' matching those filters' : '';
           return {
-            text: `No recent filings${filterNote} for ${name} (CIK ${resolved.cik}).`,
-            structured: { company: name, cik: resolved.cik, matched: 0, count: 0, filings: [] },
+            text: `No recent filings${filterNote} for ${displayName} (CIK ${resolved.cik}).`,
+            structured: {
+              company: displayName,
+              cik: resolved.cik,
+              matched: 0,
+              count: 0,
+              filings: [],
+            },
           };
         }
         const lines = filings
-          .map((f) => `  ${f.filedDate} ${f.form}${f.description ? ` — ${f.description}` : ''}`)
+          .map((f) => {
+            const detail = decodeItems(f.items) ?? f.description;
+            return `  ${f.filedDate} ${f.form}${detail ? ` — ${detail}` : ''}`;
+          })
           .join('\n');
         return {
           text:
-            `${name} (CIK ${resolved.cik}) — ${filings.length} of ${matching.length} ` +
+            `${displayName} (CIK ${resolved.cik}) — ${filings.length} of ${matching.length} ` +
             `matching filing(s):\n${lines}`,
           structured: {
-            company: name,
+            company: displayName,
             cik: resolved.cik,
             matched: matching.length,
             count: filings.length,

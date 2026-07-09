@@ -33,11 +33,14 @@ const SEARCH_BODY = {
   },
 };
 
-// Realistic www.sec.gov/files/company_tickers.json body.
+// Realistic www.sec.gov/files/company_tickers_exchange.json body.
 const TICKER_MAP = {
-  0: { cik_str: 320_193, ticker: 'AAPL', title: 'Apple Inc.' },
-  1: { cik_str: 789_019, ticker: 'MSFT', title: 'Microsoft Corp' },
-  2: { cik_str: 1_067_983, ticker: 'BRK-B', title: 'Berkshire Hathaway Inc' },
+  fields: ['cik', 'name', 'ticker', 'exchange'],
+  data: [
+    [320_193, 'Apple Inc.', 'AAPL', 'Nasdaq'],
+    [789_019, 'Microsoft Corp', 'MSFT', 'Nasdaq'],
+    [1_067_983, 'Berkshire Hathaway Inc', 'BRK-B', 'NYSE'],
+  ],
 };
 
 // Realistic data.sec.gov submissions body (parallel-array `recent` shape).
@@ -241,11 +244,15 @@ const routes = (table) => (url) => {
 };
 
 describe('sec-edgar MCP server', () => {
-  it('lists the four tools', () => {
+  it('lists the eight tools', () => {
     expect(server.tools.map((t) => t.name).toSorted()).toEqual([
       'company_filings',
+      'get_company',
+      'get_filing_document',
       'get_financials',
+      'get_fund_holdings',
       'get_xbrl_concept',
+      'insider_transactions',
       'search_filings',
     ]);
   });
@@ -391,7 +398,7 @@ describe('sec-edgar MCP server', () => {
     it('resolves tickers through the SEC ticker map', async () => {
       let factsUrl = '';
       const result = await callTool(server, 'get_financials', { company: 'AAPL' }, (url) => {
-        if (url.includes('company_tickers.json')) return { json: TICKER_MAP };
+        if (url.includes('company_tickers_exchange.json')) return { json: TICKER_MAP };
         if (url.includes('/api/xbrl/companyfacts/')) {
           factsUrl = url;
           return { json: { ...ANNUAL_FACTS, cik: 320_193 } };
@@ -543,7 +550,7 @@ describe('sec-edgar MCP server', () => {
         'search_filings',
         { query: 'ciks scope test', company: 'AAPL' },
         (url) => {
-          if (url.includes('company_tickers.json')) return { json: TICKER_MAP };
+          if (url.includes('company_tickers_exchange.json')) return { json: TICKER_MAP };
           requested = url;
           return { json: SEARCH_BODY };
         },
@@ -653,7 +660,7 @@ describe('sec-edgar MCP server', () => {
   describe('company_filings', () => {
     it('resolves a ticker and lists recent filings', async () => {
       const result = await callTool(server, 'company_filings', { company: 'AAPL' }, (url) => {
-        if (url.includes('company_tickers.json')) return { json: TICKER_MAP };
+        if (url.includes('company_tickers_exchange.json')) return { json: TICKER_MAP };
         if (url.includes('/submissions/CIK')) return { json: SUBMISSIONS_BODY };
         throw new Error(`unexpected url ${url}`);
       });
@@ -663,13 +670,14 @@ describe('sec-edgar MCP server', () => {
       expect(s.cik).toBe('0000320193');
       expect(s.count).toBe(3);
       expect(s.matched).toBe(3);
-      expect(s.filings[0]).toEqual({
+      expect(s.filings[0]).toMatchObject({
         form: '10-K',
         filedDate: '2023-11-03',
         accession: '0000320193-23-000106',
         primaryDocument: 'aapl-20230930.htm',
         description: '10-K',
       });
+      expect(s.filings[0].items).toBeNull();
       // Empty primaryDocDescription becomes null.
       expect(s.filings[1].description).toBeNull();
       expect(result.result.text).toContain('Apple Inc. (CIK 0000320193)');
@@ -678,7 +686,7 @@ describe('sec-edgar MCP server', () => {
     it('normalizes share-class dots when matching tickers', async () => {
       let submissionsUrl = '';
       const result = await callTool(server, 'company_filings', { company: 'BRK.B' }, (url) => {
-        if (url.includes('company_tickers.json')) return { json: TICKER_MAP };
+        if (url.includes('company_tickers_exchange.json')) return { json: TICKER_MAP };
         if (url.includes('/submissions/CIK')) {
           submissionsUrl = url;
           return { json: { name: 'Berkshire Hathaway Inc', filings: { recent: {} } } };
@@ -691,7 +699,7 @@ describe('sec-edgar MCP server', () => {
 
     it('resolves a company name when no ticker matches', async () => {
       const result = await callTool(server, 'company_filings', { company: 'Microsoft' }, (url) => {
-        if (url.includes('company_tickers.json')) return { json: TICKER_MAP };
+        if (url.includes('company_tickers_exchange.json')) return { json: TICKER_MAP };
         if (url.includes('/submissions/CIK0000789019')) {
           return { json: { name: 'Microsoft Corp', filings: { recent: {} } } };
         }
@@ -704,7 +712,7 @@ describe('sec-edgar MCP server', () => {
     it('accepts a numeric CIK directly and zero-pads it', async () => {
       let submissionsUrl = '';
       const result = await callTool(server, 'company_filings', { company: '100015' }, (url) => {
-        if (url.includes('company_tickers.json')) {
+        if (url.includes('company_tickers_exchange.json')) {
           throw new Error('should not fetch the ticker map for a numeric CIK');
         }
         if (url.includes('/submissions/CIK')) {
@@ -756,7 +764,7 @@ describe('sec-edgar MCP server', () => {
 
     it('errors (non-retryable) when nothing matches the company', async () => {
       const result = await callTool(server, 'company_filings', { company: 'ZZZZZZ' }, (url) => {
-        if (url.includes('company_tickers.json')) return { json: TICKER_MAP };
+        if (url.includes('company_tickers_exchange.json')) return { json: TICKER_MAP };
         throw new Error(`unexpected url ${url}`);
       });
       expect(result.ok).toBe(false);
@@ -793,6 +801,333 @@ describe('sec-edgar MCP server', () => {
       const result = await callTool(server, 'company_filings', { company: 'AAPL', limit: 999 });
       expect(result.ok).toBe(false);
       expect(result.code).toBe('INVALID_PARAMS');
+    });
+  });
+});
+
+// --- Fixtures for the v1.2 tools ---------------------------------------------
+
+const FORM4_XML = `<ownershipDocument>
+  <periodOfReport>2026-06-15</periodOfReport>
+  <reportingOwner>
+    <reportingOwnerId><rptOwnerName>Doe Jane</rptOwnerName></reportingOwnerId>
+    <reportingOwnerRelationship><isOfficer>1</isOfficer><officerTitle>CFO</officerTitle></reportingOwnerRelationship>
+  </reportingOwner>
+  <nonDerivativeTable>
+    <nonDerivativeTransaction>
+      <securityTitle><value>Common Stock</value></securityTitle>
+      <transactionDate><value>2026-06-15</value></transactionDate>
+      <transactionCoding><transactionCode>S</transactionCode></transactionCoding>
+      <transactionAmounts>
+        <transactionShares><value>1000</value></transactionShares>
+        <transactionPricePerShare><value>250</value></transactionPricePerShare>
+        <transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode>
+      </transactionAmounts>
+    </nonDerivativeTransaction>
+  </nonDerivativeTable>
+</ownershipDocument>`;
+
+const INSIDER_SUBMISSIONS = {
+  name: 'Testco Inc.',
+  filings: {
+    recent: {
+      form: ['4', '10-Q', '4'],
+      filingDate: ['2026-06-17', '2026-05-01', '2026-05-20'],
+      accessionNumber: ['0000000020-26-000001', '0000000020-26-000900', '0000000020-26-000002'],
+      primaryDocument: ['xslF345X06/form4.xml', 'q.htm', 'xslF345X06/form4.xml'],
+      primaryDocDescription: ['FORM 4', '10-Q', 'FORM 4'],
+    },
+  },
+};
+
+const FUND_SUBMISSIONS = {
+  name: 'Test Capital LP',
+  filings: {
+    recent: {
+      form: ['13F-HR', '4'],
+      filingDate: ['2026-05-15', '2026-05-01'],
+      accessionNumber: ['0000000021-26-000001', '0000000021-26-000900'],
+      primaryDocument: ['xslForm13F_X02/primary_doc.xml', 'x.xml'],
+      primaryDocDescription: ['13F-HR', ''],
+    },
+  },
+};
+
+const FUND_INDEX = {
+  directory: {
+    item: [
+      { name: 'primary_doc.xml', size: 5000 },
+      { name: 'infotable.xml', size: 40_000 },
+    ],
+  },
+};
+
+const FUND_COVER_XML = `<edgarSubmission><formData><coverPage>
+  <periodOfReport>03-31-2026</periodOfReport>
+  <filingManager><name>Test Capital LP</name></filingManager>
+  <reportType>13F HOLDINGS REPORT</reportType></coverPage>
+  <summaryPage><tableValueTotal>9000000</tableValueTotal></summaryPage>
+</formData></edgarSubmission>`;
+
+const FUND_TABLE_XML = `<informationTable>
+  <infoTable><nameOfIssuer>APPLE INC</nameOfIssuer><titleOfClass>COM</titleOfClass><cusip>037833100</cusip>
+    <value>6000000</value><shrsOrPrnAmt><sshPrnamt>30000</sshPrnamt><sshPrnamtType>SH</sshPrnamtType></shrsOrPrnAmt></infoTable>
+  <infoTable><nameOfIssuer>ALLY FINL INC</nameOfIssuer><titleOfClass>COM</titleOfClass><cusip>02005N100</cusip>
+    <value>3000000</value><shrsOrPrnAmt><sshPrnamt>76000</sshPrnamt><sshPrnamtType>SH</sshPrnamtType></shrsOrPrnAmt></infoTable>
+</informationTable>`;
+
+const DOC_SUBMISSIONS = {
+  name: 'Testco Inc.',
+  filings: {
+    recent: {
+      form: ['10-K'],
+      filingDate: ['2026-02-01'],
+      accessionNumber: ['0000000022-26-000001'],
+      primaryDocument: ['main10k.htm'],
+      primaryDocDescription: ['10-K'],
+    },
+  },
+};
+
+const DOC_INDEX = {
+  directory: {
+    item: [
+      { name: 'main10k.htm', size: 5000 },
+      { name: 'ex-99.pdf', size: 900 },
+      { name: '0000000022-26-000001-index.html', size: 100 },
+    ],
+  },
+};
+
+const DOC_HTML =
+  '<html><body><p>Annual report of Testco.</p><p>Our risk factors include weather.</p></body></html>';
+
+const PROFILE_SUBMISSIONS = {
+  name: 'Testco Inc.',
+  cik: '100023',
+  tickers: ['TST'],
+  exchanges: ['Nasdaq'],
+  sic: '3571',
+  sicDescription: 'Electronic Computers',
+  entityType: 'operating',
+  category: 'Large accelerated filer',
+  stateOfIncorporation: 'DE',
+  fiscalYearEnd: '0926',
+  website: 'https://testco.example',
+  phone: '(555) 555-5555',
+  formerNames: [
+    {
+      name: 'TESTCO COMPUTER INC',
+      from: '2007-01-10T05:00:00.000Z',
+      to: '2019-08-05T04:00:00.000Z',
+    },
+  ],
+  filings: { recent: {} },
+};
+
+const ITEMS_SUBMISSIONS = {
+  name: 'Testco Inc.',
+  filings: {
+    recent: {
+      form: ['8-K'],
+      filingDate: ['2026-05-01'],
+      accessionNumber: ['0000000024-26-000001'],
+      primaryDocument: ['a8k.htm'],
+      primaryDocDescription: ['8-K'],
+      items: ['2.02,9.01'],
+    },
+  },
+};
+
+describe('sec-edgar v1.2 tools', () => {
+  describe('insider_transactions', () => {
+    it('decodes Form 4 filings and summarizes open-market activity', async () => {
+      const result = await callTool(
+        server,
+        'insider_transactions',
+        { company: '100020', limit: 2 },
+        routes({
+          '/submissions/CIK0000100020.json': { json: INSIDER_SUBMISSIONS },
+          '/Archives/edgar/data/100020/000000002026000001/form4.xml': { text: FORM4_XML },
+          '/Archives/edgar/data/100020/000000002026000002/form4.xml': { text: FORM4_XML },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.count).toBe(2); // the 10-Q between the two Form 4s is skipped
+      expect(s.filings[0].owners).toEqual(['Doe Jane']);
+      expect(s.filings[0].officerTitle).toBe('CFO');
+      expect(s.filings[0].transactions[0].codeDescription).toBe('Open-market sale');
+      expect(s.summary.openMarketSales.shares).toBe(2000);
+      expect(s.summary.netShares).toBe(-2000);
+      expect(result.result.text).toContain('Open-market sale');
+    });
+
+    it('reports cleanly when there are no ownership filings', async () => {
+      const result = await callTool(
+        server,
+        'insider_transactions',
+        { company: '100025' },
+        routes({
+          '/submissions/CIK0000100025.json': {
+            json: { name: 'Testco Inc.', filings: { recent: {} } },
+          },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.count).toBe(0);
+      expect(result.result.text).toMatch(/No recent/i);
+    });
+  });
+
+  describe('get_fund_holdings', () => {
+    it('finds the info table, normalizes values, and ranks holdings', async () => {
+      const result = await callTool(
+        server,
+        'get_fund_holdings',
+        { company: '100021' },
+        routes({
+          '/submissions/CIK0000100021.json': { json: FUND_SUBMISSIONS },
+          '/Archives/edgar/data/100021/000000002126000001/index.json': { json: FUND_INDEX },
+          '/Archives/edgar/data/100021/000000002126000001/primary_doc.xml': {
+            text: FUND_COVER_XML,
+          },
+          '/Archives/edgar/data/100021/000000002126000001/infotable.xml': {
+            text: FUND_TABLE_XML,
+          },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.company).toBe('Test Capital LP');
+      expect(s.periodOfReport).toBe('2026-03-31');
+      expect(s.valueUnits).toBe('dollars');
+      expect(s.totalValue).toBe(9_000_000);
+      expect(s.totalCheckOk).toBe(true);
+      expect(s.holdings[0].issuer).toBe('APPLE INC');
+      expect(s.holdings[0].percent).toBeCloseTo(66.67, 1);
+      expect(result.result.text).toContain('APPLE INC');
+    });
+
+    it('explains 13F-NT notice filers', async () => {
+      const result = await callTool(
+        server,
+        'get_fund_holdings',
+        { company: '100026' },
+        routes({
+          '/submissions/CIK0000100026.json': {
+            json: {
+              name: 'Notice Filer LP',
+              filings: {
+                recent: {
+                  form: ['13F-NT'],
+                  filingDate: ['2026-05-15'],
+                  accessionNumber: ['0000000026-26-000001'],
+                  primaryDocument: ['primary_doc.xml'],
+                  primaryDocDescription: [''],
+                },
+              },
+            },
+          },
+        }),
+      );
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(false);
+      expect(result.error).toMatch(/13F-NT/);
+    });
+  });
+
+  describe('get_filing_document', () => {
+    const documentRoutes = routes({
+      '/submissions/CIK0000100022.json': { json: DOC_SUBMISSIONS },
+      '/Archives/edgar/data/100022/000000002226000001/index.json': { json: DOC_INDEX },
+      '/Archives/edgar/data/100022/000000002226000001/main10k.htm': { text: DOC_HTML },
+    });
+
+    it('reads the primary document as clean paginated text', async () => {
+      const result = await callTool(
+        server,
+        'get_filing_document',
+        { company: '100022', accession: '0000000022-26-000001' },
+        documentRoutes,
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.document).toBe('main10k.htm');
+      expect(s.content).toContain('Annual report of Testco.');
+      expect(s.content).not.toContain('<p>');
+      expect(s.nextOffset).toBeNull();
+      // The EDGAR wrapper index page is not listed as a document.
+      expect(s.documents.map((d) => d.name)).toEqual(['main10k.htm', 'ex-99.pdf']);
+    });
+
+    it('locates literal matches with offsets', async () => {
+      const result = await callTool(
+        server,
+        'get_filing_document',
+        { company: '100022', accession: '0000000022-26-000001', find: 'risk factors' },
+        documentRoutes,
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.matches).toHaveLength(1);
+      expect(s.matches[0].context).toContain('risk factors include weather');
+    });
+
+    it('refuses binary attachments with a helpful error', async () => {
+      const result = await callTool(
+        server,
+        'get_filing_document',
+        { company: '100022', accession: '0000000022-26-000001', document: 'ex-99.pdf' },
+        documentRoutes,
+      );
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/PDF/);
+    });
+
+    it('errors helpfully for an unknown document name', async () => {
+      const result = await callTool(
+        server,
+        'get_filing_document',
+        { company: '100022', accession: '0000000022-26-000001', document: 'nope.htm' },
+        documentRoutes,
+      );
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/Available: main10k.htm/);
+    });
+  });
+
+  describe('get_company', () => {
+    it('returns the registrant profile', async () => {
+      const result = await callTool(
+        server,
+        'get_company',
+        { company: '100023' },
+        routes({ '/submissions/CIK0000100023.json': { json: PROFILE_SUBMISSIONS } }),
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.company).toBe('Testco Inc.');
+      expect(s.sicDescription).toBe('Electronic Computers');
+      expect(s.fiscalYearEnd).toBe('09-26');
+      expect(s.formerNames).toEqual([
+        { name: 'TESTCO COMPUTER INC', from: '2007-01-10', to: '2019-08-05' },
+      ]);
+      expect(result.result.text).toContain('TST (Nasdaq)');
+    });
+  });
+
+  describe('company_filings 8-K items', () => {
+    it('decodes 8-K item codes to event labels', async () => {
+      const result = await callTool(
+        server,
+        'company_filings',
+        { company: '100024' },
+        routes({ '/submissions/CIK0000100024.json': { json: ITEMS_SUBMISSIONS } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.filings[0].items).toBe('2.02,9.01');
+      expect(result.result.text).toContain('2.02 Results of operations (earnings)');
     });
   });
 });

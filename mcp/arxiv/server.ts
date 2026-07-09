@@ -1,4 +1,5 @@
 import { defineMcpServer, type ToolContext, ToolError, z } from '@ontrove/mcp';
+import { createEgressClient, type FetchResult } from '../lib/egress.ts';
 
 /**
  * arXiv — a no-auth hosted MCP server over the public arXiv API.
@@ -17,174 +18,26 @@ const arxivHtmlUrl = (id: string): string => `https://arxiv.org/html/${id}`;
 const ar5ivHtmlUrl = (id: string): string => `https://ar5iv.labs.arxiv.org/html/${id}`;
 
 // ---------------------------------------------------------------------------
-// Shared egress: in-isolate cache + throttle + retry/backoff (feedback pt 2)
+// Egress: shared in-isolate cache + throttle + retry/backoff (mcp/lib/egress)
 // ---------------------------------------------------------------------------
 
 /**
- * A best-effort cache that lives for the life of a warm isolate (the same
- * module-scoped pattern the SDK uses for OAuth tokens). It is NOT a global,
- * durable cache — it only collapses duplicate requests handled by the same
- * instance — but arXiv metadata is highly cacheable, so it makes repeats
- * instant and sidesteps most rate-limit responses. Bounded by entry count,
- * per-entry size, and TTL.
+ * arXiv metadata is highly cacheable, so repeats are served from the
+ * in-isolate cache. arXiv asks for ~3s between requests (throttled).
  */
-const CACHE_TTL_MS = 5 * 60_000;
-const CACHE_MAX_ENTRIES = 256;
-const CACHE_MAX_BYTES = 256 * 1024;
-interface CacheEntry {
-  at: number;
-  value: FetchResult;
-}
-const responseCache = new Map<string, CacheEntry>();
+const arxiv = createEgressClient({
+  service: 'arXiv',
+  throttleMs: 3_000,
+  backoffBaseMs: 50,
+  cache: { ttlMs: 5 * 60_000, maxEntries: 256, maxEntryBytes: 256 * 1024 },
+});
 
-function cacheGet(url: string): FetchResult | undefined {
-  const hit = responseCache.get(url);
-  if (!hit) return undefined;
-  if (Date.now() - hit.at > CACHE_TTL_MS) {
-    responseCache.delete(url);
-    return undefined;
-  }
-  // Refresh recency (Map preserves insertion order → oldest is evicted first).
-  responseCache.delete(url);
-  responseCache.set(url, hit);
-  return hit.value;
-}
-
-function cacheSet(url: string, value: FetchResult): void {
-  if (value.body.length > CACHE_MAX_BYTES) return;
-  responseCache.set(url, { at: Date.now(), value });
-  if (responseCache.size > CACHE_MAX_ENTRIES) {
-    const oldest = responseCache.keys().next().value;
-    if (oldest !== undefined) responseCache.delete(oldest);
-  }
-}
-
-/**
- * arXiv asks for ~3s between requests. A per-isolate min-interval throttle
- * honors that in the hosted runtime; under the test runtime (bun), where all
- * egress is mocked and there is no real host to be polite to, it is a no-op.
- */
-const inTestRuntime = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
-const THROTTLE_MS = inTestRuntime ? 0 : 3_000;
-let nextAllowedAt = 0;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Reserve the next request slot, waiting if we are inside the min interval. */
-async function throttle(): Promise<void> {
-  if (THROTTLE_MS <= 0) return;
-  const now = Date.now();
-  const wait = Math.max(0, nextAllowedAt - now);
-  // Advance synchronously so concurrent callers get staggered, non-overlapping slots.
-  nextAllowedAt = Math.max(now, nextAllowedAt) + THROTTLE_MS;
-  if (wait > 0) await sleep(wait);
-}
-
-/** Deterministic exponential backoff (kept small so tests stay fast). */
-function backoffMs(attempt: number): number {
-  return Math.min(2_000, 50 * 2 ** (attempt - 1));
-}
-
-/** Parse a `Retry-After` header (delta-seconds or HTTP-date) to milliseconds. */
-function parseRetryAfter(header: string | null): number | undefined {
-  if (!header) return undefined;
-  const seconds = Number(header);
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
-  const when = Date.parse(header);
-  return Number.isFinite(when) ? Math.max(0, when - Date.now()) : undefined;
-}
-
-interface FetchResult {
-  status: number;
-  body: string;
-}
-
-/** A decision about an arXiv response: hand back a result, or retry after a delay. */
-type ResponseDecision = { result: FetchResult } | { retryAfterMs?: number };
-
-/**
- * Classify an arXiv response into "use this result" or "retry". Throws a typed
- * {@link ToolError} for terminal cases — a rate-limit or outage on the final
- * attempt (retryable), or an un-retryable status.
- */
-async function classifyResponse(res: Response, isLastAttempt: boolean): Promise<ResponseDecision> {
-  if (res.status === 429) {
-    const retryAfter = parseRetryAfter(res.headers.get('retry-after'));
-    if (!isLastAttempt) return { retryAfterMs: retryAfter };
-    throw new ToolError(
-      'arXiv is rate-limiting requests right now (HTTP 429). Wait a few seconds and try again.',
-      {
-        retryable: true,
-        data: retryAfter ? { retryAfterSeconds: Math.ceil(retryAfter / 1000) } : undefined,
-      },
-    );
-  }
-  if (res.status >= 500) {
-    if (!isLastAttempt) return {};
-    throw new ToolError('arXiv is temporarily unavailable (server error). Try again shortly.', {
-      retryable: true,
-    });
-  }
-  if (res.status === 400 || res.status === 404) return { result: { status: res.status, body: '' } };
-  if (!res.ok) {
-    throw new ToolError(`arXiv returned an unexpected status (${res.status}).`, {
-      retryable: false,
-    });
-  }
-  return { result: { status: res.status, body: await res.text() } };
-}
-
-/**
- * Fetch an arXiv URL through the egress proxy with caching, throttling, and
- * retry/backoff. Returns `{ status, body }` for 2xx/400/404 (callers map those
- * to tool-specific messages); throws a {@link ToolError} for rate-limits and
- * genuine outages, with `retryable` set correctly.
- */
-async function arxivFetch(
+/** Fetch an arXiv URL resiliently; see {@link createEgressClient}. */
+const arxivFetch = (
   ctx: ToolContext,
   url: string,
   opts: { accept: string; cacheable?: boolean },
-): Promise<FetchResult> {
-  const cacheable = opts.cacheable ?? true;
-  if (cacheable) {
-    const cached = cacheGet(url);
-    if (cached) {
-      ctx.log('arxiv cache hit', { url });
-      return cached;
-    }
-  }
-
-  const MAX_ATTEMPTS = 3;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    await throttle();
-    const isLast = attempt === MAX_ATTEMPTS;
-
-    let decision: ResponseDecision;
-    try {
-      const res = await ctx.fetch(url, { headers: { accept: opts.accept } });
-      decision = await classifyResponse(res, isLast);
-    } catch (err) {
-      if (err instanceof ToolError) throw err;
-      if (isLast) {
-        throw new ToolError('Could not reach arXiv (network error). Try again shortly.', {
-          retryable: true,
-        });
-      }
-      await sleep(backoffMs(attempt));
-      continue;
-    }
-
-    if ('result' in decision) {
-      if (cacheable) cacheSet(url, decision.result);
-      return decision.result;
-    }
-    await sleep(decision.retryAfterMs ?? backoffMs(attempt));
-  }
-  // Unreachable: the loop either returns or throws on the final attempt.
-  throw new ToolError('arXiv request failed.', { retryable: true });
-}
+): Promise<FetchResult> => arxiv.fetch(ctx, url, opts);
 
 // ---------------------------------------------------------------------------
 // Shared text helpers
