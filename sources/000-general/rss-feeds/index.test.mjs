@@ -16,8 +16,8 @@ function makeContext(config = {}) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor: undefined };
 }
 
-function optionsFor(config) {
-  sync(makeContext(config));
+async function optionsFor(config) {
+  await sync(makeContext(config));
   return syncFeeds.mock.calls.at(-1)[1];
 }
 
@@ -25,18 +25,20 @@ describe('rss-feeds source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 
-  it('maps each configured feed URL to a feed descriptor', () => {
-    const options = optionsFor({ feeds: ['https://a.test/feed', 'https://b.test/rss'] });
+  it('maps each configured feed URL to a feed descriptor', async () => {
+    const options = await optionsFor({ feeds: ['https://a.test/feed', 'https://b.test/rss'] });
     expect(options.feeds).toEqual([{ url: 'https://a.test/feed' }, { url: 'https://b.test/rss' }]);
     expect(options.emptyWarning).toBe('No feeds configured');
   });
 
-  it('passes no feeds when none configured', () => {
-    expect(optionsFor({}).feeds).toEqual([]);
+  it('passes no feeds when none configured', async () => {
+    const options = await optionsFor({});
+    expect(options.feeds).toEqual([]);
   });
 
-  it('builds documents with the rss id prefix', () => {
-    const document = optionsFor({ feeds: ['https://a.test/feed'] }).toDocument({
+  it('builds documents with the rss id prefix', async () => {
+    const options = await optionsFor({ feeds: ['https://a.test/feed'] });
+    const document = options.toDocument({
       title: 'Post',
       link: 'https://a.test/p',
       guid: 'https://a.test/p',

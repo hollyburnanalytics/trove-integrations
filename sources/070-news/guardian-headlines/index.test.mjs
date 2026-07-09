@@ -16,8 +16,8 @@ function makeContext(config = {}) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor: undefined };
 }
 
-function optionsFor(config) {
-  sync(makeContext(config));
+async function optionsFor(config) {
+  await sync(makeContext(config));
   return syncFeeds.mock.calls.at(-1)[1];
 }
 
@@ -25,18 +25,19 @@ describe('guardian source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 
-  it('defaults to four sections', () => {
-    expect(optionsFor({}).feeds).toHaveLength(4);
+  it('defaults to four sections', async () => {
+    const options = await optionsFor({});
+    expect(options.feeds).toHaveLength(4);
   });
 
-  it('builds the /rss section URL', () => {
-    expect(optionsFor({ sections: ['technology'] }).feeds[0].url).toBe(
-      'https://www.theguardian.com/technology/rss',
-    );
+  it('builds the /rss section URL', async () => {
+    const options = await optionsFor({ sections: ['technology'] });
+    expect(options.feeds[0].url).toBe('https://www.theguardian.com/technology/rss');
   });
 
-  it('uses category tags and strips the boilerplate "Continue reading" link', () => {
-    const document = optionsFor({ sections: ['world'] }).toDocument({
+  it('uses category tags and strips the boilerplate "Continue reading" link', async () => {
+    const options = await optionsFor({ sections: ['world'] });
+    const document = options.toDocument({
       title: 'Story',
       link: 'https://guardian.test/1',
       guid: 'https://guardian.test/1',

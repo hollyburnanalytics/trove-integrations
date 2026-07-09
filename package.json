@@ -26,15 +26,16 @@
     "typecheck:mcp": "tsc --noEmit -p mcp/tsconfig.json",
     "typecheck:sources": "tsc -p tsconfig.sources.json",
     "source": "bun bin/run-source.mjs",
-    "check": "bun run lint && bun run lint:sonar && bun run test:coverage && bun run typecheck && bun run validate",
+    "check": "bun run lint && bun run lint:sonar && bun run lint:baseline && bun run test:coverage && bun run typecheck && bun run validate",
     "validate": "bun scripts/validate-registry.mjs",
-    "lint:sonar": "eslint ."
+    "lint:sonar": "eslint .",
+    "lint:baseline": "node scripts/lint-baseline.mjs"
   },
   "dependencies": {
     "node-html-parser": "^8.0.4"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.8",
+    "@biomejs/biome": "^2.5.0",
     "@ontrove/mcp": "^0.1",
     "bun-types": "^1.3.14",
     "eslint": "^10.1.0",

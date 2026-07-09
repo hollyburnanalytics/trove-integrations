@@ -1,0 +1,5 @@
+{
+  "lint/complexity/noExcessiveCognitiveComplexity": 23,
+  "lint/style/noExcessiveLinesPerFile": 8,
+  "suppressions/biome-ignore": 3
+}

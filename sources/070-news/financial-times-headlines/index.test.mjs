@@ -16,8 +16,8 @@ function makeContext(config = {}) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor: undefined };
 }
 
-function optionsFor(config) {
-  sync(makeContext(config));
+async function optionsFor(config) {
+  await sync(makeContext(config));
   return syncFeeds.mock.calls.at(-1)[1];
 }
 
@@ -25,18 +25,19 @@ describe('financial-times source', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
 
-  it('defaults to five sections', () => {
-    expect(optionsFor({}).feeds).toHaveLength(5);
+  it('defaults to five sections', async () => {
+    const options = await optionsFor({});
+    expect(options.feeds).toHaveLength(5);
   });
 
-  it('builds the ?format=rss section URL', () => {
-    expect(optionsFor({ sections: ['technology'] }).feeds[0].url).toBe(
-      'https://www.ft.com/technology?format=rss',
-    );
+  it('builds the ?format=rss section URL', async () => {
+    const options = await optionsFor({ sections: ['technology'] });
+    expect(options.feeds[0].url).toBe('https://www.ft.com/technology?format=rss');
   });
 
-  it('builds documents with the ft id prefix and default author', () => {
-    const document = optionsFor({ sections: ['world'] }).toDocument({
+  it('builds documents with the ft id prefix and default author', async () => {
+    const options = await optionsFor({ sections: ['world'] });
+    const document = options.toDocument({
       title: 'Story',
       link: 'https://ft.test/1',
       guid: 'https://ft.test/1',

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { callTool } from '../lib/test-harness.mjs';
 import server from './server.ts';
+import { statementPeriodShape } from './tools/get-financials.ts';
+import { METRICS } from './xbrl.ts';
 
 // NOTE: the server keeps an in-isolate response cache keyed by URL that
 // persists across tests, so any two tests that need DIFFERENT bodies for the
@@ -239,6 +241,12 @@ const routes = (table) => (url) => {
   throw new Error(`unexpected url ${url}`);
 };
 
+const shapeKeys = (section) => Object.keys(statementPeriodShape.shape[section].shape).toSorted();
+const metricKeys = (statement) =>
+  METRICS.filter((m) => m.statement === statement)
+    .map((m) => m.key)
+    .toSorted();
+
 describe('sec-edgar MCP server', () => {
   it('lists the eight tools', () => {
     expect(server.tools.map((t) => t.name).toSorted()).toEqual([
@@ -251,6 +259,16 @@ describe('sec-edgar MCP server', () => {
       'insider_transactions',
       'search_filings',
     ]);
+  });
+
+  // METRICS (xbrl.ts) and the get_financials output schema are maintained by
+  // hand in two files; this pins them together so adding a metric to one
+  // without the other fails loudly instead of silently dropping the value.
+  it('keeps the statement output schema in sync with METRICS', () => {
+    expect(shapeKeys('incomeStatement')).toEqual(metricKeys('income'));
+    expect(shapeKeys('balanceSheet')).toEqual(metricKeys('balance'));
+    // freeCashFlow is derived (OCF - capex), not a METRICS entry.
+    expect(shapeKeys('cashFlow')).toEqual([...metricKeys('cashFlow'), 'freeCashFlow'].toSorted());
   });
 
   describe('get_financials', () => {

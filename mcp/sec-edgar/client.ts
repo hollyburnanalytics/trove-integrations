@@ -158,6 +158,23 @@ export function companyNotFound(query: string): ToolError {
   );
 }
 
+/** Resolve a company or throw the standard not-found error. */
+export async function requireCompany(ctx: ToolContext, query: string): Promise<Company> {
+  const resolved = await resolveCompany(ctx, query);
+  if (!resolved) throw companyNotFound(query);
+  return resolved;
+}
+
+/**
+ * Accession numbers are accepted with or without dashes; EDGAR URLs and the
+ * submissions feed use the dashed form ("0000320193-25-000079").
+ */
+export function normalizeAccession(accession: string): string {
+  return accession.includes('-')
+    ? accession
+    : `${accession.slice(0, 10)}-${accession.slice(10, 12)}-${accession.slice(12)}`;
+}
+
 // --- Formatting -------------------------------------------------------------
 
 /** Compact money rendering: 416160000000 → "$416.16B" (or "1.23B CAD"). */
