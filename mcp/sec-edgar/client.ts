@@ -135,6 +135,22 @@ export async function resolveCompany(ctx: ToolContext, query: string): Promise<C
   return byName ?? null;
 }
 
+/**
+ * Resolve an ownership filer (an individual insider or entity) to a CIK via
+ * EDGAR's filer index. Individuals are conformed as "Last First" (e.g.
+ * "Cook Timothy"), and prefix matching applies — the first match wins.
+ */
+export async function resolveOwner(ctx: ToolContext, query: string): Promise<string | null> {
+  const trimmed = query.trim();
+  if (/^\d{1,10}$/.test(trimmed)) return trimmed.padStart(10, '0');
+  const url =
+    'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany' +
+    `&company=${encodeURIComponent(trimmed)}&type=4&owner=include&count=10&output=atom`;
+  const body = await edgarDocument(ctx, url, 'The EDGAR filer index is unavailable.');
+  const cik = xmlValue(body, 'cik');
+  return cik === null ? null : cik.padStart(10, '0');
+}
+
 export function companyNotFound(query: string): ToolError {
   return new ToolError(
     `No SEC company found for "${query}" (try a ticker like "AAPL", a company name, or a CIK).`,

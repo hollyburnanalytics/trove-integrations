@@ -73,11 +73,7 @@ const fact = (over = {}) => ({
 });
 
 /** An instant (balance-sheet) fact: no `start`. */
-const instant = (over = {}) => {
-  const built = fact(over);
-  delete built.start;
-  return built;
-};
+const instant = (over = {}) => ({ ...fact(over), start: undefined });
 
 const usd = (facts) => ({ units: { USD: facts } });
 
@@ -782,7 +778,7 @@ describe('sec-edgar MCP server', () => {
       );
       expect(result.ok).toBe(true);
       expect(result.result.structured.count).toBe(0);
-      expect(result.result.text).toMatch(/No recent filings matching those filters/i);
+      expect(result.result.text).toMatch(/No filings matching those filters/i);
     });
 
     it('maps a 404 on submissions to a non-retryable TOOL_ERROR', async () => {
@@ -809,6 +805,7 @@ describe('sec-edgar MCP server', () => {
 
 const FORM4_XML = `<ownershipDocument>
   <periodOfReport>2026-06-15</periodOfReport>
+  <issuer><issuerCik>320193</issuerCik><issuerName>Apple Inc.</issuerName><issuerTradingSymbol>AAPL</issuerTradingSymbol></issuer>
   <reportingOwner>
     <reportingOwnerId><rptOwnerName>Doe Jane</rptOwnerName></reportingOwnerId>
     <reportingOwnerRelationship><isOfficer>1</isOfficer><officerTitle>CFO</officerTitle></reportingOwnerRelationship>
@@ -1128,6 +1125,192 @@ describe('sec-edgar v1.2 tools', () => {
       expect(result.ok).toBe(true);
       expect(result.result.structured.filings[0].items).toBe('2.02,9.01');
       expect(result.result.text).toContain('2.02 Results of operations (earnings)');
+    });
+  });
+});
+
+// --- Fixtures for the v1.3 features ------------------------------------------
+
+const PAGED_SUBMISSIONS = {
+  name: 'Old Timer Corp',
+  filings: {
+    recent: {
+      form: ['10-K', '8-K'],
+      filingDate: ['2025-02-01', '2025-01-15'],
+      accessionNumber: ['0000000030-25-000001', '0000000030-25-000002'],
+      primaryDocument: ['a.htm', 'b.htm'],
+      primaryDocDescription: ['10-K', ''],
+    },
+    files: [
+      {
+        name: 'CIK0000100030-submissions-001.json',
+        filingCount: 2,
+        filingFrom: '1994-01-01',
+        filingTo: '2015-12-31',
+      },
+    ],
+  },
+};
+
+const PAGED_ARCHIVE = {
+  form: ['10-K', '10-K'],
+  filingDate: ['2014-02-01', '2013-02-01'],
+  accessionNumber: ['0000000030-14-000001', '0000000030-13-000001'],
+  primaryDocument: ['c.htm', 'd.htm'],
+  primaryDocDescription: ['10-K', '10-K'],
+};
+
+const DISCOVERY_FACTS = {
+  cik: 100_031,
+  entityName: 'Testco Inc.',
+  facts: {
+    'us-gaap': {
+      Revenues: {
+        label: 'Revenues',
+        units: {
+          USD: Array.from({ length: 10 }, (_, index) => ({ end: `201${index}-12-31`, val: 1 })),
+        },
+      },
+      RevenueFromContractWithCustomerExcludingAssessedTax: {
+        label: 'Revenue from Contract with Customer',
+        units: { USD: [{ end: '2025-12-31', val: 2 }] },
+      },
+      Assets: { label: 'Assets', units: { USD: [{ end: '2025-12-31', val: 3 }] } },
+    },
+  },
+};
+
+const OWNER_ATOM = `<feed><entry><content><company-info>
+  <cik>0001214156</cik></company-info></content></entry></feed>`;
+
+const OWNER_SUBMISSIONS = {
+  name: 'Cook Timothy D',
+  filings: {
+    recent: {
+      form: ['4'],
+      filingDate: ['2026-04-14'],
+      accessionNumber: ['0000000032-26-000001'],
+      primaryDocument: ['xslF345X06/form4.xml'],
+      primaryDocDescription: ['FORM 4'],
+    },
+  },
+};
+
+describe('sec-edgar v1.3 features', () => {
+  describe('company_filings full history', () => {
+    it('reaches archived filings when the limit needs them', async () => {
+      const result = await callTool(
+        server,
+        'company_filings',
+        { company: '100030', forms: '10-K', limit: 5 },
+        routes({
+          '/submissions/CIK0000100030.json': { json: PAGED_SUBMISSIONS },
+          '/submissions/CIK0000100030-submissions-001.json': { json: PAGED_ARCHIVE },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.matched).toBe(3);
+      expect(s.historyComplete).toBe(true);
+      expect(s.filings.map((f) => f.filedDate)).toEqual(['2025-02-01', '2014-02-01', '2013-02-01']);
+    });
+
+    it('skips archives when recent filings already satisfy the limit', async () => {
+      let archiveFetched = false;
+      const result = await callTool(
+        server,
+        'company_filings',
+        { company: '100030', forms: '10-K', limit: 1 },
+        (url) => {
+          if (url.includes('-submissions-001')) archiveFetched = true;
+          if (url.includes('/submissions/CIK0000100030.json')) return { json: PAGED_SUBMISSIONS };
+          if (url.includes('-submissions-001')) return { json: PAGED_ARCHIVE };
+          throw new Error(`unexpected url ${url}`);
+        },
+      );
+      expect(result.ok).toBe(true);
+      expect(archiveFetched).toBe(false);
+      expect(result.result.structured.historyComplete).toBe(false);
+      expect(result.result.text).toContain('of 1+ matching');
+    });
+
+    it('skips archives whose date range is outside the filters', async () => {
+      const result = await callTool(
+        server,
+        'company_filings',
+        { company: '100030', forms: '10-K', startDate: '2020-01-01', limit: 10 },
+        routes({ '/submissions/CIK0000100030.json': { json: PAGED_SUBMISSIONS } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.matched).toBe(1);
+      expect(result.result.structured.historyComplete).toBe(true);
+    });
+  });
+
+  describe('get_xbrl_concept discovery', () => {
+    it('lists matching tags ranked by fact count', async () => {
+      const result = await callTool(
+        server,
+        'get_xbrl_concept',
+        { company: '100031', search: 'revenue' },
+        routes({ '/api/xbrl/companyfacts/CIK0000100031.json': { json: DISCOVERY_FACTS } }),
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.concepts.map((c) => c.tag)).toEqual([
+        'Revenues',
+        'RevenueFromContractWithCustomerExcludingAssessedTax',
+      ]);
+      expect(s.concepts[0].factCount).toBe(10);
+      expect(s.concepts[1].latestEnd).toBe('2025-12-31');
+      expect(result.result.text).toContain('Call again with concept=');
+    });
+
+    it('requires either concept or search', async () => {
+      const result = await callTool(server, 'get_xbrl_concept', { company: 'AAPL' });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/concept.*search/i);
+    });
+  });
+
+  describe('insider_transactions by owner', () => {
+    const ownerRoutes = routes({
+      'action=getcompany': { text: OWNER_ATOM },
+      '/submissions/CIK0001214156.json': { json: OWNER_SUBMISSIONS },
+      '/Archives/edgar/data/1214156/000000003226000001/form4.xml': { text: FORM4_XML },
+    });
+
+    it('resolves a person and lists their filings with issuers', async () => {
+      const result = await callTool(
+        server,
+        'insider_transactions',
+        { owner: 'Cook Timothy' },
+        ownerRoutes,
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.subject).toBe('Cook Timothy D');
+      expect(s.cik).toBe('0001214156');
+      expect(s.filings[0].issuer).toBe('Apple Inc.');
+      expect(s.filings[0].issuerTicker).toBe('AAPL');
+      expect(result.result.text).toContain('Apple Inc. (AAPL)');
+    });
+
+    it('filters an owner feed to one issuer when company is also given', async () => {
+      const result = await callTool(
+        server,
+        'insider_transactions',
+        { owner: '1214156', company: '999999' },
+        ownerRoutes,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.count).toBe(0); // issuer 320193 !== 999999
+    });
+
+    it('requires company or owner', async () => {
+      const result = await callTool(server, 'insider_transactions', {});
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/company.*owner/i);
     });
   });
 });

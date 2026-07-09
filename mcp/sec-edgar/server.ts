@@ -9,6 +9,7 @@ import {
   filingDirUrl,
   fmtMoney,
   resolveCompany,
+  resolveOwner,
   submissionsUrl,
 } from './client.ts';
 import {
@@ -71,21 +72,16 @@ interface RecentFiling {
   reportDate: string | null;
 }
 
-/** Fetch + flatten the parallel-array `filings.recent` block for a company. */
-async function recentFilings(
-  ctx: ToolContext,
-  cik: string,
-): Promise<{ name: string; filings: RecentFiling[] }> {
-  const body = await edgarJson(
-    ctx,
-    submissionsUrl(cik),
-    `SEC EDGAR has no filings record for CIK ${cik}.`,
-  );
-  const name = typeof body.name === 'string' ? body.name : '';
-  const recent = ((body.filings ?? {}) as Record<string, unknown>).recent as
-    | Record<string, unknown>
-    | undefined;
-  const column = (key: string): unknown[] => (Array.isArray(recent?.[key]) ? recent[key] : []);
+/** A pointer to one of the older-history submission archives. */
+interface ArchiveRef {
+  name: string;
+  from: string;
+  to: string;
+}
+
+/** Flatten one parallel-array filing block (`filings.recent` or an archive file). */
+function flattenFilingBlock(block: Record<string, unknown> | undefined): RecentFiling[] {
+  const column = (key: string): unknown[] => (Array.isArray(block?.[key]) ? block[key] : []);
   const str = (row: unknown): string | null => (typeof row === 'string' && row ? row : null);
   const forms = column('form');
   const dates = column('filingDate');
@@ -94,7 +90,7 @@ async function recentFilings(
   const descriptions = column('primaryDocDescription');
   const items = column('items');
   const reportDates = column('reportDate');
-  const filings = forms.map((form, i) => ({
+  return forms.map((form, i) => ({
     form: typeof form === 'string' ? form : '?',
     filedDate: str(dates[i]) ?? '?',
     accession: str(accessions[i]) ?? '',
@@ -103,7 +99,65 @@ async function recentFilings(
     items: str(items[i]),
     reportDate: str(reportDates[i]),
   }));
-  return { name, filings };
+}
+
+/** Fetch a company's submissions: recent filings + pointers to older archives. */
+async function recentFilings(
+  ctx: ToolContext,
+  cik: string,
+): Promise<{ name: string; filings: RecentFiling[]; archives: ArchiveRef[] }> {
+  const body = await edgarJson(
+    ctx,
+    submissionsUrl(cik),
+    `SEC EDGAR has no filings record for CIK ${cik}.`,
+  );
+  const name = typeof body.name === 'string' ? body.name : '';
+  const filingsBlock = (body.filings ?? {}) as Record<string, unknown>;
+  const filings = flattenFilingBlock(filingsBlock.recent as Record<string, unknown> | undefined);
+  const archives: ArchiveRef[] = [];
+  for (const raw of Array.isArray(filingsBlock.files) ? filingsBlock.files : []) {
+    const file = raw as { name?: unknown; filingFrom?: unknown; filingTo?: unknown };
+    if (typeof file.name !== 'string') continue;
+    archives.push({
+      name: file.name,
+      from: typeof file.filingFrom === 'string' ? file.filingFrom : '0000-00-00',
+      to: typeof file.filingTo === 'string' ? file.filingTo : '9999-99-99',
+    });
+  }
+  return { name, filings, archives };
+}
+
+/**
+ * Extend a filing pool with older-history archives until the caller's filter
+ * is satisfied or the relevant archives are exhausted. The submissions
+ * `recent` block covers only the newest ~1,000 filings; long filers keep the
+ * rest in dated archive files. At most 4 archives are fetched per call.
+ */
+async function withArchivedFilings(
+  ctx: ToolContext,
+  base: RecentFiling[],
+  archives: ArchiveRef[],
+  matches: (filing: RecentFiling) => boolean,
+  limit: number,
+  startDate?: string,
+  endDate?: string,
+): Promise<{ pool: RecentFiling[]; historyComplete: boolean }> {
+  const relevant = archives
+    .filter((a) => (!startDate || a.to >= startDate) && (!endDate || a.from <= endDate))
+    .sort((a, b) => (a.to < b.to ? 1 : a.to > b.to ? -1 : 0));
+  let pool = base;
+  let used = 0;
+  for (const archive of relevant) {
+    if (pool.filter(matches).length >= limit || used >= 4) break;
+    used += 1;
+    const block = await edgarJson(
+      ctx,
+      `https://data.sec.gov/submissions/${archive.name}`,
+      'An SEC EDGAR history archive is unavailable; try again shortly.',
+    );
+    pool = [...pool, ...flattenFilingBlock(block)];
+  }
+  return { pool, historyComplete: used >= relevant.length };
 }
 
 /** Resolve a company or throw the standard not-found error. */
@@ -268,6 +322,92 @@ function shapePeriod(period: StatementPeriod): z.infer<typeof statementPeriodSha
     } as z.infer<typeof statementPeriodShape>['cashFlow'],
     identityOk: period.identityOk,
     identityDelta: period.identityDelta,
+  };
+}
+
+/**
+ * Discovery mode for get_xbrl_concept: list the tags a company actually
+ * reports (from companyfacts) whose name matches a substring, ranked by how
+ * much data each carries.
+ */
+async function discoverConcepts(
+  ctx: ToolContext,
+  resolved: Company,
+  taxonomy: string,
+  search: string,
+  limit: number,
+): Promise<{ text: string; structured: Record<string, unknown> }> {
+  const body = await edgarJson(
+    ctx,
+    companyFactsUrl(resolved.cik),
+    `SEC EDGAR has no XBRL company facts for CIK ${resolved.cik}.`,
+  );
+  const name = typeof body.entityName === 'string' ? body.entityName : resolved.name;
+  const taxFacts = ((body.facts ?? {}) as Record<string, unknown>)[taxonomy] as
+    | Record<string, { label?: unknown; units?: Record<string, unknown> }>
+    | undefined;
+  const needle = search.toLowerCase();
+  const found: {
+    tag: string;
+    label: string | null;
+    units: string[];
+    factCount: number;
+    latestEnd: string | null;
+  }[] = [];
+  for (const [tag, entry] of Object.entries(taxFacts ?? {})) {
+    if (!tag.toLowerCase().includes(needle)) continue;
+    const units = Object.keys(entry.units ?? {});
+    let factCount = 0;
+    let latestEnd: string | null = null;
+    for (const unit of units) {
+      const facts = entry.units?.[unit];
+      if (!Array.isArray(facts)) continue;
+      factCount += facts.length;
+      for (const fact of facts) {
+        const end = (fact as { end?: unknown }).end;
+        if (typeof end === 'string' && (latestEnd === null || end > latestEnd)) latestEnd = end;
+      }
+    }
+    if (factCount === 0) continue;
+    found.push({
+      tag,
+      label: typeof entry.label === 'string' ? entry.label : null,
+      units,
+      factCount,
+      latestEnd,
+    });
+  }
+  found.sort((a, b) => b.factCount - a.factCount);
+  const concepts = found.slice(0, limit);
+
+  const lines = concepts
+    .map(
+      (c) =>
+        `  ${c.tag} — ${c.factCount} fact(s), ${c.units.join('/')}` +
+        `${c.latestEnd ? `, latest ${c.latestEnd}` : ''}${c.label ? `\n    ${c.label}` : ''}`,
+    )
+    .join('\n');
+  const text =
+    concepts.length > 0
+      ? `${name} reports ${found.length} ${taxonomy} tag(s) matching "${search}"` +
+        `${found.length > concepts.length ? ` (showing top ${concepts.length})` : ''}:\n${lines}\n` +
+        'Call again with concept=<tag> for the full value history.'
+      : `${name} reports no ${taxonomy} tags matching "${search}". Try a shorter fragment.`;
+  return {
+    text,
+    structured: {
+      company: name,
+      cik: resolved.cik,
+      concept: '',
+      taxonomy,
+      label: null,
+      description: null,
+      unit: '',
+      total: found.length,
+      count: concepts.length,
+      facts: [],
+      concepts,
+    },
   };
 }
 
@@ -477,16 +617,26 @@ export default defineMcpServer({
         '"NetIncomeLoss", "Revenues", "Assets", "PaymentsToAcquirePropertyPlantAndEquipment"), ' +
         "across all years and quarters — ideal for one metric's full history or a metric " +
         "get_financials doesn't cover. Duplicate reports of the same period are deduped " +
-        'to the latest filing (amendments win). Use get_financials first when you need ' +
+        "to the latest filing (amendments win). Don't know the exact tag? Pass `search` " +
+        'instead of `concept` (e.g. search "Revenue") to discover which tags the company ' +
+        'actually reports, with fact counts. Use get_financials first when you need ' +
         'whole statements.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
         company: z.string().min(1).describe('Ticker ("AAPL", "BRK.B"), company name, or CIK.'),
         concept: z
           .string()
-          .min(1)
           .regex(/^[A-Za-z][A-Za-z0-9]*$/)
+          .optional()
           .describe('Exact XBRL tag in CamelCase, e.g. "NetIncomeLoss".'),
+        search: z
+          .string()
+          .min(2)
+          .optional()
+          .describe(
+            'Discovery mode: list the tags this company reports whose name contains this ' +
+              'text (e.g. "Revenue", "Lease"), instead of fetching one concept.',
+          ),
         taxonomy: z
           .enum(['us-gaap', 'ifrs-full', 'dei', 'srt'])
           .default('us-gaap')
@@ -501,7 +651,7 @@ export default defineMcpServer({
           .min(1)
           .max(100)
           .default(20)
-          .describe('How many most-recent facts to return (1–100).'),
+          .describe('How many most-recent facts (or discovered tags) to return (1–100).'),
       }),
       output: z.object({
         company: z.string(),
@@ -514,17 +664,36 @@ export default defineMcpServer({
         total: z.number(),
         count: z.number(),
         facts: z.array(conceptFactShape),
+        concepts: z.array(
+          z.object({
+            tag: z.string(),
+            label: z.string().nullable(),
+            units: z.array(z.string()),
+            factCount: z.number(),
+            latestEnd: z.string().nullable(),
+          }),
+        ),
       }),
       async handler(args, ctx) {
-        const { company, concept, taxonomy, period, limit } = args;
-        ctx.log('get_xbrl_concept', { company, concept, taxonomy, period });
+        const { company, concept, search, taxonomy, period, limit } = args;
+        ctx.log('get_xbrl_concept', { company, concept, search, taxonomy, period });
+        if (!concept && !search) {
+          throw new ToolError(
+            'Pass `concept` (an exact XBRL tag) or `search` (to discover available tags).',
+            { retryable: false },
+          );
+        }
         const resolved = await requireCompany(ctx, company);
+        if (!concept) {
+          return discoverConcepts(ctx, resolved, taxonomy, search as string, limit);
+        }
         const body = await edgarJson(
           ctx,
           companyConceptUrl(resolved.cik, taxonomy, concept),
           `No "${taxonomy}:${concept}" facts for CIK ${resolved.cik}. XBRL tags are ` +
-            'exact and case-sensitive (e.g. "NetIncomeLoss", not "netIncomeLoss"); ' +
-            'the company may also simply not report this concept.',
+            'exact and case-sensitive (e.g. "NetIncomeLoss", not "netIncomeLoss"). To see ' +
+            `which tags this company reports, call again with search="${concept.slice(0, 20)}" ` +
+            'instead of concept.',
         );
         const name = typeof body.entityName === 'string' ? body.entityName : resolved.name;
         const units = (body.units ?? {}) as Record<string, unknown>;
@@ -576,6 +745,7 @@ export default defineMcpServer({
             total: deduped.length,
             count: facts.length,
             facts,
+            concepts: [],
           },
         };
       },
@@ -711,15 +881,29 @@ export default defineMcpServer({
       title: 'EDGAR: Insider transactions (Forms 3/4/5)',
       description:
         'Insider (officer/director/10% owner) trading activity decoded from SEC ownership ' +
-        'filings: who traded, their role, transaction codes decoded to plain English ' +
-        '(open-market purchase/sale, option exercise, grant, tax withholding, gift, …), ' +
-        'shares, prices, and post-transaction holdings, plus an open-market buy/sell ' +
-        'summary with net shares. Direction comes from the acquired/disposed code, and ' +
-        'only true open-market trades (codes P/S) count toward the buy/sell summary — ' +
-        'grants and option exercises never masquerade as conviction trades.',
+        'filings — by COMPANY ("who is trading Apple stock?") or by PERSON via `owner` ' +
+        '("what has Tim Cook traded, across all companies?"; individuals are indexed as ' +
+        '"Last First", e.g. "Cook Timothy"). Returns who traded, their role, transaction ' +
+        'codes decoded to plain English (open-market purchase/sale, option exercise, ' +
+        'grant, tax withholding, gift, …), shares, prices, and post-transaction holdings, ' +
+        'plus an open-market buy/sell summary with net shares. Direction comes from the ' +
+        'acquired/disposed code, and only true open-market trades (codes P/S) count ' +
+        'toward the buy/sell summary — grants and option exercises never masquerade as ' +
+        'conviction trades.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
-        company: z.string().min(1).describe('Ticker, company name, or CIK.'),
+        company: z
+          .string()
+          .optional()
+          .describe('The issuer: ticker, company name, or CIK. Omit when using `owner`.'),
+        owner: z
+          .string()
+          .optional()
+          .describe(
+            'The insider as "Last First" (e.g. "Cook Timothy") or their CIK — returns ' +
+              'their filings across all companies. Combine with `company` to filter to ' +
+              'one issuer.',
+          ),
         forms: z
           .string()
           .default('4,4/A')
@@ -733,7 +917,7 @@ export default defineMcpServer({
           .describe('How many most-recent ownership filings to decode (1–25).'),
       }),
       output: z.object({
-        company: z.string(),
+        subject: z.string(),
         cik: z.string(),
         count: z.number(),
         filings: z.array(
@@ -741,6 +925,8 @@ export default defineMcpServer({
             form: z.string(),
             filedDate: z.string(),
             accession: z.string(),
+            issuer: z.string().nullable(),
+            issuerTicker: z.string().nullable(),
             owners: z.array(z.string()),
             officerTitle: z.string().nullable(),
             isDirector: z.boolean(),
@@ -766,34 +952,62 @@ export default defineMcpServer({
         }),
       }),
       async handler(args, ctx) {
-        const { company, forms, limit } = args;
-        ctx.log('insider_transactions', { company, forms, limit });
-        const resolved = await requireCompany(ctx, company);
+        const { company, owner, forms, limit } = args;
+        ctx.log('insider_transactions', { company, owner, forms, limit });
+        if (!company && !owner) {
+          throw new ToolError(
+            'Pass `company` (an issuer) and/or `owner` (an insider, as "Last First" or CIK).',
+            { retryable: false },
+          );
+        }
+
+        // The subject whose filing feed we walk: the owner when given (their
+        // Form 4s index under their own CIK too), else the issuer.
+        let subjectCik: string;
+        let issuerFilter: string | null = null;
+        if (owner) {
+          const ownerCik = await resolveOwner(ctx, owner);
+          if (!ownerCik) {
+            throw new ToolError(
+              `No SEC filer found for owner "${owner}". Individuals are indexed as ` +
+                '"Last First" (e.g. "Cook Timothy"); a CIK also works.',
+              { retryable: false },
+            );
+          }
+          subjectCik = ownerCik;
+          if (company) issuerFilter = (await requireCompany(ctx, company)).cik;
+        } else {
+          subjectCik = (await requireCompany(ctx, company as string)).cik;
+        }
+
         const wanted = new Set(
           forms
             .split(',')
             .map((f: string) => f.trim().toUpperCase())
             .filter(Boolean),
         );
-        const { name, filings: all } = await recentFilings(ctx, resolved.cik);
+        const { name, filings: all } = await recentFilings(ctx, subjectCik);
+        const subject = name || owner || (company as string);
         const targets = all.filter((f) => wanted.has(f.form.toUpperCase())).slice(0, limit);
-        if (targets.length === 0) {
+
+        const parsed: { filing: RecentFiling; ownership: OwnershipFiling }[] = [];
+        for (const filing of targets) {
+          const ownership = await fetchOwnership(ctx, subjectCik, filing);
+          if (ownership && (issuerFilter === null || ownership.issuerCik === issuerFilter)) {
+            parsed.push({ filing, ownership });
+          }
+        }
+        if (parsed.length === 0) {
           return {
-            text: `No recent ${forms} filings for ${name || company} (CIK ${resolved.cik}).`,
+            text: `No recent ${forms} filings for ${subject} (CIK ${subjectCik})${issuerFilter ? ' matching that company' : ''}.`,
             structured: {
-              company: name || company,
-              cik: resolved.cik,
+              subject,
+              cik: subjectCik,
               count: 0,
               filings: [],
               summary: summarizeOpenMarket([]),
             },
           };
-        }
-
-        const parsed: { filing: RecentFiling; ownership: OwnershipFiling }[] = [];
-        for (const filing of targets) {
-          const ownership = await fetchOwnership(ctx, resolved.cik, filing);
-          if (ownership) parsed.push({ filing, ownership });
         }
         const summary = summarizeOpenMarket(parsed.map((p) => p.ownership));
 
@@ -801,6 +1015,8 @@ export default defineMcpServer({
           form: filing.form,
           filedDate: filing.filedDate,
           accession: filing.accession,
+          issuer: ownership.issuer,
+          issuerTicker: ownership.issuerTicker,
           owners: ownership.owners,
           officerTitle: ownership.officerTitle,
           isDirector: ownership.isDirector,
@@ -814,13 +1030,16 @@ export default defineMcpServer({
         const lines = filingRows
           .map((row) => {
             const role = row.officerTitle ?? (row.isDirector ? 'Director' : null);
-            const who = `${row.owners.join(' / ') || '?'}${role ? ` (${role})` : ''}`;
+            // By-owner reads list the issuer per filing; by-company reads the insider.
+            const head = owner
+              ? `${row.issuer ?? '?'}${row.issuerTicker ? ` (${row.issuerTicker})` : ''}`
+              : `${row.owners.join(' / ') || '?'}${role ? ` (${role})` : ''}`;
             const txns =
               row.transactions.length > 0
                 ? row.transactions.map((t) => `    ${renderTransaction(t)}`).join('\n')
                 : '    (no transactions — holdings-only report)';
             const plan = row.planned10b5One ? ' [10b5-1 plan]' : '';
-            return `  ${row.filedDate} ${row.form} — ${who}${plan}\n${txns}`;
+            return `  ${row.filedDate} ${row.form} — ${head}${plan}\n${txns}`;
           })
           .join('\n');
         const net =
@@ -835,10 +1054,10 @@ export default defineMcpServer({
           `${summary.openMarketSales.transactions} sale(s) ` +
           `(${fmtMoney(summary.openMarketSales.value, 'USD')}) — ${net}.`;
         return {
-          text: `${name || company} (CIK ${resolved.cik}) — ${filingRows.length} ownership filing(s):\n${lines}\n${summaryLine}`,
+          text: `${subject} (CIK ${subjectCik}) — ${filingRows.length} ownership filing(s):\n${lines}\n${summaryLine}`,
           structured: {
-            company: name || company,
-            cik: resolved.cik,
+            subject,
+            cik: subjectCik,
             count: filingRows.length,
             filings: filingRows,
             summary,
@@ -1204,12 +1423,14 @@ export default defineMcpServer({
       name: 'company_filings',
       title: 'EDGAR: Company filings',
       description:
-        'List a company\'s recent SEC filings by ticker (e.g. "AAPL"), company name, or ' +
-        'CIK, filterable by form type(s) (e.g. "10-K" or "10-K,10-Q,8-K") and filing-date ' +
-        'range. Returns form type, filing date, accession number, primary document, and — ' +
-        'for 8-Ks — the material-event item codes decoded to plain English (2.02 earnings, ' +
-        '5.02 officer changes, …). Filter by forms to skip the Form 4/144 noise that ' +
-        "dominates most companies' feeds. Read any filing with get_filing_document.",
+        'List a company\'s SEC filings by ticker (e.g. "AAPL"), company name, or CIK, ' +
+        'filterable by form type(s) (e.g. "10-K" or "10-K,10-Q,8-K") and filing-date ' +
+        'range — full history back to 1994 (older archives are fetched on demand when ' +
+        'your filters need them). Returns form type, filing date, accession number, ' +
+        'primary document, and — for 8-Ks — the material-event item codes decoded to ' +
+        'plain English (2.02 earnings, 5.02 officer changes, …). Filter by forms to skip ' +
+        "the Form 4/144 noise that dominates most companies' feeds. Read any filing " +
+        'with get_filing_document.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
         company: z.string().min(1).describe('Ticker, company name, or CIK, e.g. "AAPL".'),
@@ -1233,6 +1454,7 @@ export default defineMcpServer({
         company: z.string(),
         cik: z.string(),
         matched: z.number(),
+        historyComplete: z.boolean(),
         count: z.number(),
         filings: z.array(
           z.object({
@@ -1249,7 +1471,7 @@ export default defineMcpServer({
         const { company, forms, startDate, endDate, limit } = args;
         ctx.log('company_filings', { company, forms, limit });
         const resolved = await requireCompany(ctx, company);
-        const { name, filings: all } = await recentFilings(ctx, resolved.cik);
+        const { name, filings: all, archives } = await recentFilings(ctx, resolved.cik);
         const displayName = name || resolved.name;
         const wanted = forms
           ? new Set(
@@ -1259,12 +1481,22 @@ export default defineMcpServer({
                 .filter(Boolean),
             )
           : null;
-        const matching = all.filter(
-          (f) =>
-            (!wanted || wanted.has(f.form.toUpperCase())) &&
-            (!startDate || f.filedDate >= startDate) &&
-            (!endDate || f.filedDate <= endDate),
+        const isMatch = (f: RecentFiling): boolean =>
+          (!wanted || wanted.has(f.form.toUpperCase())) &&
+          (!startDate || f.filedDate >= startDate) &&
+          (!endDate || f.filedDate <= endDate);
+        const { pool, historyComplete } = await withArchivedFilings(
+          ctx,
+          all,
+          archives,
+          isMatch,
+          limit,
+          startDate,
+          endDate,
         );
+        const matching = pool
+          .filter(isMatch)
+          .sort((a, b) => (a.filedDate < b.filedDate ? 1 : a.filedDate > b.filedDate ? -1 : 0));
         const filings = matching.slice(0, limit).map((f) => ({
           form: f.form,
           filedDate: f.filedDate,
@@ -1276,11 +1508,12 @@ export default defineMcpServer({
         if (filings.length === 0) {
           const filterNote = wanted || startDate || endDate ? ' matching those filters' : '';
           return {
-            text: `No recent filings${filterNote} for ${displayName} (CIK ${resolved.cik}).`,
+            text: `No filings${filterNote} for ${displayName} (CIK ${resolved.cik}).`,
             structured: {
               company: displayName,
               cik: resolved.cik,
               matched: 0,
+              historyComplete,
               count: 0,
               filings: [],
             },
@@ -1292,14 +1525,16 @@ export default defineMcpServer({
             return `  ${f.filedDate} ${f.form}${detail ? ` — ${detail}` : ''}`;
           })
           .join('\n');
+        const matchedLabel = historyComplete ? `${matching.length}` : `${matching.length}+`;
         return {
           text:
-            `${displayName} (CIK ${resolved.cik}) — ${filings.length} of ${matching.length} ` +
+            `${displayName} (CIK ${resolved.cik}) — ${filings.length} of ${matchedLabel} ` +
             `matching filing(s):\n${lines}`,
           structured: {
             company: displayName,
             cik: resolved.cik,
             matched: matching.length,
+            historyComplete,
             count: filings.length,
             filings,
           },
