@@ -1,4 +1,5 @@
 import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { PAPER_FIELDS, paperSchema, type S2Paper, s2Fetch } from './client.ts';
 
 /**
  * Semantic Scholar — a no-auth hosted MCP server over the public Semantic
@@ -12,87 +13,6 @@ import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
  * Note: the Graph API returns ONLY the fields named in the `fields` query
  * param, so every request below sets it explicitly.
  */
-
-const BASE_URL = 'https://api.semanticscholar.org/graph/v1';
-
-/**
- * Fields requested for every paper lookup and search result. The API omits any
- * field not listed here, so this is the complete shape we rely on downstream.
- */
-const PAPER_FIELDS =
-  'paperId,externalIds,title,abstract,year,publicationDate,authors,citationCount,influentialCitationCount,openAccessPdf,venue,publicationTypes,url';
-
-/** Raw paper shape returned by the Semantic Scholar Graph API. */
-interface S2Paper {
-  paperId: string;
-  externalIds: Record<string, string | undefined> | null;
-  title: string | null;
-  abstract: string | null;
-  year: number | null;
-  publicationDate: string | null;
-  authors: Array<{ authorId: string | null; name: string }> | null;
-  citationCount: number | null;
-  influentialCitationCount: number | null;
-  openAccessPdf: { url: string } | null;
-  venue: string | null;
-  publicationTypes: string[] | null;
-  url: string | null;
-}
-
-/** Normalized paper shape this server returns in `structured`. */
-const paperSchema = z.object({
-  paperId: z.string(),
-  title: z.string(),
-  abstract: z.string().nullable(),
-  authors: z.array(z.string()),
-  year: z.number().nullable(),
-  venue: z.string().nullable(),
-  citationCount: z.number(),
-  influentialCitationCount: z.number(),
-  doi: z.string().nullable(),
-  arxivId: z.string().nullable(),
-  openAccessPdfUrl: z.string().nullable(),
-  url: z.string(),
-});
-
-/**
- * Fetch JSON from the Semantic Scholar Graph API, mapping its status codes onto
- * `ToolError`s. Returns `null` on 404 so callers can render "not found".
- */
-async function s2Fetch<T>(
-  ctx: {
-    fetch: (url: string | URL, init?: RequestInit) => Promise<Response>;
-    log: (msg: string, data?: unknown) => void;
-  },
-  path: string,
-  params: URLSearchParams,
-): Promise<T | null> {
-  const url = `${BASE_URL}${path}?${params.toString()}`;
-  ctx.log('semantic-scholar fetch', { path });
-
-  const res = await ctx.fetch(url, { headers: { accept: 'application/json' } });
-
-  if (res.status === 404) {
-    return null;
-  }
-  if (res.status === 429) {
-    throw new ToolError('Semantic Scholar rate limit hit. Try again in a moment.', {
-      retryable: true,
-    });
-  }
-  if (res.status === 400) {
-    throw new ToolError('Semantic Scholar rejected the query parameters.', {
-      retryable: false,
-    });
-  }
-  if (!res.ok) {
-    throw new ToolError('Semantic Scholar API is temporarily unavailable.', {
-      retryable: true,
-    });
-  }
-
-  return (await res.json()) as T;
-}
 
 /** Truncate an abstract for the human-readable `text` summary. */
 function truncate(text: string, max = 280): string {

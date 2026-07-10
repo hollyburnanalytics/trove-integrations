@@ -111,20 +111,20 @@ describe('semantic-scholar MCP server', () => {
       const result = await callTool(
         server,
         'search_papers',
-        { query: 'transformers', limit: 5 },
+        { query: 'x429', limit: 5 },
         { status: 429 },
       );
       expect(result.ok).toBe(false);
       expect(result.code).toBe('TOOL_ERROR');
       expect(result.retryable).toBe(true);
-      expect(result.error).toMatch(/rate limit/i);
+      expect(result.error).toMatch(/rate.?limit/i);
     });
 
     it('maps a 400 to a non-retryable tool error', async () => {
       const result = await callTool(
         server,
         'search_papers',
-        { query: 'transformers', limit: 5 },
+        { query: 'x400', limit: 5 },
         { status: 400 },
       );
       expect(result.ok).toBe(false);
@@ -136,7 +136,7 @@ describe('semantic-scholar MCP server', () => {
       const result = await callTool(
         server,
         'search_papers',
-        { query: 'transformers', limit: 5 },
+        { query: 'x500', limit: 5 },
         { status: 500 },
       );
       expect(result.ok).toBe(false);
@@ -287,7 +287,7 @@ describe('semantic-scholar MCP server', () => {
       const result = await callTool(
         server,
         'get_paper_references',
-        { id: 'abc123', limit: 5 },
+        { id: 'err500', limit: 5 },
         { status: 500 },
       );
       expect(result.ok).toBe(false);
