@@ -330,6 +330,8 @@ describe('arxiv MCP server', () => {
       expect(document.title).toBe('Saved Paper');
       expect(document.url).toBe('https://arxiv.org/abs/2510.30001');
       expect(document.text).toContain('arXiv:2510.30001');
+      // Grouped into a feed by the paper's primary arXiv category.
+      expect(document.feed).toEqual({ key: 'cs.LG', name: 'cs.LG', label: 'Category' });
     });
 
     it('indexes full text when includeFullText is set', async () => {

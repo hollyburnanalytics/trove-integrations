@@ -53,8 +53,20 @@ export const savePaper: ToolDefinition = {
     const text = bodyText ? `${header}\n\n${bodyText}` : header;
     ctx.log('save_paper ingesting', { id: paper.id, includedFullText });
 
+    // Group saved papers by their primary arXiv category (cs.CL, math.AG, …) —
+    // the paper's own subject stream, a far more useful sub-folder than its
+    // multi-author byline. Omitted when the paper declares no category.
+    const primaryCategory = paper.categories[0];
     const result = await ctx.trove.ingest([
-      { title: paper.title, text, url: paper.arxivUrl, author: paper.authors.join(', ') },
+      {
+        title: paper.title,
+        text,
+        url: paper.arxivUrl,
+        author: paper.authors.join(', '),
+        ...(primaryCategory && {
+          feed: { key: primaryCategory, name: primaryCategory, label: 'Category' },
+        }),
+      },
     ]);
 
     return {
