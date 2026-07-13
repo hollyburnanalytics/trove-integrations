@@ -339,6 +339,51 @@ describe('arxiv MCP server', () => {
       expect(document.externalId).toBe('2510.30001');
     });
 
+    it('captures the PDF when the paper has no rendered HTML', async () => {
+      // arXiv only renders HTML for papers from late 2023 on. An older paper is
+      // PDF-only — and must still be captured, not left as a bare description.
+      let ingested;
+      await callTool(
+        server,
+        'save_paper',
+        { id: '2510.30004' },
+        paperResponder({
+          atom: feed([entry({ id: '2510.30004' })]),
+          onIngest: (b) => {
+            ingested = b;
+          },
+        }),
+        ['trove:ingest'],
+      );
+      const [document] = ingested.variables.documents;
+      expect(document.fileUrl).toContain('arxiv.org/pdf/2510.30004');
+      expect(document.mimeType).toBe('application/pdf');
+    });
+
+    it('captures the rendered HTML when arXiv has one', async () => {
+      let ingested;
+      const result = await callTool(
+        server,
+        'save_paper',
+        { id: '2510.30005' },
+        paperResponder({
+          atom: feed([entry({ id: '2510.30005' })]),
+          arxivHtml: { text: htmlDocument() },
+          onIngest: (b) => {
+            ingested = b;
+          },
+        }),
+        ['trove:ingest'],
+      );
+      const [document] = ingested.variables.documents;
+      expect(document.fileUrl).toBe('https://arxiv.org/html/2510.30005');
+      expect(document.mimeType).toBe('text/html');
+      expect(result.result.structured.captured).toBe('html');
+      // The abstract we already parsed is still the indexed body — Trove retains
+      // the page for viewing but does not re-derive worse text from it.
+      expect(document.text).toContain('arXiv:2510.30005');
+    });
+
     it('indexes full text when includeFullText is set', async () => {
       let ingested;
       const result = await callTool(
