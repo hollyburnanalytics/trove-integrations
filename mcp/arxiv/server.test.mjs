@@ -378,8 +378,17 @@ describe('arxiv MCP server', () => {
           if (url.includes('export.arxiv.org'))
             return { text: feed([entry({ id: '2510.30006' })]) };
           if (url.includes('//arxiv.org/html/')) return { status: 404 };
-          // ar5iv: a redirect, NOT a rendering.
-          if (url.includes('ar5iv')) return { status: 307 };
+          // ar5iv followed its own 307 to the abstract page: a 200, but NOT a
+          // rendering. This is exactly the shape that fooled us — the status
+          // alone says "found", and only the FINAL URL says otherwise.
+          if (url.includes('ar5iv')) {
+            const redirected = new Response('', { status: 200 });
+            Object.defineProperty(redirected, 'redirected', { value: true });
+            Object.defineProperty(redirected, 'url', {
+              value: 'https://arxiv.org/abs/2510.30006',
+            });
+            return redirected;
+          }
           return { status: 404 };
         },
         ['trove:ingest'],

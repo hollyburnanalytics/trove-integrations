@@ -41,13 +41,15 @@ export interface PaperHtml {
 export async function findPaperHtmlUrl(ctx: ToolContext, id: string): Promise<string | null> {
   for (const url of [arxivHtmlUrl(id), ar5ivHtmlUrl(id)]) {
     try {
-      const res = await ctx.fetch(url, { method: 'HEAD', redirect: 'manual' });
-      // Only a plain 200 means "this renderer has the paper".
-      if (res.status !== 200) continue;
-      // Belt and braces: if the egress path followed the redirect regardless, the
-      // final URL will have left /html/ — which is the same "no" in a different
-      // shape.
-      if (res.url && !res.url.includes('/html/')) continue;
+      const res = await ctx.fetch(url, { method: 'HEAD' });
+      if (!res.ok) continue;
+      // The redirect is the point. `redirect: 'manual'` would be the direct way
+      // to see it, but that init does not survive the hosted egress path — it
+      // fails the whole call. The response says the same thing on its own terms:
+      // a followed redirect leaves `redirected` set, and the final URL is no
+      // longer the /html/ one we asked for. Either is a "no".
+      if (res.redirected) continue;
+      if (!new URL(res.url || url).pathname.includes('/html/')) continue;
       return url;
     } catch {
       // A probe is best-effort: a failure here must fall through to the PDF,
