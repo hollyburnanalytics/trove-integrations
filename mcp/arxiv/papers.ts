@@ -8,14 +8,37 @@ import { type ArxivPaper, parseFeed } from './parse.ts';
  * paper's Atom metadata and its LaTeXML full-text HTML.
  */
 
-/** Fetch a paper's LaTeXML HTML, trying arXiv's native view then ar5iv. */
-export async function fetchPaperHtml(ctx: ToolContext, id: string): Promise<string | null> {
+/** A paper's LaTeXML HTML, and the URL it actually came from. */
+export interface PaperHtml {
+  /** The URL that served it — arXiv's native view, or ar5iv's rendering. */
+  url: string;
+  html: string;
+}
+
+/**
+ * Fetch a paper's LaTeXML HTML, trying arXiv's native view then ar5iv, and
+ * report WHICH URL served it.
+ *
+ * The URL matters as much as the body: it is what `save_paper` hands to Trove to
+ * capture, so the page can be viewed later alongside its extracted text. Not
+ * every paper has one — arXiv only renders HTML for papers from late 2023 on,
+ * and older ones (Attention Is All You Need, say) are PDF-only. A null here is
+ * the caller's cue to capture the PDF instead.
+ */
+export async function resolvePaperHtml(ctx: ToolContext, id: string): Promise<PaperHtml | null> {
   for (const url of [arxivHtmlUrl(id), ar5ivHtmlUrl(id)]) {
     const { status, body } = await arxivFetch(ctx, url, { accept: 'text/html' });
-    // A real LaTeXML page contains `ltx_` classes; a stub/redirect won't.
-    if (status === 200 && body.includes('ltx_')) return body;
+    // A real LaTeXML page contains `ltx_` classes; a stub/redirect won't. arXiv
+    // answers 200 with a "no HTML available" page for papers it hasn't rendered,
+    // so the status alone would happily accept a paper that has none.
+    if (status === 200 && body.includes('ltx_')) return { url, html: body };
   }
   return null;
+}
+
+/** Fetch a paper's LaTeXML HTML body. See {@link resolvePaperHtml} for the URL too. */
+export async function fetchPaperHtml(ctx: ToolContext, id: string): Promise<string | null> {
+  return (await resolvePaperHtml(ctx, id))?.html ?? null;
 }
 
 // ---------------------------------------------------------------------------
