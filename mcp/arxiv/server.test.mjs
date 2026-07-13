@@ -335,6 +335,8 @@ describe('arxiv MCP server', () => {
       // Dated by the paper's own submission date, NOT the moment it was saved —
       // otherwise every paper in the library looks like it came out today.
       expect(document.date).toBe('2025-10-29T12:00:00Z');
+      // The dedup key — saving the same paper twice must not make two documents.
+      expect(document.externalId).toBe('2510.30001');
     });
 
     it('indexes full text when includeFullText is set', async () => {

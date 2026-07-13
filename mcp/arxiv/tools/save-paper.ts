@@ -66,6 +66,9 @@ export const savePaper: ToolDefinition = {
         // The paper's own submission date. Without it a 2017 paper would be
         // dated by the moment it was saved, and rank as though it were new.
         date: paper.published,
+        // The arXiv id — the dedup key. Saving the same paper twice resolves to
+        // the document already there instead of making a second copy of it.
+        externalId: paper.id,
         ...(primaryCategory && {
           feed: { key: primaryCategory, name: primaryCategory, label: 'Category' },
         }),
