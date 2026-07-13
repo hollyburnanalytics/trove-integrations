@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, type ToolDefinition, ToolError, z } from '@ontrove/mcp';
 import { fetchPaper, fetchPaperHtml, findPaperHtmlUrl } from '../papers.ts';
 import { parseHtmlContent } from '../parse.ts';
 
@@ -77,7 +77,7 @@ export const savePaper: ToolDefinition = {
     // the paper's own subject stream, a far more useful sub-folder than its
     // multi-author byline. Omitted when the paper declares no category.
     const primaryCategory = paper.categories[0];
-    const result = await ctx.trove.ingest([
+    const result = await ingestOrExplain(ctx, [
       {
         title: paper.title,
         text,
@@ -117,3 +117,30 @@ export const savePaper: ToolDefinition = {
     };
   },
 };
+
+/**
+ * Ingest, and surface the reason when it fails.
+ *
+ * The SDK collapses any uncaught throw into a bare "tool failed", which is what
+ * an ingest error looked like from the outside — the tool broke and told nobody
+ * anything, and the only way to learn more was to guess and redeploy. A save that
+ * cannot happen should say why it could not happen.
+ */
+async function ingestOrExplain(
+  ctx: ToolContext,
+  docs: Parameters<NonNullable<ToolContext['trove']>['ingest']>[0],
+): Promise<{ ingested: number }> {
+  const trove = ctx.trove;
+  if (!trove) {
+    throw new ToolError('Saving to your knowledge base is not enabled for this connection.', {
+      retryable: false,
+    });
+  }
+  try {
+    return await trove.ingest(docs);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    ctx.log('save_paper ingest failed', { reason });
+    throw new ToolError(`Trove refused the save: ${reason}`, { retryable: true });
+  }
+}
