@@ -1,5 +1,5 @@
 import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
-import { fetchPaper, resolvePaperHtml } from '../papers.ts';
+import { fetchPaper, fetchPaperHtml, findPaperHtmlUrl } from '../papers.ts';
 import { parseHtmlContent } from '../parse.ts';
 
 /** `save_paper` — ingest an arXiv paper into the Trove knowledge base. */
@@ -44,22 +44,30 @@ export const savePaper: ToolDefinition = {
       `arXiv:${paper.id} · ${paper.categories.join(', ')} · submitted ${paper.published.slice(0, 10)}\n` +
       `Authors: ${paper.authors.join(', ')}\n\nAbstract\n${paper.summary}`;
 
-    // Resolve the rendered HTML once: it is BOTH the artifact we capture and the
-    // source of the full body text. arXiv only renders HTML for papers from late
-    // 2023 on, so an older paper legitimately has none — capture its PDF instead,
-    // which always exists. Either way the paper itself is retained, not just a
-    // description of it.
-    const paperHtml = await resolvePaperHtml(ctx, id);
-    const capture = paperHtml
-      ? { url: paperHtml.url, mimeType: 'text/html', kind: 'html' as const }
+    // LOCATE the rendered HTML (a HEAD — no body). Trove downloads the artifact
+    // itself, server-side, so all we owe it is a URL. Pulling the 200-300KB page
+    // in here just to prove it exists is what made every save a body transfer
+    // against an upstream that rate-limits datacenter IPs — and it duly started
+    // timing saves out the moment it hit production.
+    //
+    // Not every paper has HTML (arXiv has back-rendered many, but not all, and
+    // ar5iv covers more). The PDF always exists, so that is the fallback: either
+    // way the paper ITSELF is retained, not just a description of it.
+    const htmlUrl = await findPaperHtmlUrl(ctx, id);
+    const capture = htmlUrl
+      ? { url: htmlUrl, mimeType: 'text/html', kind: 'html' as const }
       : { url: paper.pdfUrl, mimeType: 'application/pdf', kind: 'pdf' as const };
 
+    // Only NOW is the body worth downloading — the caller asked to index it.
     let includedFullText = false;
     let bodyText = '';
-    if (includeFullText && paperHtml) {
-      const content = parseHtmlContent(paperHtml.html);
-      bodyText = content.sections.map((s) => `## ${s.title}\n${s.text}`).join('\n\n');
-      includedFullText = bodyText.length > 0;
+    if (includeFullText) {
+      const html = await fetchPaperHtml(ctx, id);
+      if (html) {
+        const content = parseHtmlContent(html);
+        bodyText = content.sections.map((s) => `## ${s.title}\n${s.text}`).join('\n\n');
+        includedFullText = bodyText.length > 0;
+      }
     }
 
     const text = bodyText ? `${header}\n\n${bodyText}` : header;
