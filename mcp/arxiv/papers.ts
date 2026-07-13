@@ -16,21 +16,45 @@ export interface PaperHtml {
 }
 
 /**
- * Fetch a paper's LaTeXML HTML, trying arXiv's native view then ar5iv, and
- * report WHICH URL served it.
+ * Find the URL of a paper's rendered HTML — WITHOUT downloading it.
  *
- * The URL matters as much as the body: it is what `save_paper` hands to Trove to
- * capture, so the page can be viewed later alongside its extracted text. Not
- * every paper has one — arXiv only renders HTML for papers from late 2023 on,
- * and older ones (Attention Is All You Need, say) are PDF-only. A null here is
- * the caller's cue to capture the PDF instead.
+ * `save_paper` needs the URL, not the bytes: Trove fetches the artifact itself,
+ * server-side. Downloading a 200–300KB page here just to learn it exists put a
+ * body transfer on the hot path of every save, against an upstream that
+ * rate-limits and tarpits requests from datacenter IPs — which is exactly how
+ * this shipped and immediately started timing out saves in production.
+ *
+ * A HEAD answers the only question we have. arXiv returns 200 when it has
+ * rendered a paper and a clean 404 when it hasn't, and ar5iv (which has rendered
+ * plenty that arXiv never did) answers the same way. No body, no parse, no
+ * `ltx_` sniffing.
+ *
+ * @returns The HTML URL, or null when neither renderer has one — the caller's
+ *   cue to capture the PDF instead, which always exists.
+ */
+export async function findPaperHtmlUrl(ctx: ToolContext, id: string): Promise<string | null> {
+  for (const url of [arxivHtmlUrl(id), ar5ivHtmlUrl(id)]) {
+    try {
+      const res = await ctx.fetch(url, { method: 'HEAD' });
+      if (res.ok) return url;
+    } catch {
+      // A probe is best-effort: a failure here must fall through to the PDF,
+      // never sink the save.
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetch a paper's LaTeXML HTML, trying arXiv's native view then ar5iv, and
+ * report WHICH URL served it. Downloads the body — only call it when the body is
+ * actually wanted (`includeFullText`). To merely locate the HTML, use
+ * {@link findPaperHtmlUrl}.
  */
 export async function resolvePaperHtml(ctx: ToolContext, id: string): Promise<PaperHtml | null> {
   for (const url of [arxivHtmlUrl(id), ar5ivHtmlUrl(id)]) {
     const { status, body } = await arxivFetch(ctx, url, { accept: 'text/html' });
-    // A real LaTeXML page contains `ltx_` classes; a stub/redirect won't. arXiv
-    // answers 200 with a "no HTML available" page for papers it hasn't rendered,
-    // so the status alone would happily accept a paper that has none.
+    // A real LaTeXML page contains `ltx_` classes; a stub/redirect won't.
     if (status === 200 && body.includes('ltx_')) return { url, html: body };
   }
   return null;
