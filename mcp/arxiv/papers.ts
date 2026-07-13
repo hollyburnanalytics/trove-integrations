@@ -21,13 +21,19 @@ export interface PaperHtml {
  * `save_paper` needs the URL, not the bytes: Trove fetches the artifact itself,
  * server-side. Downloading a 200–300KB page here just to learn it exists put a
  * body transfer on the hot path of every save, against an upstream that
- * rate-limits and tarpits requests from datacenter IPs — which is exactly how
- * this shipped and immediately started timing out saves in production.
+ * rate-limits and tarpits datacenter IPs, and duly started timing saves out.
  *
- * A HEAD answers the only question we have. arXiv returns 200 when it has
- * rendered a paper and a clean 404 when it hasn't, and ar5iv (which has rendered
- * plenty that arXiv never did) answers the same way. No body, no parse, no
- * `ltx_` sniffing.
+ * A HEAD answers the only question we have — but ONLY if it is not allowed to
+ * follow a redirect:
+ *
+ *     HEAD arxiv.org/html/{id}   200 → rendered      404 → not rendered
+ *     HEAD ar5iv/html/{id}       200 → rendered      307 → arxiv.org/abs/{id}
+ *
+ * ar5iv answers **307 to the abstract page** for every paper it has not
+ * rendered. A redirect-following probe takes the 200 at the end of that hop and
+ * reports "HTML found" — and we then captured arXiv's ABSTRACT LANDING PAGE and
+ * indexed "Submission history" and "Bibliographic and Citation Tools" as if they
+ * were the physics. A redirect IS the "no HTML" answer; it must not be followed.
  *
  * @returns The HTML URL, or null when neither renderer has one — the caller's
  *   cue to capture the PDF instead, which always exists.
@@ -35,8 +41,14 @@ export interface PaperHtml {
 export async function findPaperHtmlUrl(ctx: ToolContext, id: string): Promise<string | null> {
   for (const url of [arxivHtmlUrl(id), ar5ivHtmlUrl(id)]) {
     try {
-      const res = await ctx.fetch(url, { method: 'HEAD' });
-      if (res.ok) return url;
+      const res = await ctx.fetch(url, { method: 'HEAD', redirect: 'manual' });
+      // Only a plain 200 means "this renderer has the paper".
+      if (res.status !== 200) continue;
+      // Belt and braces: if the egress path followed the redirect regardless, the
+      // final URL will have left /html/ — which is the same "no" in a different
+      // shape.
+      if (res.url && !res.url.includes('/html/')) continue;
+      return url;
     } catch {
       // A probe is best-effort: a failure here must fall through to the PDF,
       // never sink the save.

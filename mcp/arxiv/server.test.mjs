@@ -360,6 +360,37 @@ describe('arxiv MCP server', () => {
       expect(document.mimeType).toBe('application/pdf');
     });
 
+    it("does NOT mistake ar5iv's redirect-to-abstract for a rendered paper", async () => {
+      // ar5iv answers 307 → arxiv.org/abs/{id} for every paper it has not
+      // rendered. A redirect-following probe takes the 200 at the end of that hop
+      // and captures the ABSTRACT LANDING PAGE — we shipped that, and indexed
+      // "Submission history" and "arXivLabs" as if they were the physics.
+      let ingested;
+      const result = await callTool(
+        server,
+        'save_paper',
+        { id: '2510.30006' },
+        (url, init) => {
+          if (url.includes('/internal/trove')) {
+            ingested = JSON.parse(init.body);
+            return { json: { data: { ingested: 1 } } };
+          }
+          if (url.includes('export.arxiv.org'))
+            return { text: feed([entry({ id: '2510.30006' })]) };
+          if (url.includes('//arxiv.org/html/')) return { status: 404 };
+          // ar5iv: a redirect, NOT a rendering.
+          if (url.includes('ar5iv')) return { status: 307 };
+          return { status: 404 };
+        },
+        ['trove:ingest'],
+      );
+
+      const [document] = ingested.variables.documents;
+      // Falls back to the PDF, which is the honest answer.
+      expect(document.mimeType).toBe('application/pdf');
+      expect(result.result.structured.captured).toBe('pdf');
+    });
+
     it('captures the rendered HTML when arXiv has one', async () => {
       let ingested;
       const result = await callTool(
