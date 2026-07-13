@@ -63,6 +63,9 @@ export const savePaper: ToolDefinition = {
         text,
         url: paper.arxivUrl,
         author: paper.authors.join(', '),
+        // The paper's own submission date. Without it a 2017 paper would be
+        // dated by the moment it was saved, and rank as though it were new.
+        date: paper.published,
         ...(primaryCategory && {
           feed: { key: primaryCategory, name: primaryCategory, label: 'Category' },
         }),

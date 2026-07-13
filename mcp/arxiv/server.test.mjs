@@ -332,6 +332,9 @@ describe('arxiv MCP server', () => {
       expect(document.text).toContain('arXiv:2510.30001');
       // Grouped into a feed by the paper's primary arXiv category.
       expect(document.feed).toEqual({ key: 'cs.LG', name: 'cs.LG', label: 'Category' });
+      // Dated by the paper's own submission date, NOT the moment it was saved —
+      // otherwise every paper in the library looks like it came out today.
+      expect(document.date).toBe('2025-10-29T12:00:00Z');
     });
 
     it('indexes full text when includeFullText is set', async () => {
