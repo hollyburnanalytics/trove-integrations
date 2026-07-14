@@ -61,11 +61,31 @@ export interface SearchInput {
   advanced?: string;
 }
 
+/**
+ * arXiv's own query grammar, as it appears in a `query` that was meant to be one:
+ * a field prefix (`ti:`, `abs:`, `au:`, `cat:`, `all:`, …) or a boolean operator.
+ */
+const ARXIV_GRAMMAR = /(^|\s|\()(ti|abs|au|cat|all|co|jr|rn|id):|\s(AND|OR|ANDNOT)\s/;
+
 /** Compose an arXiv `search_query` from the structured params (or a raw expression). */
 export function buildSearchQuery(input: SearchInput): string {
   // Power users can pass arXiv's native grammar (ti:, abs:, AND/OR/ANDNOT).
   // Spaces become `+` so operators like " AND " read as the literal `+AND+`.
   if (input.advanced?.trim()) return input.advanced.trim().replace(/\s+/g, '+');
+
+  // A `query` that is ALREADY arXiv grammar is treated as one.
+  //
+  // `query` wraps its input in `all:` and percent-encodes it, so a caller who
+  // reasonably types `ti:Kafka` — the syntax arXiv itself documents — sends
+  // `all:ti%3AKafka`, and arXiv answers 400. The tool then said only "arXiv
+  // rejected the search query", which is true, unhelpful, and blames the wrong
+  // party: the caller wrote a perfectly good arXiv query and we mangled it.
+  //
+  // Two people fell into this on the same afternoon, which makes it the tool's
+  // fault rather than theirs. Recognise the grammar and do what they meant.
+  if (input.query && ARXIV_GRAMMAR.test(input.query)) {
+    return input.query.trim().replace(/\s+/g, '+');
+  }
 
   const enc = (v: string): string => encodeURIComponent(v);
   const parts: string[] = [];

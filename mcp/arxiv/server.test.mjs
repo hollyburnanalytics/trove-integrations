@@ -155,6 +155,37 @@ describe('arxiv MCP server', () => {
       expect(result.error).toMatch(/could not parse the date/i);
     });
 
+    it('treats a `query` that is ALREADY arXiv grammar as arXiv grammar', async () => {
+      // `query` wraps its input in `all:` and percent-encodes it — so `ti:Kafka`,
+      // the syntax arXiv itself documents, went out as `all:ti%3AKafka` and came
+      // back 400. The tool then said only "arXiv rejected the search query": true,
+      // unhelpful, and blaming the caller for a query they had written correctly.
+      // Two people fell into this on the same afternoon, which makes it ours.
+      let requested = '';
+      await callTool(
+        server,
+        'search_papers',
+        { query: 'ti:Kafka OR abs:"Apache Kafka"' },
+        (url) => {
+          requested = url;
+          return { text: feed([entry()]) };
+        },
+      );
+      expect(requested).toContain('search_query=ti:Kafka+OR+abs:"Apache+Kafka"');
+      expect(requested).not.toContain('all:ti%3A');
+    });
+
+    it('still treats ordinary words as ordinary words', async () => {
+      // The heuristic must not steal a plain search that merely contains a colon
+      // or the word "and".
+      let requested = '';
+      await callTool(server, 'search_papers', { query: 'attention and transformers' }, (url) => {
+        requested = url;
+        return { text: feed([entry()]) };
+      });
+      expect(requested).toContain('search_query=all:attention%20and%20transformers');
+    });
+
     it('passes a raw advanced expression through, overriding the fields', async () => {
       let requested = '';
       await callTool(
