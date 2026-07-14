@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-06-29T14:48:17.513Z",
+  "updated_at": "2026-07-14T21:56:35.407Z",
   "source_count": 24,
   "categories": [
     "000-general",
@@ -17,20 +17,21 @@
       "name": "Apple Podcasts",
       "description": "Transcripts of new episodes from the podcasts you follow in the Apple Podcasts app",
       "icon": "🎙️",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": "Hollyburn Analytics Inc.",
       "category": "000-general",
       "schedule": "every 6 hours",
       "status": "implemented",
-      "auth": {},
-      "needs_browser": true,
+      "needs_browser": false,
       "live": false,
       "path": "sources/000-general/apple-podcasts",
       "has_code": true,
       "kind": "scheduled-sync",
       "transport": "local",
       "watermark": "date",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "client",
+      "config": {}
     },
     {
       "id": "arxiv-papers",
@@ -42,12 +43,6 @@
       "category": "500-science",
       "schedule": "every 6 hours",
       "status": "implemented",
-      "auth": {
-        "queries": {
-          "label": "Search Queries",
-          "type": "text[]"
-        }
-      },
       "needs_browser": false,
       "live": false,
       "path": "sources/500-science/arxiv-papers",
@@ -55,7 +50,14 @@
       "kind": "scheduled-sync",
       "transport": "api",
       "watermark": "date",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "client",
+      "config": {
+        "queries": {
+          "label": "Search Queries",
+          "type": "text[]"
+        }
+      }
     },
     {
       "id": "avc",
@@ -71,11 +73,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/650-business/avc",
-      "has_code": true
+      "has_code": true,
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "bbc-news-headlines",
@@ -87,7 +90,6 @@
       "category": "070-news",
       "schedule": "every 2 hours",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "config": {
@@ -108,7 +110,8 @@
       "kind": "scheduled-sync",
       "transport": "feed",
       "watermark": "date",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "cloud"
     },
     {
       "id": "benedict-evans",
@@ -124,11 +127,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/600-technology/benedict-evans",
-      "has_code": true
+      "has_code": true,
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "benn-stancil",
@@ -144,11 +148,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/600-technology/benn-stancil",
-      "has_code": true
+      "has_code": true,
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "bits-about-money",
@@ -164,11 +169,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/650-business/bits-about-money",
-      "has_code": true
+      "has_code": true,
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "daring-fireball",
@@ -180,7 +186,6 @@
       "category": "600-technology",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/600-technology/daring-fireball",
@@ -188,7 +193,9 @@
       "kind": "scheduled-sync",
       "transport": "feed",
       "watermark": "date",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "financial-times-headlines",
@@ -200,7 +207,6 @@
       "category": "070-news",
       "schedule": "every 2 hours",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "config": {
@@ -219,9 +225,10 @@
       "path": "sources/070-news/financial-times-headlines",
       "has_code": true,
       "kind": "scheduled-sync",
-      "transport": "api",
+      "transport": "feed",
       "watermark": "date",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "cloud"
     },
     {
       "id": "guardian-headlines",
@@ -233,15 +240,27 @@
       "category": "070-news",
       "schedule": "every 2 hours",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/070-news/guardian-headlines",
       "has_code": true,
       "kind": "scheduled-sync",
-      "transport": "api",
+      "transport": "feed",
       "watermark": "date",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "cloud",
+      "config": {
+        "sections": {
+          "label": "Sections to fetch",
+          "type": "array",
+          "default": [
+            "uk",
+            "world",
+            "technology",
+            "business"
+          ]
+        }
+      }
     },
     {
       "id": "hacker-news",
@@ -253,7 +272,6 @@
       "category": "070-news",
       "schedule": "every 1 hour",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/070-news/hacker-news",
@@ -261,7 +279,9 @@
       "kind": "scheduled-sync",
       "transport": "api",
       "watermark": "none",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "client",
+      "config": {}
     },
     {
       "id": "lennys-newsletter",
@@ -277,11 +297,12 @@
       "documentSemantics": "append",
       "schedule": "weekly",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/650-business/lennys-newsletter",
-      "has_code": true
+      "has_code": true,
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "marginal-revolution",
@@ -297,11 +318,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/330-economics/marginal-revolution",
-      "has_code": true
+      "has_code": true,
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "not-boring",
@@ -317,11 +339,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/650-business/not-boring",
-      "has_code": true
+      "has_code": true,
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "nytimes-headlines",
@@ -333,15 +356,24 @@
       "category": "070-news",
       "schedule": "every 2 hours",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/070-news/nytimes-headlines",
       "has_code": true,
       "kind": "scheduled-sync",
-      "transport": "api",
+      "transport": "feed",
       "watermark": "date",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "cloud",
+      "config": {
+        "sections": {
+          "label": "Sections to fetch",
+          "type": "array",
+          "default": [
+            "HomePage"
+          ]
+        }
+      }
     },
     {
       "id": "openstax",
@@ -353,7 +385,6 @@
       "category": "000-general",
       "schedule": "monthly",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/000-general/openstax",
@@ -361,7 +392,9 @@
       "kind": "scheduled-sync",
       "transport": "api",
       "watermark": "idSet",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "client",
+      "config": {}
     },
     {
       "id": "our-world-in-data",
@@ -377,11 +410,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/300-social-sciences/our-world-in-data",
-      "has_code": true
+      "has_code": true,
+      "location": "client",
+      "config": {}
     },
     {
       "id": "quanta-magazine",
@@ -397,11 +431,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/500-science/quanta-magazine",
-      "has_code": true
+      "has_code": true,
+      "location": "client",
+      "config": {}
     },
     {
       "id": "rss-feeds",
@@ -413,12 +448,6 @@
       "category": "000-general",
       "schedule": "every 2 hours",
       "status": "implemented",
-      "auth": {
-        "feeds": {
-          "label": "Feed URLs",
-          "type": "url[]"
-        }
-      },
       "needs_browser": false,
       "live": false,
       "path": "sources/000-general/rss-feeds",
@@ -427,7 +456,15 @@
       "transport": "feed",
       "watermark": "date",
       "documentSemantics": "append",
-      "available": false
+      "available": false,
+      "location": "cloud",
+      "config": {
+        "feeds": {
+          "label": "Feed URLs",
+          "type": "url[]"
+        }
+      },
+      "fanOut": "feeds"
     },
     {
       "id": "sec-filings",
@@ -439,7 +476,6 @@
       "category": "650-business",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "config": {
@@ -455,7 +491,8 @@
       "transport": "api",
       "watermark": "date",
       "documentSemantics": "append",
-      "available": false
+      "available": false,
+      "location": "client"
     },
     {
       "id": "simon-willison",
@@ -467,7 +504,6 @@
       "category": "600-technology",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/600-technology/simon-willison",
@@ -475,7 +511,9 @@
       "kind": "scheduled-sync",
       "transport": "feed",
       "watermark": "date",
-      "documentSemantics": "append"
+      "documentSemantics": "append",
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "stratechery",
@@ -491,11 +529,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/650-business/stratechery",
-      "has_code": true
+      "has_code": true,
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "the-conversation",
@@ -511,11 +550,12 @@
       "documentSemantics": "append",
       "schedule": "daily",
       "status": "implemented",
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/070-news/the-conversation",
-      "has_code": true
+      "has_code": true,
+      "location": "cloud",
+      "config": {}
     },
     {
       "id": "x-bookmarks",
@@ -532,11 +572,12 @@
       "schedule": "every 6 hours",
       "status": "implemented",
       "available": false,
-      "auth": {},
       "needs_browser": false,
       "live": false,
       "path": "sources/000-general/x-bookmarks",
-      "has_code": true
+      "has_code": true,
+      "location": "client",
+      "config": {}
     }
   ]
 }

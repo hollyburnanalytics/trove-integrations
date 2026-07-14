@@ -10,10 +10,11 @@
   "transport": "api",
   "watermark": "idSet",
   "documentSemantics": "append",
+  "location": "client",
   "schedule": "every 6 hours",
   "status": "implemented",
   "available": false,
-  "auth": {},
+  "config": {},
   "needs_browser": false,
   "live": false
 }

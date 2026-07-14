@@ -13,7 +13,7 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { VALID_SCHEDULES, validateSourceTypeFields } from '../sources/lib/constants.mjs';
+import { VALID_SCHEDULES, validateManifest } from '../sources/lib/constants.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(here, '..');
@@ -70,8 +70,8 @@ describe('source contract', () => {
       }
     });
 
-    it('type-system fields are valid', () => {
-      expect(validateSourceTypeFields(manifest, { implemented })).toEqual([]);
+    it('manifest invariants (type system, location, fanOut) are valid', () => {
+      expect(validateManifest(manifest, { implemented })).toEqual([]);
     });
 
     it('schedule (when present) is one of the allowed values', () => {

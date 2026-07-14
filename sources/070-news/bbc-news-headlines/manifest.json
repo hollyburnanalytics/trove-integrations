@@ -10,9 +10,9 @@
   "transport": "feed",
   "watermark": "date",
   "documentSemantics": "append",
+  "location": "cloud",
   "schedule": "every 2 hours",
   "status": "implemented",
-  "auth": {},
   "needs_browser": false,
   "live": false,
   "config": {

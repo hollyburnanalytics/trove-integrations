@@ -10,9 +10,10 @@
   "transport": "local",
   "watermark": "date",
   "documentSemantics": "append",
+  "location": "client",
   "schedule": "every 6 hours",
   "status": "implemented",
-  "auth": {},
+  "config": {},
   "needs_browser": false,
   "live": false
 }
