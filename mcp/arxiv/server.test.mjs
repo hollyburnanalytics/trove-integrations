@@ -59,12 +59,15 @@ function htmlDocument() {
 }
 
 /** Responder that serves the metadata feed and (optionally) HTML full text. */
-function paperResponder({ atom, arxivHtml, ar5ivHtml, onIngest } = {}) {
+function paperResponder({ atom, arxivHtml, ar5ivHtml, onIngest, onFetch } = {}) {
   return (url, init) => {
     if (url.includes('/internal/trove')) {
       onIngest?.(JSON.parse(init.body));
       return { json: { data: { ingested: 1 } } };
     }
+    // Every request that actually leaves for arXiv. A save is supposed to make
+    // as few of these as possible — ideally none.
+    onFetch?.(url);
     if (url.includes('export.arxiv.org/api/query')) return { text: atom ?? feed([entry()]) };
     if (url.includes('//arxiv.org/html/')) return arxivHtml ?? { status: 404 };
     if (url.includes('ar5iv')) return ar5ivHtml ?? { status: 404 };
@@ -339,89 +342,82 @@ describe('arxiv MCP server', () => {
       expect(document.externalId).toBe('2510.30001');
     });
 
-    it('captures the PDF when the paper has no rendered HTML', async () => {
-      // arXiv only renders HTML for papers from late 2023 on. An older paper is
-      // PDF-only — and must still be captured, not left as a bare description.
+    it('sends the HTML url with the PDF as the server-side fallback — and probes NOTHING', async () => {
+      // The save used to make three arXiv requests: the metadata, then two HEAD
+      // probes to find out whether the paper had rendered HTML. The platform
+      // cancels a tool call at about eight seconds, and each of those requests sits
+      // behind a three-second politeness throttle — so when arXiv slowed under a
+      // burst, one of them could spend the entire window and the caller was told
+      // "tool timed out or crashed".
+      //
+      // "Does this paper have HTML?" is a question the SERVER can answer, in a
+      // Workflow nobody is waiting on. We hand it both URLs and let it find out.
       let ingested;
-      await callTool(
-        server,
-        'save_paper',
-        { id: '2510.30004' },
-        paperResponder({
-          atom: feed([entry({ id: '2510.30004' })]),
-          onIngest: (b) => {
-            ingested = b;
-          },
-        }),
-        ['trove:ingest'],
-      );
-      const [document] = ingested.variables.documents;
-      expect(document.fileUrl).toContain('arxiv.org/pdf/2510.30004');
-      expect(document.mimeType).toBe('application/pdf');
-    });
-
-    it("does NOT mistake ar5iv's redirect-to-abstract for a rendered paper", async () => {
-      // ar5iv answers 307 → arxiv.org/abs/{id} for every paper it has not
-      // rendered. A redirect-following probe takes the 200 at the end of that hop
-      // and captures the ABSTRACT LANDING PAGE — we shipped that, and indexed
-      // "Submission history" and "arXivLabs" as if they were the physics.
-      let ingested;
-      const result = await callTool(
-        server,
-        'save_paper',
-        { id: '2510.30006' },
-        (url, init) => {
-          if (url.includes('/internal/trove')) {
-            ingested = JSON.parse(init.body);
-            return { json: { data: { ingested: 1 } } };
-          }
-          if (url.includes('export.arxiv.org'))
-            return { text: feed([entry({ id: '2510.30006' })]) };
-          if (url.includes('//arxiv.org/html/')) return { status: 404 };
-          // ar5iv followed its own 307 to the abstract page: a 200, but NOT a
-          // rendering. This is exactly the shape that fooled us — the status
-          // alone says "found", and only the FINAL URL says otherwise.
-          if (url.includes('ar5iv')) {
-            const redirected = new Response('', { status: 200 });
-            Object.defineProperty(redirected, 'redirected', { value: true });
-            Object.defineProperty(redirected, 'url', {
-              value: 'https://arxiv.org/abs/2510.30006',
-            });
-            return redirected;
-          }
-          return { status: 404 };
-        },
-        ['trove:ingest'],
-      );
-
-      const [document] = ingested.variables.documents;
-      // Falls back to the PDF, which is the honest answer.
-      expect(document.mimeType).toBe('application/pdf');
-      expect(result.result.structured.captured).toBe('pdf');
-    });
-
-    it('captures the rendered HTML when arXiv has one', async () => {
-      let ingested;
+      const calls = [];
       const result = await callTool(
         server,
         'save_paper',
         { id: '2510.30005' },
         paperResponder({
           atom: feed([entry({ id: '2510.30005' })]),
-          arxivHtml: { text: htmlDocument() },
+          onFetch: (url) => calls.push(String(url)),
           onIngest: (b) => {
             ingested = b;
           },
         }),
         ['trove:ingest'],
       );
+
       const [document] = ingested.variables.documents;
       expect(document.fileUrl).toBe('https://arxiv.org/html/2510.30005');
       expect(document.mimeType).toBe('text/html');
-      expect(result.result.structured.captured).toBe('html');
-      // The abstract we already parsed is still the indexed body — Trove retains
-      // the page for viewing but does not re-derive worse text from it.
-      expect(document.text).toContain('arXiv:2510.30005');
+      // The fallback the server takes when the paper has no rendered HTML. Every
+      // arXiv paper has a PDF, so a save can always capture the paper itself.
+      expect(document.metadata.fallbackFileUrl).toContain('/pdf/');
+      expect(document.metadata.fallbackMimeType).toBe('application/pdf');
+      expect(result.result.structured.captured).toBe('html-or-pdf');
+
+      // NOT ONE request to arxiv.org/html or ar5iv. That is the whole point.
+      expect(calls.filter((u) => u.includes('/html/'))).toHaveLength(0);
+    });
+
+    it('makes NO arXiv request at all when the caller passes the paper it already has', async () => {
+      // The metadata came from search_papers moments ago. Re-fetching it is what
+      // makes a burst of saves slow enough to be cancelled — so a caller that has
+      // it can hand it over, and the save costs zero arXiv round-trips.
+      let ingested;
+      const calls = [];
+      const paper = {
+        id: '2510.30005',
+        title: 'A Paper',
+        authors: ['A. Author'],
+        summary: 'We show a thing.',
+        published: '2025-10-30T00:00:00Z',
+        updated: '2025-10-30T00:00:00Z',
+        categories: ['cs.CL'],
+        pdfUrl: 'https://arxiv.org/pdf/2510.30005v1',
+        arxivUrl: 'https://arxiv.org/abs/2510.30005',
+      };
+
+      const result = await callTool(
+        server,
+        'save_paper',
+        { id: '2510.30005', paper },
+        paperResponder({
+          atom: feed([entry({ id: '2510.30005' })]),
+          onFetch: (url) => calls.push(String(url)),
+          onIngest: (b) => {
+            ingested = b;
+          },
+        }),
+        ['trove:ingest'],
+      );
+
+      expect(calls).toHaveLength(0);
+      const [document] = ingested.variables.documents;
+      expect(document.title).toBe('A Paper');
+      expect(document.text).toContain('We show a thing.');
+      expect(result.result.structured.id).toBe('2510.30005');
     });
 
     it('indexes full text when includeFullText is set', async () => {
