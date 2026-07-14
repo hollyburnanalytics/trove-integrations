@@ -252,4 +252,28 @@ describe('egress client', () => {
     expect(got.body).toBe('the real body');
     expect(context.calls).toHaveLength(2);
   });
+
+  it('refuses a request that would wait too long for its throttle slot', async () => {
+    // The throttle is right and arXiv asks for it. Waiting SILENTLY in it is not:
+    // six saves back-to-back queue the better part of a minute of politeness, and
+    // the last one sits there until the MCP client gives up — "tool timed out or
+    // crashed", for the one thing that is not a fault.
+    //
+    // A burst is CONCURRENT — that is what builds the queue. Awaiting each call in
+    // turn lets the queue drain between them and proves nothing.
+    const c = client({ throttleMs: 5000, maxQueueMs: 6000, forceThrottleInTests: true });
+    const context = fakeContext([ok('a')]);
+
+    const first = c.fetch(context, 'https://x.test/1', { cacheable: false }); // slot now
+    const second = c.fetch(context, 'https://x.test/2', { cacheable: false }); // waits ~5s: allowed
+    const third = c.fetch(context, 'https://x.test/3', { cacheable: false }); // ~10s: refused
+
+    await expect(third).rejects.toThrow(/already queued ahead of this one/);
+    await expect(first).resolves.toMatchObject({ status: 200 });
+    await expect(second).resolves.toMatchObject({ status: 200 });
+
+    // The refused request did not consume the slot it declined — a request that
+    // never left must not push everyone behind it further back.
+    expect(context.calls).toHaveLength(2);
+  }, 20_000);
 });

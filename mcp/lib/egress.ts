@@ -65,6 +65,17 @@ export interface EgressClientOptions {
    * A deadline converts that silence into a fast, typed, retryable error.
    */
   timeoutMs?: number;
+  /**
+   * The longest a request may WAIT for its throttle slot before being refused,
+   * in ms. Defaults to {@link DEFAULT_MAX_QUEUE_MS}.
+   *
+   * A burst of calls queues behind the min-interval throttle. Without a ceiling
+   * the last one waits its politely-earned turn well past the MCP client's
+   * deadline, and the caller is told "tool timed out or crashed" — for a request
+   * that never even left. A ceiling turns that into a fast, retryable error that
+   * says how long to wait.
+   */
+  maxQueueMs?: number;
   /** Test-only: apply `throttleMs` even under the bun test runtime. */
   forceThrottleInTests?: boolean;
   cache?: {
@@ -93,6 +104,13 @@ export interface EgressRequestOptions {
  * connection fails well inside any MCP client's patience.
  */
 const DEFAULT_TIMEOUT_MS = 10_000;
+
+/**
+ * The longest a request will wait for a throttle slot before being refused. Sized
+ * to stay well inside an MCP client's patience: better a clear "try again in 12s"
+ * now than an opaque timeout in a minute.
+ */
+const DEFAULT_MAX_QUEUE_MS = 8_000;
 
 const inTestRuntime = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
 
@@ -136,6 +154,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     rateLimitStatuses = [429],
     backoffBaseMs = 50,
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxQueueMs = DEFAULT_MAX_QUEUE_MS,
     cache: cacheOptions,
   } = options;
   const throttleMs = inTestRuntime && !options.forceThrottleInTests ? 0 : options.throttleMs;
@@ -183,11 +202,35 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
   // --- throttle --------------------------------------------------------------
   let nextAllowedAt = 0;
 
-  /** Reserve the next request slot, waiting if we are inside the min interval. */
+  /**
+   * Reserve the next request slot, waiting if we are inside the min interval —
+   * but REFUSE a wait longer than the caller can afford.
+   *
+   * The throttle is correct and arXiv asks for it. Waiting silently in it is not.
+   * Every save makes a few requests, each reserving a 3s slot, so a burst of six
+   * saves queues up the better part of a minute of politeness — and the last one
+   * sits in that queue until the MCP client gives up. The tool then reports "timed
+   * out or crashed" for the one thing that is NOT a fault: an upstream we agreed
+   * to be gentle with.
+   *
+   * So the queue has a ceiling. Past it, the request fails immediately with a
+   * retryable error that says how long to wait, and the caller can decide — which
+   * is worth infinitely more than a silent minute and an opaque timeout.
+   */
   async function throttle(): Promise<void> {
     if (throttleMs <= 0) return;
     const now = Date.now();
     const wait = Math.max(0, nextAllowedAt - now);
+
+    if (wait > maxQueueMs) {
+      // Do NOT consume the slot we are declining to use — a refused request must
+      // not push everyone behind it further back.
+      throw new ToolError(
+        `${service} allows about one request every ${String(Math.round(throttleMs / 1000))}s, and ${String(Math.ceil(wait / 1000))}s of requests are already queued ahead of this one. Wait a few seconds and try again.`,
+        { retryable: true, data: { retryAfterSeconds: Math.ceil(wait / 1000) } },
+      );
+    }
+
     // Advance synchronously so concurrent callers get staggered, non-overlapping slots.
     nextAllowedAt = Math.max(now, nextAllowedAt) + throttleMs;
     if (wait > 0) await sleep(wait);
