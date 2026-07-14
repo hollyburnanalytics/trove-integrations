@@ -373,8 +373,8 @@ describe('arxiv MCP server', () => {
       expect(document.mimeType).toBe('text/html');
       // The fallback the server takes when the paper has no rendered HTML. Every
       // arXiv paper has a PDF, so a save can always capture the paper itself.
-      expect(document.metadata.fallbackFileUrl).toContain('/pdf/');
-      expect(document.metadata.fallbackMimeType).toBe('application/pdf');
+      expect(document.fallback.fileUrl).toContain('/pdf/');
+      expect(document.fallback.mimeType).toBe('application/pdf');
       expect(result.result.structured.captured).toBe('html-or-pdf');
 
       // NOT ONE request to arxiv.org/html or ar5iv. That is the whole point.
