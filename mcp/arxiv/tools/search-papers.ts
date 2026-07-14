@@ -95,7 +95,15 @@ export const searchPapers: ToolDefinition = {
 
     const { status, body } = await arxivFetch(ctx, url, { accept: 'application/atom+xml' });
     if (status === 400) {
-      throw new ToolError('arXiv rejected the search query.', { retryable: false });
+      // Say what was actually sent. "arXiv rejected the search query" told the
+      // caller nothing about WHICH query, and the answer was usually that we had
+      // mangled theirs — a `ti:...` typed into `query` came out as `all:ti%3A...`.
+      throw new ToolError(
+        `arXiv rejected the search query: ${searchQuery}. Field prefixes (ti:, abs:, au:, cat:) and ` +
+          'boolean operators (AND/OR/ANDNOT) are understood in `query`; a quoted phrase needs its ' +
+          'quotes ("Apache Kafka").',
+        { retryable: false },
+      );
     }
 
     const papers = parseFeed(body);
