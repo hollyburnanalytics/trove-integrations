@@ -177,7 +177,7 @@ describe('egress client', () => {
     const calls = [];
     const tarpit = {
       log() {},
-      fetch(url, init) {
+      fetch(_url, init) {
         calls.push(init);
         return new Promise((_resolve, reject) => {
           init.signal.addEventListener('abort', () => {
