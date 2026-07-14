@@ -41,19 +41,35 @@ export interface PaperHtml {
 export async function findPaperHtmlUrl(ctx: ToolContext, id: string): Promise<string | null> {
   for (const url of [arxivHtmlUrl(id), ar5ivHtmlUrl(id)]) {
     try {
-      const res = await ctx.fetch(url, { method: 'HEAD' });
-      if (!res.ok) continue;
-      // The redirect is the point. `redirect: 'manual'` would be the direct way
-      // to see it, but that init does not survive the hosted egress path — it
-      // fails the whole call. The response says the same thing on its own terms:
-      // a followed redirect leaves `redirected` set, and the final URL is no
-      // longer the /html/ one we asked for. Either is a "no".
-      if (res.redirected) continue;
-      if (!new URL(res.url || url).pathname.includes('/html/')) continue;
-      return url;
+      // Through the SHARED arXiv egress client, not a bare `ctx.fetch`. A raw
+      // fetch here skipped the throttle, the retry/backoff, the cache AND the
+      // deadline — so every save fired two un-deadlined requests straight at an
+      // upstream that tarpits. The first save or two got through; after that
+      // arXiv stopped answering, the probes hung, and every later call in the
+      // session — saves and searches alike — timed out with no explanation.
+      // The probe is the cheapest request we make and it was the one with no
+      // protection at all.
+      //
+      // The deadline is deliberately SHORTER than the client's default: this is
+      // an optional refinement (HTML instead of PDF), and it must never be the
+      // reason a save is slow. If arXiv will not answer promptly, we stop asking
+      // and take the PDF.
+      const { status, redirected } = await arxivFetch(ctx, url, {
+        accept: 'text/html',
+        method: 'HEAD',
+        timeoutMs: 4_000,
+      });
+      // A rendered page answers 200 WITHOUT being redirected there. ar5iv answers
+      // **307 → the abstract page** for anything it has not rendered, and `fetch`
+      // follows that quietly — so the 200 at the end of the hop is the abstract
+      // page saying "I exist", not the paper. Taking that as a yes is how we once
+      // captured arXiv's abstract LANDING page and indexed "Submission history"
+      // as if it were the physics. A redirect IS the "no HTML" answer.
+      if (status === 200 && !redirected) return url;
     } catch {
-      // A probe is best-effort: a failure here must fall through to the PDF,
-      // never sink the save.
+      // Best-effort. A probe that fails — rate-limited, timed out, upstream down —
+      // must fall through to the PDF, never sink the save. This is the whole
+      // reason the PDF fallback exists: every paper has one.
     }
   }
   return null;
