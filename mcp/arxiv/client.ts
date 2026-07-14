@@ -42,7 +42,11 @@ const arxiv = createEgressClient({
   // accepts the connection and never answers (see the User-Agent note above) —
   // and an un-deadlined fetch turns that into a hang, then an opaque "tool timed
   // out or crashed", then a session where every retry hangs the same way.
-  timeoutMs: 10_000,
+  timeoutMs: 8_000,
+  // And a budget for the WHOLE call, retries and throttle waits included. Three
+  // attempts of ten seconds behind a three-second throttle is the better part of a
+  // minute — every step inside its own reasonable limit, and the caller long gone.
+  overallTimeoutMs: 12_000,
   cache: { ttlMs: 5 * 60_000, maxEntries: 256, maxEntryBytes: 256 * 1024 },
 });
 
@@ -50,5 +54,11 @@ const arxiv = createEgressClient({
 export const arxivFetch = (
   ctx: ToolContext,
   url: string,
-  opts: { accept: string; cacheable?: boolean; method?: 'GET' | 'HEAD'; timeoutMs?: number },
+  opts: {
+    accept: string;
+    cacheable?: boolean;
+    method?: 'GET' | 'HEAD';
+    timeoutMs?: number;
+    overallTimeoutMs?: number;
+  },
 ): Promise<FetchResult> => arxiv.fetch(ctx, url, opts);
