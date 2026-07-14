@@ -177,7 +177,7 @@ describe('egress client', () => {
     const calls = [];
     const tarpit = {
       log() {},
-      fetch(url, init) {
+      fetch(_url, init) {
         calls.push(init);
         return new Promise((_resolve, reject) => {
           init.signal.addEventListener('abort', () => {
@@ -226,19 +226,19 @@ describe('egress client', () => {
     const context = { log() {}, fetch: () => Promise.resolve(hopped) };
 
     const c = client();
-    const res = await c.fetch(context, 'https://x.test/html/1');
-    expect(res.status).toBe(200);
-    expect(res.redirected).toBe(true);
-    expect(res.url).toBe('https://x.test/abs/1');
+    const response = await c.fetch(context, 'https://x.test/html/1');
+    expect(response.status).toBe(200);
+    expect(response.redirected).toBe(true);
+    expect(response.url).toBe('https://x.test/abs/1');
   });
 
   it('sends HEAD when asked, and does not try to read a body that is not there', async () => {
     const c = client();
     const context = fakeContext([status(200)]);
-    const res = await c.fetch(context, 'https://x.test/h', { method: 'HEAD' });
+    const response = await c.fetch(context, 'https://x.test/h', { method: 'HEAD' });
     expect(context.calls[0].init.method).toBe('HEAD');
-    expect(res.status).toBe(200);
-    expect(res.body).toBe('');
+    expect(response.status).toBe(200);
+    expect(response.body).toBe('');
   });
 
   it('keys the cache by METHOD, so a HEAD cannot serve an empty body to a GET', async () => {

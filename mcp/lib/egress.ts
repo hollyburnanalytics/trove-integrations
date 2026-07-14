@@ -258,6 +258,25 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
    * the next attempt. Throws a terminal {@link ToolError} when the request fails
    * on the last attempt (network error) or classifies as an un-retryable status.
    */
+  /**
+   * Turn a thrown fetch into the right terminal error.
+   *
+   * A TIMEOUT and a broken socket are different events and must not wear the same
+   * message. "Could not reach arXiv (network error)" sends the caller looking for
+   * an outage; "arXiv did not respond within 10s — it may be rate-limiting this
+   * request" tells them to slow down, which is the actual remedy.
+   */
+  function fetchFailure(error: unknown, deadlineMs: number): never {
+    if (error instanceof ToolError) throw error;
+    const timedOut = error instanceof Error && error.name === 'TimeoutError';
+    throw new ToolError(
+      timedOut
+        ? `${service} did not respond within ${String(Math.round(deadlineMs / 1000))}s. It may be rate-limiting this request; wait a few seconds and try again.`
+        : `Could not reach ${service} (network error). Try again shortly.`,
+      { retryable: true },
+    );
+  }
+
   async function attemptFetch(
     ctx: ToolContext,
     url: string,
@@ -273,26 +292,15 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
       // the connection and never answers; without a signal this await never
       // returns, the tool hangs until the MCP client gives up, and the caller is
       // told only "tool timed out or crashed".
-      const res = await ctx.fetch(url, {
+      const response = await ctx.fetch(url, {
         headers: requestHeaders,
         method: request.method ?? 'GET',
         signal: AbortSignal.timeout(deadline),
       });
-      decision = await classifyResponse(res, isLast, request.method === 'HEAD');
+      decision = await classifyResponse(response, isLast, request.method === 'HEAD');
     } catch (error) {
       if (error instanceof ToolError) throw error;
-      // A timeout is not a network error and must not be described as one: it is
-      // the upstream declining to answer, and saying so is the difference between
-      // a caller who retries sensibly and a caller who has no idea what happened.
-      const timedOut = error instanceof Error && error.name === 'TimeoutError';
-      if (isLast) {
-        throw new ToolError(
-          timedOut
-            ? `${service} did not respond within ${String(Math.round(deadline / 1000))}s. It may be rate-limiting this request; wait a few seconds and try again.`
-            : `Could not reach ${service} (network error). Try again shortly.`,
-          { retryable: true },
-        );
-      }
+      if (isLast) fetchFailure(error, deadline);
       return { retryAfterMs: backoffMs(attempt) };
     }
     if ('result' in decision) return { result: decision.result };
@@ -312,17 +320,24 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     return cached;
   }
 
+  /**
+   * The cache key for a request. It includes the METHOD: a HEAD stores an empty
+   * body, and cached under the bare URL it would be served to a later GET of the
+   * same URL as a 200 with no content — leaving the caller to conclude the page
+   * was blank.
+   */
+  function cacheKey(url: string, request: EgressRequestOptions): string {
+    const method = request.method ?? 'GET';
+    return method === 'GET' ? url : `${method} ${url}`;
+  }
+
   async function resilientFetch(
     ctx: ToolContext,
     url: string,
     requestOptions: EgressRequestOptions = {},
   ): Promise<FetchResult> {
     const cacheable = requestOptions.cacheable ?? true;
-    // The cache key includes the METHOD. A HEAD stores an empty body — cached
-    // under the bare URL it would be served to a later GET of the same URL as a
-    // 200 with no content, and the caller would conclude the page was blank.
-    const method = requestOptions.method ?? 'GET';
-    const key = method === 'GET' ? url : `${method} ${url}`;
+    const key = cacheKey(url, requestOptions);
     const cached = servedFromCache(ctx, key, cacheable);
     if (cached) return cached;
 
