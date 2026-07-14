@@ -116,9 +116,15 @@ export const savePaper: ToolDefinition = {
         // reason for Trove to re-derive a worse version from the same file.
         fileUrl: htmlUrl,
         mimeType: 'text/html',
-        // The fallback, for the server: if this paper has no rendered HTML, capture
-        // the PDF instead. Every arXiv paper has one.
-        metadata: { fallbackFileUrl: paper.pdfUrl, fallbackMimeType: 'application/pdf' },
+        // If this paper has no rendered HTML, capture the PDF instead. Every arXiv
+        // paper has one, so the paper ITSELF is always retained.
+        //
+        // A TYPED field, not a metadata bag: the first version of this passed
+        // `metadata: { fallbackFileUrl }`, which the SDK's ingest document has no
+        // field for — so it was dropped silently at the wire, the fallback never
+        // ran, and old papers (which arXiv has not rendered) landed as bare
+        // abstracts while every layer reported success.
+        fallback: { fileUrl: paper.pdfUrl, mimeType: 'application/pdf' },
         ...(primaryCategory && {
           feed: { key: primaryCategory, name: primaryCategory, label: 'Category' },
         }),
