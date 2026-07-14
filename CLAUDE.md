@@ -60,7 +60,7 @@ Dependencies are auto-installed by the devcontainer (`postCreateCommand` + `post
 
 ```
 sources/{category}/{source-id}/
-  manifest.json    # metadata, auth, schedule, config schema
+  manifest.json    # metadata, location, schedule, config schema
   index.mjs        # exports async function sync(ctx) → { documents, cursor, stats }
 ```
 
@@ -191,13 +191,22 @@ mkdir -p sources/{category}/{source-id}
   "transport": "feed",
   "watermark": "date",
   "documentSemantics": "append",
+  "location": "cloud",
   "schedule": "daily",
   "status": "implemented",
-  "auth": {},
+  "config": {},
   "needs_browser": false,
   "live": false
 }
 ```
+
+`location` (`cloud` | `client`) is the source's default executor and is
+required. A `feed`/`api`/`scrape` source with no browser and a real schedule
+may be `cloud` (Trove-hosted sync); anything needing a browser or on-disk data
+is `client` (the Mac harness). `config` is the **user-preferences** schema
+(feed URLs, queries, sections) — never credentials. A fan-out source (one that
+explodes a list into one feed per entry) adds `"fanOut": "<configKey>"` naming
+a `config` field of type `url[]` or `text[]`.
 
 Schedule must be one of: `every 30 minutes`, `every 1 hour`, `every 2 hours`, `every 4 hours`, `every 6 hours`, `every 12 hours`, `daily`, `weekly`, `monthly`, `yearly`, `on demand`.
 
@@ -299,7 +308,10 @@ All rules from both ESLint plugins are enabled at their recommended (strictest) 
 
 - Every source must export `async function sync(ctx)`.
 - Always return `{ documents, cursor, stats }` — never a bare array.
-- Use shared helpers when possible — don't rewrite RSS parsing.
+- Use shared helpers when possible — don't rewrite RSS parsing. All network I/O
+  goes through `lib/http.mjs`/`lib/feeds.mjs`; never raw `fetch()` when any part
+  of a URL is config-derived (a source can run in Trove's cloud — see the
+  [Source Review Checklist](docs/source-review-checklist.md)).
 - IDs must be stable across syncs (same content → same ID).
 - Cursor support is expected — use `ctx.cursor` for incremental sync.
 - `delayMs` between requests to avoid hammering sources (200-500ms).

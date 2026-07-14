@@ -10,15 +10,17 @@
   "transport": "feed",
   "watermark": "date",
   "documentSemantics": "append",
+  "location": "cloud",
   "schedule": "every 2 hours",
   "status": "implemented",
   "available": false,
-  "auth": {
+  "config": {
     "feeds": {
       "label": "Feed URLs",
       "type": "url[]"
     }
   },
+  "fanOut": "feeds",
   "needs_browser": false,
   "live": false
 }

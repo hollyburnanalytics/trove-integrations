@@ -12,7 +12,8 @@ The SDK gives every source adapter one uniform contract — `sync(ctx) → { doc
 That contract is expressive enough that every source in this repo shares it cleanly, but
 on its own it treats **collection shape and watermark semantics as an undeclared,
 adapter-private detail.** The manifest captures *topic* (`category`), *cadence*
-(`schedule`), *browser-need* (`needs_browser`), and *auth* — but nothing about *how* a
+(`schedule`), *browser-need* (`needs_browser`), *default executor* (`location`), and
+*user preferences* (`config`) — but nothing about *how* a
 source adapter collects or *how* it resumes. This doc names that taxonomy explicitly so we can
 (a) reason about sync health, (b) decide what is in and out of MVP, and (c) evolve the
 contract deliberately instead of stuffing new shapes into `sync()`.
@@ -181,7 +182,8 @@ local}`.
   "transport": "feed",             // mechanism
   "watermark": "date",             // strategy only; the value lives in the feed's cursor
   "documentSemantics": "append",
-  "needs_browser": false, "auth": {}, "schedule": "daily", "status": "implemented"
+  "location": "cloud",             // default executor (cloud | client)
+  "needs_browser": false, "config": {}, "schedule": "daily", "status": "implemented"
 }
 ```
 

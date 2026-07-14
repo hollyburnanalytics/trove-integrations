@@ -18,11 +18,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {
-  SOURCE_TYPE_FIELDS,
-  VALID_SCHEDULES,
-  validateSourceTypeFields,
-} from '../sources/lib/constants.mjs';
+import { VALID_SCHEDULES, validateManifest } from '../sources/lib/constants.mjs';
 
 const { join } = path;
 
@@ -158,45 +154,43 @@ for (const { manifest, path } of fsSources) {
   }
 }
 
-// --- Check 3b: source type-system fields (kind/transport/watermark/documentSemantics) ---
-// Implemented sources are held to the MVP cut; stubs may declare deferred values.
+// --- Check 3b: cross-cutting manifest invariants ---
+// Type-system fields (kind/transport/watermark/documentSemantics, held to the
+// MVP cut when implemented), `location` + the cloud-eligibility predicate, and
+// the optional `fanOut` reference. See sources/lib/constants.mjs.
 for (const { manifest, hasCode, path } of fsSources) {
-  for (const error of validateSourceTypeFields(manifest, { implemented: hasCode })) {
+  for (const error of validateManifest(manifest, { implemented: hasCode })) {
     warn(`${path}/manifest.json: ${error}`);
   }
 }
 
-// Sync category + the type-system fields from manifest → registry entries.
+// --- Check 3c: registry entries are a faithful mirror of their manifest ---
+// The manifest is the source of truth for every descriptive field; the registry
+// carries a copy plus the filesystem-derived `path`. Syncing all manifest fields
+// (not a hand-picked list) kills drift — e.g. a stale `needs_browser`/`version`,
+// or a renamed key like the old `auth` — and carries new fields (location,
+// fanOut, config) automatically. `status` and `has_code` are derived from the
+// filesystem (checks 1–2), so they are excluded here.
+const DERIVED_KEYS = new Set(['status', 'has_code']);
 for (const [id, regEntry] of registryById) {
   const fsEntry = fsById.get(id);
   if (!fsEntry) continue;
-  for (const field of ['category', ...Object.keys(SOURCE_TYPE_FIELDS)]) {
-    if (regEntry[field] !== fsEntry.manifest[field]) {
-      warn(`${id}: registry ${field} out of sync with manifest`);
-      if (fix) regEntry[field] = fsEntry.manifest[field];
+
+  const desired = { ...fsEntry.manifest, path: fsEntry.path };
+  for (const key of DERIVED_KEYS) delete desired[key];
+
+  for (const [key, value] of Object.entries(desired)) {
+    if (JSON.stringify(regEntry[key]) !== JSON.stringify(value)) {
+      warn(`${id}: registry ${key} out of sync with manifest`);
+      if (fix) regEntry[key] = value;
     }
   }
-  // `available: false` temporarily hides a built source that needs user input
-  // (config or login) we can't collect yet. Absent = available. Only mirror the
-  // explicit false so the registry stays clean.
-  const available = fsEntry.manifest.available;
-  if (available === false && regEntry.available !== false) {
-    warn(`${id}: registry missing available:false`);
-    if (fix) regEntry.available = false;
-  } else if (available !== false && 'available' in regEntry) {
-    warn(`${id}: registry has stale available flag`);
-    if (fix) Reflect.deleteProperty(regEntry, 'available');
-  }
-}
-
-// --- Check 4: path consistency ---
-for (const [id, regEntry] of registryById) {
-  const fsEntry = fsById.get(id);
-  if (!fsEntry) continue;
-
-  if (regEntry.path !== fsEntry.path) {
-    warn(`${id}: registry path is "${regEntry.path}" but actual path is "${fsEntry.path}"`);
-    if (fix) regEntry.path = fsEntry.path;
+  // Drop registry keys the manifest no longer declares (e.g. the renamed `auth`).
+  for (const key of Object.keys(regEntry)) {
+    if (!(key in desired) && !DERIVED_KEYS.has(key)) {
+      warn(`${id}: registry has stale field "${key}"`);
+      if (fix) Reflect.deleteProperty(regEntry, key);
+    }
   }
 }
 

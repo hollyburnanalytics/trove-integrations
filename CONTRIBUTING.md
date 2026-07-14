@@ -27,8 +27,17 @@ AI assistants). The short version:
    `index.mjs` that exports `async function sync(ctx)`.
 2. Reuse the shared helpers in `sources/lib/feeds.mjs`
    (`syncRSS`, `syncFeedArticles`, …) instead of re-writing RSS/HTML parsing.
+   All network I/O must go through these helpers — never call raw `fetch()` when
+   any part of a URL comes from `config`.
 3. Add a test that mocks `fetch` (see `sources/070-news/hacker-news/index.test.mjs`).
 4. Run `bun scripts/validate-registry.mjs --fix` to register the source.
+
+A merged source can be promoted to run in Trove's cloud, so both authors and
+reviewers should read the
+[**Source Review Checklist**](docs/source-review-checklist.md) — network I/O
+through the shared helpers, no dynamic code, no prototype/global mutation, no
+timing-based cleverness, and `config` is preferences (never secrets). Some of it
+is enforced by the gates below; the rest is reviewer judgment.
 
 ## Before you open a PR
 

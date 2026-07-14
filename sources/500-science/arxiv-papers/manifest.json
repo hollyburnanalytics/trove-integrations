@@ -10,9 +10,10 @@
   "transport": "api",
   "watermark": "date",
   "documentSemantics": "append",
+  "location": "client",
   "schedule": "every 6 hours",
   "status": "implemented",
-  "auth": {
+  "config": {
     "queries": {
       "label": "Search Queries",
       "type": "text[]"

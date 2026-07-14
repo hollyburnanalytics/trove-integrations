@@ -29,6 +29,27 @@ export const SOURCE_KINDS = ['scheduled-sync', 'on-demand-fetch', 'on-demand-que
 /** Mechanism by which a source adapter reaches its data. @type {readonly string[]} */
 export const TRANSPORTS = ['feed', 'scrape', 'api', 'browser', 'local'];
 
+/**
+ * Default executor for a source's sync. `cloud` = a Trove-hosted runtime;
+ * `client` = the user's own device (the Mac harness). The manifest value is the
+ * *default* and the *eligibility bound*: a `cloud` source may be flipped to
+ * `client` per user, never the reverse. @type {readonly string[]}
+ */
+export const LOCATIONS = ['cloud', 'client'];
+
+/**
+ * Transports whose sync is a pure HTTP pull, the necessary condition for a
+ * source to run in the cloud. @type {readonly string[]}
+ */
+export const CLOUD_ELIGIBLE_TRANSPORTS = ['feed', 'api', 'scrape'];
+
+/**
+ * Config-schema field types a fan-out source may explode into one feed per
+ * entry (a list of feed URLs or of query strings).
+ * @type {readonly string[]}
+ */
+export const FAN_OUT_FIELD_TYPES = ['url[]', 'text[]'];
+
 /** Resume strategy declared by a source; the value lives in the feed's cursor. @type {readonly string[]} */
 export const WATERMARK_STRATEGIES = [
   'date',
@@ -101,4 +122,90 @@ export function validateSourceTypeFields(manifest, { implemented }) {
     }
   }
   return errors;
+}
+
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Validate a manifest's `location` field and, for `cloud`, the hard
+ * cloud-eligibility predicate:
+ *
+ *   location: cloud ⇒ transport ∈ {feed, api, scrape}
+ *                     ∧ needs_browser ≠ true
+ *                     ∧ schedule ≠ "on demand"
+ *
+ * `location` is required and ∈ {cloud, client}. `client` is always permitted —
+ * the Mac harness runs anything.
+ *
+ * @param {Record<string, unknown>} manifest - the parsed manifest.json
+ * @returns {string[]} validation errors (empty when valid)
+ */
+export function validateLocation(manifest) {
+  const location = manifest.location;
+  if (location === undefined) return ['missing required field "location"'];
+  if (!LOCATIONS.includes(/** @type {string} */ (location))) {
+    return [`invalid location "${location}" (allowed: ${LOCATIONS.join(', ')})`];
+  }
+  if (location !== 'cloud') return [];
+
+  const errors = [];
+  if (!CLOUD_ELIGIBLE_TRANSPORTS.includes(/** @type {string} */ (manifest.transport))) {
+    errors.push(
+      `location "cloud" requires transport ∈ {${CLOUD_ELIGIBLE_TRANSPORTS.join(', ')}} (got "${manifest.transport}")`,
+    );
+  }
+  if (manifest.needs_browser === true) {
+    errors.push('location "cloud" is incompatible with needs_browser: true');
+  }
+  if (manifest.schedule === 'on demand') {
+    errors.push('location "cloud" is incompatible with schedule "on demand"');
+  }
+  return errors;
+}
+
+/**
+ * Validate a manifest's optional `fanOut` field. When present it
+ * must name a key in the manifest's `config` schema whose declared type is a
+ * list the runner can explode into one feed per entry (`url[]` or `text[]`).
+ *
+ * @param {Record<string, unknown>} manifest - the parsed manifest.json
+ * @returns {string[]} validation errors (empty when absent or valid)
+ */
+export function validateFanOut(manifest) {
+  const fanOut = manifest.fanOut;
+  if (fanOut === undefined) return [];
+  if (typeof fanOut !== 'string') {
+    return [`invalid fanOut ${JSON.stringify(fanOut)} (must be a string naming a config field)`];
+  }
+  const config = manifest.config;
+  const field = isRecord(config) ? config[fanOut] : undefined;
+  if (!isRecord(field)) {
+    return [`fanOut "${fanOut}" does not name a field in the config schema`];
+  }
+  if (!FAN_OUT_FIELD_TYPES.includes(/** @type {string} */ (field.type))) {
+    return [
+      `fanOut "${fanOut}" must name a config field of type ∈ {${FAN_OUT_FIELD_TYPES.join(', ')}} (got "${field.type}")`,
+    ];
+  }
+  return [];
+}
+
+/**
+ * Validate every cross-cutting manifest invariant a source must satisfy: the
+ * four type-system fields (held to the MVP cut when implemented), `location`
+ * plus its cloud-eligibility predicate, and the optional `fanOut` reference.
+ *
+ * @param {Record<string, unknown>} manifest - the parsed manifest.json
+ * @param {{ implemented: boolean }} options - whether the source has code
+ * @returns {string[]} validation errors (empty when valid)
+ */
+export function validateManifest(manifest, { implemented }) {
+  return [
+    ...validateSourceTypeFields(manifest, { implemented }),
+    ...validateLocation(manifest),
+    ...validateFanOut(manifest),
+  ];
 }

@@ -10,9 +10,10 @@
   "transport": "api",
   "watermark": "none",
   "documentSemantics": "append",
+  "location": "client",
   "schedule": "every 1 hour",
   "status": "implemented",
-  "auth": {},
+  "config": {},
   "needs_browser": false,
   "live": false
 }
