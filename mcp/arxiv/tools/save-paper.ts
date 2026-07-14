@@ -1,5 +1,6 @@
 import { type ToolContext, type ToolDefinition, ToolError, z } from '@ontrove/mcp';
-import { fetchPaper, fetchPaperHtml, findPaperHtmlUrl } from '../papers.ts';
+import { arxivHtmlUrl } from '../client.ts';
+import { fetchPaper, fetchPaperHtml, paperShape } from '../papers.ts';
 import { parseHtmlContent } from '../parse.ts';
 
 /** `save_paper` — ingest an arXiv paper into the Trove knowledge base. */
@@ -15,6 +16,14 @@ export const savePaper: ToolDefinition = {
   annotations: { readOnlyHint: false, openWorldHint: true },
   input: z.object({
     id: z.string().min(1).describe('arXiv paper id to save, e.g. "2510.25417".'),
+    paper: paperShape
+      .optional()
+      .describe(
+        'The paper object from a previous search_papers or get_paper call. Pass it and the ' +
+          'save needs NO arXiv request at all — it is the same metadata arXiv just gave you, ' +
+          'and re-fetching it is what makes a burst of saves slow enough to time out. Omit it ' +
+          'only when saving an id you have not already looked up.',
+      ),
     includeFullText: z
       .boolean()
       .default(false)
@@ -25,8 +34,11 @@ export const savePaper: ToolDefinition = {
     title: z.string(),
     ingested: z.number(),
     includedFullText: z.boolean(),
-    /** The artifact Trove retained: the rendered HTML, or the PDF when there is none. */
-    captured: z.enum(['html', 'pdf']),
+    /**
+     * What Trove will retain: the rendered HTML, falling back to the PDF when the
+     * paper has none. The capture happens server-side, after this returns.
+     */
+    captured: z.literal('html-or-pdf'),
     capturedUrl: z.string(),
   }),
   async handler(args, ctx) {
@@ -38,25 +50,34 @@ export const savePaper: ToolDefinition = {
       );
     }
 
-    const paper = await fetchPaper(ctx, id);
+    // The metadata the caller ALREADY HAS costs nothing; fetching it again can
+    // cost the whole call.
+    //
+    // The tool invocation is cancelled at about eight seconds. A save used to make
+    // three arXiv requests — metadata, then two HEAD probes for the HTML — each
+    // behind a three-second politeness throttle. When arXiv answers quickly that
+    // fits; when it slows under a burst, ONE of them can spend the entire window,
+    // and the caller is told "tool timed out or crashed". Measured, not guessed:
+    // the worker log shows the invocation cancelled at 7.9s with the metadata
+    // request still in flight.
+    //
+    // So a save now makes ZERO arXiv requests when the caller passes the paper it
+    // just searched for, and the HTML-or-PDF decision moves server-side, where it
+    // is off the hot path entirely.
+    const paper = args.paper ?? (await fetchPaper(ctx, id));
 
     const header =
       `arXiv:${paper.id} · ${paper.categories.join(', ')} · submitted ${paper.published.slice(0, 10)}\n` +
       `Authors: ${paper.authors.join(', ')}\n\nAbstract\n${paper.summary}`;
 
-    // LOCATE the rendered HTML (a HEAD — no body). Trove downloads the artifact
-    // itself, server-side, so all we owe it is a URL. Pulling the 200-300KB page
-    // in here just to prove it exists is what made every save a body transfer
-    // against an upstream that rate-limits datacenter IPs — and it duly started
-    // timing saves out the moment it hit production.
+    // Not every paper has rendered HTML, and we no longer PROBE for it: that cost
+    // two more throttled arXiv requests on a call with an eight-second ceiling.
     //
-    // Not every paper has HTML (arXiv has back-rendered many, but not all, and
-    // ar5iv covers more). The PDF always exists, so that is the fallback: either
-    // way the paper ITSELF is retained, not just a description of it.
-    const htmlUrl = await findPaperHtmlUrl(ctx, id);
-    const capture = htmlUrl
-      ? { url: htmlUrl, mimeType: 'text/html', kind: 'html' as const }
-      : { url: paper.pdfUrl, mimeType: 'application/pdf', kind: 'pdf' as const };
+    // Trove is told to capture the HTML and given the PDF as the fallback. It
+    // fetches the artifact server-side, in a Workflow, where a 404 costs a retry
+    // rather than the caller's entire deadline — and the PDF always exists, so the
+    // paper ITSELF is retained either way, not just a description of it.
+    const htmlUrl = arxivHtmlUrl(id);
 
     // Only NOW is the body worth downloading — the caller asked to index it.
     let includedFullText = false;
@@ -93,8 +114,11 @@ export const savePaper: ToolDefinition = {
         // back in a viewer next to this text — the same deal audio gets. The text
         // above is still what gets indexed: we already parsed it, so there is no
         // reason for Trove to re-derive a worse version from the same file.
-        fileUrl: capture.url,
-        mimeType: capture.mimeType,
+        fileUrl: htmlUrl,
+        mimeType: 'text/html',
+        // The fallback, for the server: if this paper has no rendered HTML, capture
+        // the PDF instead. Every arXiv paper has one.
+        metadata: { fallbackFileUrl: paper.pdfUrl, fallbackMimeType: 'application/pdf' },
         ...(primaryCategory && {
           feed: { key: primaryCategory, name: primaryCategory, label: 'Category' },
         }),
@@ -104,15 +128,16 @@ export const savePaper: ToolDefinition = {
     return {
       text:
         `Saved "${paper.title}" (arXiv:${paper.id}) to your knowledge base` +
-        `${includedFullText ? ' with full text' : ''}, capturing the ${capture.kind.toUpperCase()}. ` +
+        `${includedFullText ? ' with full text' : ''}. Trove is capturing the paper itself ` +
+        '(the rendered HTML, or the PDF if it has none) in the background. ' +
         'Find it later with a Trove search.',
       structured: {
         id: paper.id,
         title: paper.title,
         ingested: result.ingested,
         includedFullText,
-        captured: capture.kind,
-        capturedUrl: capture.url,
+        captured: 'html-or-pdf' as const,
+        capturedUrl: htmlUrl,
       },
     };
   },
