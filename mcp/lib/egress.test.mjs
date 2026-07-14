@@ -276,4 +276,32 @@ describe('egress client', () => {
     // never left must not push everyone behind it further back.
     expect(context.calls).toHaveLength(2);
   }, 20_000);
+
+  it('bounds the WHOLE call, not just each request', async () => {
+    // The hole that survived the first fix. Each request had a deadline; the retry
+    // loop around them did not. Three attempts of ten seconds, each behind a
+    // three-second throttle slot, is the better part of a minute — every step
+    // inside its own reasonable limit, and the caller long since gone, told only
+    // "tool timed out or crashed".
+    //
+    // A retry loop is a promise to keep trying. It is not a licence to outlive the
+    // person waiting.
+    const started = Date.now();
+    const c = client({ timeoutMs: 50, overallTimeoutMs: 200, backoffBaseMs: 500 });
+    const tarpit = {
+      log() {},
+      fetch: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => {
+            reject(init.signal.reason);
+          });
+        }),
+    };
+
+    await expect(c.fetch(tarpit, 'https://x.test/slow')).rejects.toThrow(
+      /did not answer within|did not respond within/,
+    );
+    // It gave up on ITS schedule, not after three full attempts plus backoffs.
+    expect(Date.now() - started).toBeLessThan(1500);
+  }, 10_000);
 });

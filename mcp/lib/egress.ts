@@ -1,4 +1,5 @@
 import { type ToolContext, ToolError } from '@ontrove/mcp';
+import { type CacheOptions, createResponseCache } from './egress-cache.ts';
 
 /**
  * Shared resilient-egress layer for hosted MCP servers that talk to public,
@@ -76,15 +77,20 @@ export interface EgressClientOptions {
    * says how long to wait.
    */
   maxQueueMs?: number;
+  /**
+   * The budget for a whole call — every attempt, every backoff, every throttle
+   * wait, added up. Defaults to {@link DEFAULT_OVERALL_TIMEOUT_MS}.
+   *
+   * Bounding a single request is not enough. Three attempts of ten seconds, each
+   * behind a three-second throttle slot, is the better part of a minute spent
+   * entirely inside limits that are individually reasonable — and the caller, who
+   * gave up long ago, is told only "tool timed out or crashed". A retry loop is a
+   * promise to keep trying; it is not a licence to outlive the person waiting.
+   */
+  overallTimeoutMs?: number;
   /** Test-only: apply `throttleMs` even under the bun test runtime. */
   forceThrottleInTests?: boolean;
-  cache?: {
-    ttlMs: number;
-    maxEntries: number;
-    maxEntryBytes: number;
-    /** Optional bound on the sum of cached body sizes. */
-    maxTotalBytes?: number;
-  };
+  cache?: CacheOptions;
 }
 
 export interface EgressRequestOptions {
@@ -96,6 +102,12 @@ export interface EgressRequestOptions {
   method?: 'GET' | 'HEAD';
   /** Override the client's {@link EgressClientOptions.timeoutMs} for this request. */
   timeoutMs?: number;
+  /**
+   * Override the client's {@link EgressClientOptions.overallTimeoutMs} for this
+   * request. An OPTIONAL request — a probe whose failure has a fallback — should
+   * give up far sooner than one the caller actually needs.
+   */
+  overallTimeoutMs?: number;
 }
 
 /**
@@ -111,6 +123,13 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * now than an opaque timeout in a minute.
  */
 const DEFAULT_MAX_QUEUE_MS = 8_000;
+
+/**
+ * The default budget for a whole call, retries included. Comfortably inside an MCP
+ * client's patience, so a tool always gets to say WHY it failed rather than being
+ * killed mid-retry with nothing to show.
+ */
+const DEFAULT_OVERALL_TIMEOUT_MS = 20_000;
 
 const inTestRuntime = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
 
@@ -130,9 +149,22 @@ function parseRetryAfter(header: string | null): number | undefined {
 /** A decision about a response: hand back a result, or retry after a delay. */
 type ResponseDecision = { result: FetchResult } | { retryAfterMs?: number };
 
-interface CacheEntry {
-  at: number;
-  value: FetchResult;
+/**
+ * The BUDGET for a whole call — every attempt, every backoff, every throttle wait.
+ *
+ * Bounding a single request is not enough, and believing otherwise cost a deploy:
+ * three attempts of ten seconds, each behind a three-second throttle slot, is the
+ * better part of a minute spent entirely inside limits that are individually
+ * reasonable. The caller does not care that no single step misbehaved. It gave up
+ * long ago, and was told "tool timed out or crashed".
+ */
+function startBudget(totalMs: number): {
+  totalMs: number;
+  /** Is there room left for a step that will take `ms`? */
+  hasTimeFor: (ms: number) => boolean;
+} {
+  const endsAt = Date.now() + totalMs;
+  return { totalMs, hasTimeFor: (ms: number) => Date.now() + ms < endsAt };
 }
 
 /** A resilient fetch client for one upstream service. */
@@ -155,49 +187,12 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     backoffBaseMs = 50,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxQueueMs = DEFAULT_MAX_QUEUE_MS,
+    overallTimeoutMs = DEFAULT_OVERALL_TIMEOUT_MS,
     cache: cacheOptions,
   } = options;
   const throttleMs = inTestRuntime && !options.forceThrottleInTests ? 0 : options.throttleMs;
   const limitStatuses = new Set([429, ...rateLimitStatuses]);
-
-  // --- cache ---------------------------------------------------------------
-  const cache = new Map<string, CacheEntry>();
-  let cacheTotalBytes = 0;
-
-  function cacheDelete(url: string): void {
-    const hit = cache.get(url);
-    if (!hit) return;
-    cacheTotalBytes -= hit.value.body.length;
-    cache.delete(url);
-  }
-
-  function cacheGet(url: string): FetchResult | undefined {
-    if (!cacheOptions) return undefined;
-    const hit = cache.get(url);
-    if (!hit) return undefined;
-    if (Date.now() - hit.at > cacheOptions.ttlMs) {
-      cacheDelete(url);
-      return undefined;
-    }
-    // Refresh recency (Map preserves insertion order → oldest is evicted first).
-    cache.delete(url);
-    cache.set(url, hit);
-    return hit.value;
-  }
-
-  function cacheSet(url: string, value: FetchResult): void {
-    if (!cacheOptions) return;
-    if (value.body.length > cacheOptions.maxEntryBytes) return;
-    cacheDelete(url);
-    cache.set(url, { at: Date.now(), value });
-    cacheTotalBytes += value.body.length;
-    const maxTotal = cacheOptions.maxTotalBytes ?? Number.POSITIVE_INFINITY;
-    while (cache.size > cacheOptions.maxEntries || (cacheTotalBytes > maxTotal && cache.size > 1)) {
-      const oldest = cache.keys().next().value;
-      if (oldest === undefined) break;
-      cacheDelete(oldest);
-    }
-  }
+  const cache = createResponseCache(cacheOptions);
 
   // --- throttle --------------------------------------------------------------
   let nextAllowedAt = 0;
@@ -357,7 +352,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     cacheable: boolean,
   ): FetchResult | undefined {
     if (!cacheable) return undefined;
-    const cached = cacheGet(url);
+    const cached = cache.get(url);
     if (!cached) return undefined;
     ctx.log(`${service} cache hit`, { url });
     return cached;
@@ -374,6 +369,44 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     return method === 'GET' ? url : `${method} ${url}`;
   }
 
+  /**
+   * Attempt, back off, attempt again — until the answer arrives or the BUDGET runs
+   * out, whichever comes first.
+   *
+   * A retry loop is a promise to keep trying. It is not a licence to outlive the
+   * person waiting: every attempt, every backoff and every throttle wait is spent
+   * from one budget, and when it is gone the loop says so rather than pressing on.
+   */
+  async function attemptUntilBudgetSpent(
+    ctx: ToolContext,
+    url: string,
+    requestHeaders: Record<string, string>,
+    request: EgressRequestOptions,
+    budget: { totalMs: number; hasTimeFor: (ms: number) => boolean },
+  ): Promise<FetchResult> {
+    const MAX_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS && budget.hasTimeFor(0); attempt++) {
+      await throttle();
+      const outcome = await attemptFetch(
+        ctx,
+        url,
+        requestHeaders,
+        attempt,
+        attempt === MAX_ATTEMPTS,
+        request,
+      );
+      if ('result' in outcome) return outcome.result;
+      // Never sleep off a backoff we cannot afford to wake from.
+      if (!budget.hasTimeFor(outcome.retryAfterMs)) break;
+      await sleep(outcome.retryAfterMs);
+    }
+
+    throw new ToolError(
+      `${service} did not answer within ${String(Math.round(budget.totalMs / 1000))}s, across retries. It is likely rate-limiting us right now — wait a few seconds and try again.`,
+      { retryable: true },
+    );
+  }
+
   async function resilientFetch(
     ctx: ToolContext,
     url: string,
@@ -388,26 +421,11 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
       ? { ...headers, accept: requestOptions.accept }
       : headers;
 
-    const MAX_ATTEMPTS = 3;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      await throttle();
-      const outcome = await attemptFetch(
-        ctx,
-        url,
-        requestHeaders,
-        attempt,
-        attempt === MAX_ATTEMPTS,
-        requestOptions,
-      );
-      if (!('result' in outcome)) {
-        await sleep(outcome.retryAfterMs);
-        continue;
-      }
-      if (cacheable && outcome.result.status === 200) cacheSet(key, outcome.result);
-      return outcome.result;
-    }
-    // Unreachable: the loop either returns or throws on the final attempt.
-    throw new ToolError(`${service} request failed.`, { retryable: true });
+    const budget = startBudget(requestOptions.overallTimeoutMs ?? overallTimeoutMs);
+    const result = await attemptUntilBudgetSpent(ctx, url, requestHeaders, requestOptions, budget);
+
+    if (cacheable && result.status === 200) cache.set(key, result);
+    return result;
   }
 
   return { fetch: resilientFetch };

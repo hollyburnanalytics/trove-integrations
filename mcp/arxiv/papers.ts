@@ -57,7 +57,12 @@ export async function findPaperHtmlUrl(ctx: ToolContext, id: string): Promise<st
       const { status, redirected } = await arxivFetch(ctx, url, {
         accept: 'text/html',
         method: 'HEAD',
-        timeoutMs: 4_000,
+        timeoutMs: 3_000,
+        // The probe gets a SMALL budget of its own — retries included. It is an
+        // optional refinement (HTML rather than PDF) and it has a fallback that
+        // always exists, so it must never be the reason a save is slow, let alone
+        // the reason a save dies.
+        overallTimeoutMs: 5_000,
       });
       // A rendered page answers 200 WITHOUT being redirected there. ar5iv answers
       // **307 → the abstract page** for anything it has not rendered, and `fetch`
