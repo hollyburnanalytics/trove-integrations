@@ -33,6 +33,16 @@ const arxiv = createEgressClient({
   headers: { 'user-agent': USER_AGENT },
   throttleMs: 3_000,
   backoffBaseMs: 50,
+  // arXiv signals "you are going too fast" with **503**, not 429 — it is the
+  // documented response on the export API. Left out of this list, a 503 was
+  // treated as a generic outage: retried on a plain backoff, ignoring the
+  // `Retry-After` arXiv sends telling us exactly how long to wait.
+  rateLimitStatuses: [429, 503],
+  // Every request gets a deadline. arXiv TARPITS traffic it doesn't like — it
+  // accepts the connection and never answers (see the User-Agent note above) —
+  // and an un-deadlined fetch turns that into a hang, then an opaque "tool timed
+  // out or crashed", then a session where every retry hangs the same way.
+  timeoutMs: 10_000,
   cache: { ttlMs: 5 * 60_000, maxEntries: 256, maxEntryBytes: 256 * 1024 },
 });
 
@@ -40,5 +50,5 @@ const arxiv = createEgressClient({
 export const arxivFetch = (
   ctx: ToolContext,
   url: string,
-  opts: { accept: string; cacheable?: boolean },
+  opts: { accept: string; cacheable?: boolean; method?: 'GET' | 'HEAD'; timeoutMs?: number },
 ): Promise<FetchResult> => arxiv.fetch(ctx, url, opts);

@@ -21,6 +21,19 @@ import { type ToolContext, ToolError } from '@ontrove/mcp';
 export interface FetchResult {
   status: number;
   body: string;
+  /**
+   * The URL the response actually came from, and whether getting there took a
+   * redirect.
+   *
+   * `fetch` follows redirects by default, so a status of 200 does NOT mean the
+   * URL you asked for exists — it can equally mean the upstream bounced you to
+   * somewhere else that does. That distinction is not academic: ar5iv answers a
+   * request for an unrendered paper with 307 → the abstract page, and a caller
+   * reading only `status` concluded "the HTML is there" and captured arXiv's
+   * abstract LANDING page as if it were the paper.
+   */
+  url: string;
+  redirected: boolean;
 }
 
 export interface EgressClientOptions {
@@ -38,6 +51,20 @@ export interface EgressClientOptions {
   rateLimitStatuses?: number[];
   /** Exponential-backoff base delay in ms (kept small so tests stay fast). */
   backoffBaseMs?: number;
+  /**
+   * Deadline for a single request, in ms. Defaults to {@link DEFAULT_TIMEOUT_MS}.
+   *
+   * A fetch with no deadline is the most dangerous call a tool can make. Some
+   * upstreams — arXiv is one, and it is explicit about it — do not refuse
+   * unwelcome traffic with a 4xx; they TARPIT it, accepting the connection and
+   * then never answering. Without a deadline the tool hangs until the MCP client
+   * gives up, and the caller sees "tool timed out or crashed": no status, no
+   * reason, nothing to retry against. Every retry then re-hangs, so a burst of
+   * saves poisons the rest of the session.
+   *
+   * A deadline converts that silence into a fast, typed, retryable error.
+   */
+  timeoutMs?: number;
   /** Test-only: apply `throttleMs` even under the bun test runtime. */
   forceThrottleInTests?: boolean;
   cache?: {
@@ -54,7 +81,18 @@ export interface EgressRequestOptions {
   accept?: string;
   /** Set false to bypass the cache for this request (default true). */
   cacheable?: boolean;
+  /** HTTP method (default GET). A HEAD probe reads only the status line. */
+  method?: 'GET' | 'HEAD';
+  /** Override the client's {@link EgressClientOptions.timeoutMs} for this request. */
+  timeoutMs?: number;
 }
+
+/**
+ * The default single-request deadline. Long enough for a slow-but-honest upstream
+ * (arXiv's API regularly takes several seconds), short enough that a tarpitted
+ * connection fails well inside any MCP client's patience.
+ */
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 const inTestRuntime = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
 
@@ -97,6 +135,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     headers = {},
     rateLimitStatuses = [429],
     backoffBaseMs = 50,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
     cache: cacheOptions,
   } = options;
   const throttleMs = inTestRuntime && !options.forceThrottleInTests ? 0 : options.throttleMs;
@@ -191,18 +230,27 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
   async function classifyResponse(
     res: Response,
     isLastAttempt: boolean,
+    headOnly = false,
   ): Promise<ResponseDecision> {
     if (limitStatuses.has(res.status)) return handleRateLimit(res, isLastAttempt);
     if (res.status >= 500) return handleServerError(isLastAttempt);
     if (res.status === 400 || res.status === 404) {
-      return { result: { status: res.status, body: '' } };
+      return { result: { status: res.status, body: '', url: res.url, redirected: res.redirected } };
     }
     if (!res.ok) {
       throw new ToolError(`${service} returned an unexpected status (${res.status}).`, {
         retryable: false,
       });
     }
-    return { result: { status: res.status, body: await res.text() } };
+    // A HEAD response has no body to read, and awaiting one would hang.
+    return {
+      result: {
+        status: res.status,
+        body: headOnly ? '' : await res.text(),
+        url: res.url,
+        redirected: res.redirected,
+      },
+    };
   }
 
   /**
@@ -216,17 +264,34 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     requestHeaders: Record<string, string>,
     attempt: number,
     isLast: boolean,
+    request: EgressRequestOptions,
   ): Promise<{ result: FetchResult } | { retryAfterMs: number }> {
     let decision: ResponseDecision;
+    const deadline = request.timeoutMs ?? timeoutMs;
     try {
-      const res = await ctx.fetch(url, { headers: requestHeaders });
-      decision = await classifyResponse(res, isLast);
+      // The DEADLINE is the point of this line. An upstream that tarpits accepts
+      // the connection and never answers; without a signal this await never
+      // returns, the tool hangs until the MCP client gives up, and the caller is
+      // told only "tool timed out or crashed".
+      const res = await ctx.fetch(url, {
+        headers: requestHeaders,
+        method: request.method ?? 'GET',
+        signal: AbortSignal.timeout(deadline),
+      });
+      decision = await classifyResponse(res, isLast, request.method === 'HEAD');
     } catch (error) {
       if (error instanceof ToolError) throw error;
+      // A timeout is not a network error and must not be described as one: it is
+      // the upstream declining to answer, and saying so is the difference between
+      // a caller who retries sensibly and a caller who has no idea what happened.
+      const timedOut = error instanceof Error && error.name === 'TimeoutError';
       if (isLast) {
-        throw new ToolError(`Could not reach ${service} (network error). Try again shortly.`, {
-          retryable: true,
-        });
+        throw new ToolError(
+          timedOut
+            ? `${service} did not respond within ${String(Math.round(deadline / 1000))}s. It may be rate-limiting this request; wait a few seconds and try again.`
+            : `Could not reach ${service} (network error). Try again shortly.`,
+          { retryable: true },
+        );
       }
       return { retryAfterMs: backoffMs(attempt) };
     }
@@ -253,7 +318,12 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     requestOptions: EgressRequestOptions = {},
   ): Promise<FetchResult> {
     const cacheable = requestOptions.cacheable ?? true;
-    const cached = servedFromCache(ctx, url, cacheable);
+    // The cache key includes the METHOD. A HEAD stores an empty body — cached
+    // under the bare URL it would be served to a later GET of the same URL as a
+    // 200 with no content, and the caller would conclude the page was blank.
+    const method = requestOptions.method ?? 'GET';
+    const key = method === 'GET' ? url : `${method} ${url}`;
+    const cached = servedFromCache(ctx, key, cacheable);
     if (cached) return cached;
 
     const requestHeaders = requestOptions.accept
@@ -269,12 +339,13 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
         requestHeaders,
         attempt,
         attempt === MAX_ATTEMPTS,
+        requestOptions,
       );
       if (!('result' in outcome)) {
         await sleep(outcome.retryAfterMs);
         continue;
       }
-      if (cacheable && outcome.result.status === 200) cacheSet(url, outcome.result);
+      if (cacheable && outcome.result.status === 200) cacheSet(key, outcome.result);
       return outcome.result;
     }
     // Unreachable: the loop either returns or throws on the final attempt.

@@ -34,17 +34,17 @@ describe('egress client', () => {
     });
     const context = fakeContext([ok('hello')]);
     const result = await c.fetch(context, 'https://x.test/a', { accept: 'text/plain' });
-    expect(result).toEqual({ status: 200, body: 'hello' });
+    expect(result).toMatchObject({ status: 200, body: 'hello', redirected: false });
     expect(context.calls[0].init.headers).toEqual({ 'user-agent': 'ua', accept: 'text/plain' });
   });
 
   it('passes 400/404 through as empty results for callers to map', async () => {
     const c = client();
-    expect(await c.fetch(fakeContext([status(404)]), 'https://x.test/n')).toEqual({
+    expect(await c.fetch(fakeContext([status(404)]), 'https://x.test/n')).toMatchObject({
       status: 404,
       body: '',
     });
-    expect(await c.fetch(fakeContext([status(400)]), 'https://x.test/b')).toEqual({
+    expect(await c.fetch(fakeContext([status(400)]), 'https://x.test/b')).toMatchObject({
       status: 400,
       body: '',
     });
@@ -162,5 +162,94 @@ describe('egress client', () => {
     ]);
     expect(Date.now() - started).toBeGreaterThanOrEqual(8);
     expect(context.calls).toHaveLength(3);
+  });
+
+  it('gives every request a DEADLINE — a tarpitting upstream must not hang the tool', async () => {
+    // The bug this pins. arXiv does not refuse traffic it dislikes with a 4xx; it
+    // accepts the connection and never answers. With no signal the fetch never
+    // settles, the tool hangs until the MCP client gives up, and the caller is told
+    // only "tool timed out or crashed" — no status, nothing to retry against. The
+    // first save in a session worked; every one after it hung.
+    //
+    // The fake here behaves like a real tarpit AND like a real fetch: it never
+    // answers, and it settles only when the signal aborts it. A context that
+    // ignored the signal would prove nothing.
+    const calls = [];
+    const tarpit = {
+      log() {},
+      fetch(url, init) {
+        calls.push(init);
+        return new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => {
+            reject(init.signal.reason);
+          });
+        });
+      },
+    };
+
+    const c = client({ timeoutMs: 25 });
+    await expect(c.fetch(tarpit, 'https://x.test/slow')).rejects.toThrow(
+      /did not respond within 0s|did not respond/,
+    );
+    // The deadline reached the socket, rather than being raced in-process: an
+    // un-abortable request would sit there holding a connection open.
+    expect(calls[0].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('says the upstream did not answer — not "network error"', async () => {
+    // A timeout and a broken socket call for different reactions from the caller,
+    // so they must not wear the same message.
+    const tarpit = {
+      log() {},
+      fetch: (_url, init) =>
+        new Promise((_r, reject) => {
+          init.signal.addEventListener('abort', () => {
+            reject(init.signal.reason);
+          });
+        }),
+    };
+    const c = client({ timeoutMs: 25 });
+    await expect(c.fetch(tarpit, 'https://x.test/s')).rejects.toThrow(/rate-limiting this request/);
+  });
+
+  it('reports a redirect, so a 200 at the end of a hop is not mistaken for the page', async () => {
+    // `fetch` follows redirects: ar5iv answers 307 → the abstract page for an
+    // unrendered paper, and the caller that read only `status` captured that
+    // abstract page as if it were the physics.
+    //
+    // Handed back directly (not cloned — cloning drops these properties, which is
+    // exactly the trap that made the first version of this test lie).
+    const hopped = Object.defineProperties(new Response('', { status: 200 }), {
+      redirected: { value: true },
+      url: { value: 'https://x.test/abs/1' },
+    });
+    const context = { log() {}, fetch: () => Promise.resolve(hopped) };
+
+    const c = client();
+    const res = await c.fetch(context, 'https://x.test/html/1');
+    expect(res.status).toBe(200);
+    expect(res.redirected).toBe(true);
+    expect(res.url).toBe('https://x.test/abs/1');
+  });
+
+  it('sends HEAD when asked, and does not try to read a body that is not there', async () => {
+    const c = client();
+    const context = fakeContext([status(200)]);
+    const res = await c.fetch(context, 'https://x.test/h', { method: 'HEAD' });
+    expect(context.calls[0].init.method).toBe('HEAD');
+    expect(res.status).toBe(200);
+    expect(res.body).toBe('');
+  });
+
+  it('keys the cache by METHOD, so a HEAD cannot serve an empty body to a GET', async () => {
+    // A HEAD stores no body. Cached under the bare URL, a later GET of the same URL
+    // would be handed a 200 with nothing in it, and the caller would conclude the
+    // page was blank.
+    const c = client({ cache: { ttlMs: 60_000, maxEntries: 8, maxEntryBytes: 1024 } });
+    const context = fakeContext([status(200), ok('the real body')]);
+    await c.fetch(context, 'https://x.test/p', { method: 'HEAD' });
+    const got = await c.fetch(context, 'https://x.test/p');
+    expect(got.body).toBe('the real body');
+    expect(context.calls).toHaveLength(2);
   });
 });
