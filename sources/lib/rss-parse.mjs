@@ -12,9 +12,13 @@ import { decodeHtmlEntities, stripHtmlTags } from './text.mjs';
  */
 export function xmlText(xml, tag) {
   const t = tag.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  // Tolerate attributes on the opening tag — Atom feeds commonly emit
+  // `<title type="html">…` (jvns.ca shipped 20/20 items as "Untitled" live
+  // because this matched only the bare tag). The `(?:\s[^>]*)?` boundary
+  // keeps `<title` from matching a longer sibling tag name.
   const m =
-    xml.match(new RegExp(String.raw`<${t}><!\[CDATA\[([\s\S]*?)\]\]><\/${t}>`)) ||
-    xml.match(new RegExp(String.raw`<${t}>([^<]*)<\/${t}>`));
+    xml.match(new RegExp(String.raw`<${t}(?:\s[^>]*)?><!\[CDATA\[([\s\S]*?)\]\]><\/${t}>`)) ||
+    xml.match(new RegExp(String.raw`<${t}(?:\s[^>]*)?>([^<]*)<\/${t}>`));
   return m ? m[1].trim() : '';
 }
 

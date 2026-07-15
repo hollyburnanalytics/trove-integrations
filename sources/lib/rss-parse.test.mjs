@@ -49,3 +49,24 @@ describe('parseRSS', () => {
     expect(item.guid).toBe('tag:1');
   });
 });
+
+describe('attributed opening tags (Atom type="html")', () => {
+  it('extracts a title carrying attributes — the jvns.ca live regression', () => {
+    const xml = `<entry><title type="html">Moving away from Tailwind</title><link href="https://jvns.ca/x"/><updated>2026-05-14T00:00:00Z</updated><content type="html">body</content></entry>`;
+    const items = parseRSS(xml);
+    expect(items.length).toBe(1);
+    expect(items[0].title).toBe('Moving away from Tailwind');
+  });
+
+  it('does not let a tag prefix match a longer sibling tag', () => {
+    const xml = `<entry><titleExtra>WRONG</titleExtra><title>Right</title><updated>2026-01-01T00:00:00Z</updated></entry>`;
+    const items = parseRSS(xml);
+    expect(items[0].title).toBe('Right');
+  });
+
+  it('extracts attributed CDATA titles', () => {
+    const xml = `<item><title type="text"><![CDATA[CDATA Title]]></title><link>https://x.example/a</link></item>`;
+    const items = parseRSS(xml);
+    expect(items[0].title).toBe('CDATA Title');
+  });
+});
