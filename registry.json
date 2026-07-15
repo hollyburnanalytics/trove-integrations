@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-14T21:56:35.407Z",
+  "updated_at": "2026-07-15T00:26:35.826Z",
   "source_count": 24,
   "categories": [
     "000-general",
@@ -456,7 +456,7 @@
       "transport": "feed",
       "watermark": "date",
       "documentSemantics": "append",
-      "available": false,
+      "available": true,
       "location": "cloud",
       "config": {
         "feeds": {
