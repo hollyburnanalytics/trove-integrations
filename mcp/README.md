@@ -46,6 +46,7 @@ in their manifest `egress`.
 | `openparliament` | `find_mp`, `mp_speeches`, `search_bills` | api.openparliament.ca (Canada Hansard) | — |
 | `dnv-permits` | `search_permits`, `suggest_addresses`, `recent_permits` | app.dnv.org (District of North Vancouver) | — |
 | `orgbook-bc` | `search_entities`, `get_entity`, `get_entity_history` | orgbook.gov.bc.ca (BC Corporate Registry mirror) | — ◊|
+| `bc-workers-comp-decisions` | `search_wcat_decisions`, `get_wcat_decision`, `search_review_decisions` | www.wcat.bc.ca + rdpubsearch.online.worksafebc.com | — †|
 
 ### Geo, weather & time
 | Toolkit | Tools | Upstream | Auth |
@@ -111,6 +112,20 @@ the Payroll module (employee PII) are deliberately not exposed.
 ‡ `hathitrust` — covers the **public Bibliographic API** only: given an ISBN/OCLC/LCCN/HathiTrust id it reports holdings + per-copy access rights (Full view = readable public domain, vs Limited = search-only). Its distinctive value over Open Library / Google Books is that **rights signal** — "can I actually read this, or only search it?" — plus a deep-link to the reader for full-view scans. It's an *exact-identifier* lookup against HathiTrust's catalog records, not a fuzzy search: an `htid` is the most reliable key and ISBN works well for modern books, but an arbitrary edition's OCLC can miss even when the work is held. HathiTrust gates corpus-wide *full-text search* (it 403s automated clients and requires partner credentials), so that surface is intentionally not exposed. For full-text search *inside* a book, use `gutenberg`.
 
 § `gutenberg` — beyond discovery, the high-value tool is `search_inside`: legal full-text search within any public-domain book, good for **locating/verifying a quotation** (exact wording + citation offset), **detecting misquotes** (e.g. "Elementary, my dear Watson" returns zero matches in the Sherlock canon), and **term-frequency** checks (e.g. "Napoleon" × 588 in *War and Peace*). `get_excerpt` then pages through the text from any offset. Book text is fetched from the fast University of Waterloo PG mirror (gutenberg.org's own origin serves a 1 MB book in ~10 s — past the gateway wall-clock; the mirror returns *War and Peace*'s 3.4 MB in ~1 s), with gutenberg.org as fallback. Matching is case-insensitive substring (not regex/semantic), and non-English title searches need exact accents.
+
+† `bc-workers-comp-decisions` — **live search over the two BC workers'-compensation
+appeal-decision sites, neither of which has an API**: WCAT's "search past decisions"
+page (with its full facet surface — keyword operators, `classification` incl.
+noteworthy/precedent, application/document type, and a date range) and the WorkSafeBC
+Review Division's search (2013–present). Both are parsed server-side; the tools return
+each tribunal's own result summaries + a link to the official record (a WCAT decision
+PDF, or the Review search) — **no full decision text is stored or redistributed**. One
+site quirk is handled: WorkSafeBC uses **Post-Redirect-Get** — the search POST stores
+its results under a new session cookie and 302-redirects to `/`, so the tool follows
+that redirect itself and carries the antiforgery + session cookies across it (`fetch`
+does not persist Set-Cookie across a redirect), otherwise the results page comes back
+empty. WCAT paging/caching go through the shared throttled egress client;
+`get_wcat_decision` resolves one decision by its exact number.
 
 ## Deploying one
 
