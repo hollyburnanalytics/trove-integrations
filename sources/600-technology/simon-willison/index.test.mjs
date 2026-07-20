@@ -22,7 +22,7 @@ describe('simon-willison source', () => {
     await sync(context);
 
     expect(syncRSS).toHaveBeenCalledWith(context, {
-      feedUrl: 'https://simonwillison.net/atom/entries/',
+      feedUrl: 'https://simonwillison.net/atom/everything/',
       idPrefix: 'sw',
       defaultAuthor: 'Simon Willison',
     });

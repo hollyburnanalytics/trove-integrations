@@ -3,7 +3,7 @@
   "name": "Simon Willison",
   "description": "All posts from simonwillison.net (2002-present)",
   "icon": "✍️",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Hollyburn Analytics Inc.",
   "category": "600-technology",
   "kind": "scheduled-sync",
