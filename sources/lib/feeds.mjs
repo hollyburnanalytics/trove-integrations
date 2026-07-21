@@ -60,11 +60,11 @@ export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
   const documents = filtered.map((item) => ({
     id: stableId(idPrefix, item.guid || item.link || item.title),
     title: decodeHtmlEntities(item.title || 'Untitled'),
-    // Store the full body (<content:encoded> / Atom <content>) as plain text,
-    // falling back to the excerpt for headline-only feeds.
+    // Store the fullest body the feed provides (content:encoded / Atom
+    // <content>, falling back to the raw description markup) as plain text.
     text: [
       decodeHtmlEntities(item.title || ''),
-      htmlToText((item.content || '').trim() || item.description || ''),
+      htmlToText(item.bodyHtml || item.description || ''),
     ]
       .filter(Boolean)
       .join('\n\n'),

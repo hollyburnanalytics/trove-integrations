@@ -6,6 +6,8 @@ export async function sync(context) {
     feeds,
     label: 'RSS feeds',
     emptyWarning: 'No feeds configured',
-    toDocument: (item) => feedItemDocument('rss', item),
+    // Subscribed blogs get the fullest body the feed provides — not the
+    // excerpt — plus the feed's own categories as tags.
+    toDocument: (item) => feedItemDocument('rss', item, { fullText: true, tags: item.categories }),
   });
 }

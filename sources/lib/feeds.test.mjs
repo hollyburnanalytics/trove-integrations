@@ -155,7 +155,7 @@ describe('parseRSS', () => {
         <summary>An atom entry</summary>
         <published>2024-01-15T00:00:00Z</published>
         <id>atom-1</id>
-        <name>Author Name</name>
+        <author><name>Author Name</name></author>
       </entry>
     </feed>`;
 
@@ -280,9 +280,10 @@ describe('parseRSS', () => {
     expect(items[0].pubDate).toBe('2024-02-01T00:00:00Z');
   });
 
-  it('returns empty array for non-feed XML', () => {
-    const items = parseRSS('<html><body>Not a feed</body></html>');
-    expect(items).toEqual([]);
+  it('throws on non-feed XML — a misconfigured feed must fail loudly, not sync zero forever', () => {
+    expect(() => parseRSS('<html><body>Not a feed</body></html>')).toThrow(
+      /Unrecognized feed format/,
+    );
   });
 });
 
@@ -556,6 +557,30 @@ describe('htmlToText', () => {
   });
   it('returns empty string for falsy input', () => {
     expect(htmlToText('')).toBe('');
+  });
+  it('keeps paragraph boundaries as blank lines', () => {
+    expect(htmlToText('<p>One.</p><p>Two.</p>')).toBe('One.\n\nTwo.');
+  });
+  it('renders list items on their own lines', () => {
+    expect(htmlToText('<ul><li>First</li><li>Second</li></ul>')).toBe('- First\n- Second');
+  });
+  it('preserves line breaks inside pre blocks', () => {
+    const html = '<p>Before</p><pre><code>line1\nline2</code></pre>';
+    expect(htmlToText(html)).toBe('Before\n\nline1\nline2');
+  });
+  it('drops script and style content entirely', () => {
+    expect(htmlToText('<p>Keep</p><script>var x=1;</script><style>.a{}</style>')).toBe('Keep');
+  });
+  it('reduces images to their alt text', () => {
+    expect(htmlToText('<p>Portrait: <img src="x.jpg" alt="Om Malik holding a camera"/></p>')).toBe(
+      'Portrait: [Image: Om Malik holding a camera]',
+    );
+  });
+  it('parses entity-escaped markup instead of leaking literal tags', () => {
+    expect(htmlToText('&lt;p&gt;Escaped &amp;amp; decoded&lt;/p&gt;')).toBe('Escaped & decoded');
+  });
+  it('decodes common named entities', () => {
+    expect(htmlToText('<p>a&nbsp;&mdash;&nbsp;b&hellip;</p>')).toBe('a — b…');
   });
 });
 
