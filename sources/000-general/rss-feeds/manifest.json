@@ -1,9 +1,9 @@
 {
   "id": "rss-feeds",
   "name": "RSS Feeds",
-  "description": "Subscribe to any RSS or Atom feed. Configure multiple feed URLs.",
-  "icon": "\ud83d\udce1",
-  "version": "0.1.0",
+  "description": "Subscribe to any blog or news feed — RSS, Atom, or JSON Feed. Paste feed URLs (or just the site URL) and Trove stores the full text of every post.",
+  "icon": "📡",
+  "version": "0.2.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "000-general",
   "kind": "scheduled-sync",

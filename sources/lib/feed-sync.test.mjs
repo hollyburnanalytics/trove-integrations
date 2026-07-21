@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
-import { feedItemDocument, syncFeeds } from './feed-sync.mjs';
+import { discoverFeedUrl, feedItemDocument, syncFeeds } from './feed-sync.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -216,5 +216,82 @@ describe('syncFeeds', () => {
       label: 'sections',
     });
     expect(context.progress).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('feedItemDocument fullText', () => {
+  it('stores the fullest body when fullText is set, excerpt otherwise', () => {
+    const item = {
+      title: 'Post',
+      link: 'https://x.test/p',
+      description: 'Excerpt only',
+      bodyHtml: '<p>The whole post, with paragraphs.</p><p>More.</p>',
+      pubDate: 'Mon, 15 Jan 2024 10:00:00 GMT',
+    };
+    const excerpt = feedItemDocument('rss', item);
+    expect(excerpt.text).toContain('Excerpt only');
+    expect(excerpt.text).not.toContain('whole post');
+
+    const full = feedItemDocument('rss', item, { fullText: true });
+    expect(full.text).toContain('The whole post, with paragraphs.');
+    expect(full.text).toContain('More.');
+  });
+
+  it('falls back to the description when the feed ships no body', () => {
+    const document = feedItemDocument(
+      'rss',
+      { title: 'T', link: 'https://x.test/t', description: 'Only this', bodyHtml: '' },
+      { fullText: true },
+    );
+    expect(document.text).toContain('Only this');
+  });
+});
+
+describe('discoverFeedUrl', () => {
+  it('finds the advertised feed and resolves relative hrefs', () => {
+    const html = `<html><head>
+      <link rel="stylesheet" href="/style.css"/>
+      <link rel="alternate" type="application/rss+xml" title="Feed" href="/feed/"/>
+    </head><body></body></html>`;
+    expect(discoverFeedUrl(html, 'https://seths.blog/post/x')).toBe('https://seths.blog/feed/');
+  });
+
+  it('returns undefined when the page advertises no feed', () => {
+    expect(discoverFeedUrl('<html><head></head></html>', 'https://x.test/')).toBeUndefined();
+  });
+});
+
+describe('syncFeeds feed autodiscovery', () => {
+  beforeEach(() => {
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+  });
+
+  it('follows a pasted site URL to its advertised feed', async () => {
+    const page = `<html><head><link rel="alternate" type="application/atom+xml" href="https://blog.test/atom.xml"/></head><body>hi</body></html>`;
+    const feed = rss(rssItem({ title: 'Found', link: 'https://blog.test/found' }));
+    globalThis.fetch.mockImplementation((url) =>
+      Promise.resolve(ok(String(url).includes('atom.xml') ? feed : page)),
+    );
+
+    const context = makeContext();
+    const result = await syncFeeds(context, {
+      feeds: [{ url: 'https://blog.test/' }],
+      toDocument: STD(),
+    });
+    expect(result.documents.length).toBe(1);
+    expect(result.documents[0].title).toBe('Found');
+  });
+
+  it('fails the feed loudly when the page advertises no feed', async () => {
+    globalThis.fetch.mockImplementation(() =>
+      Promise.resolve(ok('<html><body>nope</body></html>')),
+    );
+    const context = makeContext();
+    await expect(
+      syncFeeds(context, { feeds: [{ url: 'https://blog.test/' }], toDocument: STD() }),
+    ).rejects.toThrow(/failed to fetch/);
   });
 });

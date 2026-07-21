@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-15T00:26:35.826Z",
+  "updated_at": "2026-07-21T06:25:58.902Z",
   "source_count": 24,
   "categories": [
     "000-general",
@@ -441,9 +441,9 @@
     {
       "id": "rss-feeds",
       "name": "RSS Feeds",
-      "description": "Subscribe to any RSS or Atom feed. Configure multiple feed URLs.",
+      "description": "Subscribe to any blog or news feed — RSS, Atom, or JSON Feed. Paste feed URLs (or just the site URL) and Trove stores the full text of every post.",
       "icon": "📡",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": "Hollyburn Analytics Inc.",
       "category": "000-general",
       "schedule": "every 2 hours",
@@ -499,7 +499,7 @@
       "name": "Simon Willison",
       "description": "All posts from simonwillison.net (2002-present)",
       "icon": "✍️",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": "Hollyburn Analytics Inc.",
       "category": "600-technology",
       "schedule": "daily",

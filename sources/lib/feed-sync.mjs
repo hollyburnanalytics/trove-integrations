@@ -1,3 +1,4 @@
+import { parse as parseHtmlDocument } from 'node-html-parser';
 import {
   decodeHtmlEntities,
   fetchPage,
@@ -8,29 +9,67 @@ import {
 } from './feeds.mjs';
 import { advanceDateWatermark, readDateWatermark } from './watermark.mjs';
 
+/** MIME types a page's `<link rel="alternate">` uses to advertise its feed. */
+const FEED_LINK_TYPES = new Set([
+  'application/rss+xml',
+  'application/atom+xml',
+  'application/feed+json',
+  'application/json',
+]);
+
+/**
+ * Find the feed a web page advertises. Users paste site URLs where feed URLs
+ * belong ("https://example.com" instead of "https://example.com/feed"); when
+ * the fetched document turns out to be an HTML page, its
+ * `<link rel="alternate" type="application/rss+xml">` (or atom/json variants)
+ * points at the real feed.
+ *
+ * @param {string} html - The fetched document body.
+ * @param {string} baseUrl - The page URL, for resolving relative hrefs.
+ * @returns {string | undefined} The advertised feed URL, if any.
+ */
+export function discoverFeedUrl(html, baseUrl) {
+  const root = parseHtmlDocument(html);
+  for (const link of root.querySelectorAll('link[rel="alternate"]')) {
+    const type = (link.getAttribute('type') || '').toLowerCase().split(';')[0].trim();
+    const href = link.getAttribute('href');
+    if (!href || !FEED_LINK_TYPES.has(type)) continue;
+    try {
+      return new URL(href, baseUrl).toString();
+    } catch {
+      // Malformed href — keep scanning; a later link may be valid.
+    }
+  }
+}
+
 /**
  * Build a TroveDocument from a parsed feed item, the standard way every
  * multi-feed source adapter wants it: stable ID, entity-decoded title, body as
  * plain text, and a safe date.
  *
- * Uses the item's `description` (the feed excerpt/summary) as the body — NOT
- * `content:encoded`. Headline source adapters (BBC/FT/Guardian/NYT) intentionally
- * store only the publisher-provided summary; full-text blog feeds use
- * `syncRSS()` instead, which does prefer the full body.
+ * By default the body is the item's `description` (the feed excerpt/summary) —
+ * headline source adapters (BBC/FT/Guardian/NYT) intentionally store only the
+ * publisher-provided summary. Pass `fullText: true` to store the fullest body
+ * the feed provides (`bodyHtml`: `content:encoded` / Atom `content`, falling
+ * back to the raw description markup) — what a subscribed-blog source like
+ * `rss-feeds` wants.
  *
  * @param {string} idPrefix - stable-ID namespace (e.g. `'bbc'`)
  * @param {object} item - a `parseRSS()` item, plus a resolved `url`
  * @param {object} [options]
  * @param {string} [options.defaultAuthor] - author when the item has none
  * @param {string[]} [options.tags] - tags to attach (omitted when empty)
+ * @param {boolean} [options.fullText] - store the fullest available body
+ *   instead of the excerpt
  * @returns {object} TroveDocument
  */
-export function feedItemDocument(idPrefix, item, { defaultAuthor, tags } = {}) {
+export function feedItemDocument(idPrefix, item, { defaultAuthor, tags, fullText = false } = {}) {
   const date = safeDate(item.pubDate);
+  const body = fullText ? item.bodyHtml || item.description : item.description;
   const document = {
     id: stableId(idPrefix, item.guid || item.link),
     title: decodeHtmlEntities(item.title || 'Untitled'),
-    text: [decodeHtmlEntities(item.title || ''), htmlToText(item.description || '')]
+    text: [decodeHtmlEntities(item.title || ''), htmlToText(body || '')]
       .filter(Boolean)
       .join('\n\n'),
     url: item.url || item.link,
@@ -39,6 +78,23 @@ export function feedItemDocument(idPrefix, item, { defaultAuthor, tags } = {}) {
   };
   if (tags && tags.length > 0) document.tags = tags;
   return document;
+}
+
+/**
+ * Fetch one feed URL and parse its items. When the URL turns out to be an HTML
+ * page rather than a feed (users paste site URLs), follow the feed the page
+ * advertises instead of failing.
+ */
+async function fetchFeedItems(context, feed, parseFeed) {
+  const body = await fetchPage(feed.url);
+  try {
+    return parseFeed(body);
+  } catch (parseError) {
+    const discovered = discoverFeedUrl(body, feed.url);
+    if (!discovered || discovered === feed.url) throw parseError;
+    context.log.info(`  ${feed.label || feed.url}: HTML page — using its feed ${discovered}`);
+    return parseFeed(await fetchPage(discovered));
+  }
 }
 
 /**
@@ -112,7 +168,7 @@ export async function syncFeeds(
 
   for (const [index, feed] of feeds.entries()) {
     try {
-      const items = parseFeed(await fetchPage(feed.url));
+      const items = await fetchFeedItems(context, feed, parseFeed);
       const collected = collectFeedItems(items, { feed, seenUrls, lastDate, toDocument });
       documents.push(...collected.documents);
       dates.push(...collected.dates);

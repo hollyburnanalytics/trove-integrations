@@ -5,7 +5,13 @@
     "clientKind": "git",
     "useIgnoreFile": true
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
@@ -30,7 +36,9 @@
       "complexity": {
         "noExcessiveCognitiveComplexity": {
           "level": "warn",
-          "options": { "maxAllowedComplexity": 15 }
+          "options": {
+            "maxAllowedComplexity": 15
+          }
         }
       },
       "correctness": {
@@ -52,7 +60,9 @@
         "noNonNullAssertion": "error",
         "noExcessiveLinesPerFile": {
           "level": "warn",
-          "options": { "maxLines": 350 }
+          "options": {
+            "maxLines": 350
+          }
         },
         "useFilenamingConvention": {
           "level": "error",
@@ -75,7 +85,9 @@
       "includes": ["scripts/**", ".claude/skills/**/*.mjs"],
       "linter": {
         "rules": {
-          "suspicious": { "noConsole": "off" }
+          "suspicious": {
+            "noConsole": "off"
+          }
         }
       }
     },
@@ -83,9 +95,18 @@
       "includes": ["**/test/**/*.mjs", "**/*.test.mjs"],
       "linter": {
         "rules": {
-          "suspicious": { "noConsole": "off" },
-          "complexity": { "noExcessiveCognitiveComplexity": "off" },
-          "style": { "noExcessiveLinesPerFile": "off" }
+          "suspicious": {
+            "noConsole": "off"
+          },
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off"
+          },
+          "style": {
+            "noExcessiveLinesPerFile": "off"
+          },
+          "nursery": {
+            "noFloatingPromises": "off"
+          }
         }
       }
     }
