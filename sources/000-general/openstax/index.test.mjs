@@ -13,7 +13,14 @@ mock.module('../../lib/feeds.mjs', () => ({
     parse(String(html ?? ''))
       .textContent.replaceAll(/\s+/g, ' ')
       .trim(),
-  safeDate: (value) => (value ? new Date(value).toISOString() : undefined),
+  // Faithful to the real safeDate: undefined for missing AND invalid dates.
+  // (`new Date(invalid).toISOString()` throws — and module mocks can leak
+  // across test files, so an unfaithful mock here breaks other suites.)
+  safeDate: (value) => {
+    if (!value) return;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  },
   stableId: (prefix, input) => `${prefix}-${input}`,
 }));
 

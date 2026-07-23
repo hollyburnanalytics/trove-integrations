@@ -33,7 +33,8 @@
   },
   "dependencies": {
     "fast-xml-parser": "^5.10.1",
-    "node-html-parser": "^8.0.4"
+    "node-html-parser": "^8.0.4",
+    "unpdf": "^1.6.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.4",

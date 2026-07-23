@@ -1,0 +1,20 @@
+{
+  "id": "dnv-council-minutes",
+  "name": "DNV Council Meetings",
+  "description": "Agendas, minutes, and reports from District of North Vancouver council meetings — the public record of local government decisions (2011–present)",
+  "icon": "🏛️",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "350-public-administration",
+  "kind": "scheduled-sync",
+  "transport": "api",
+  "watermark": "idSet",
+  "documentSemantics": "append",
+  "formatting": "reformat",
+  "location": "cloud",
+  "schedule": "daily",
+  "status": "implemented",
+  "config": {},
+  "needs_browser": false,
+  "live": false
+}

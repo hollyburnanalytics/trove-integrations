@@ -74,6 +74,7 @@ manifest `category`, and the number gives stable ordering with gaps to grow into
 | `070-news` | news media & journalism |
 | `300-social-sciences` | society & social sciences (e.g. global development data) |
 | `330-economics` | economics |
+| `350-public-administration` | public administration & government |
 | `500-science` | science & research |
 | `600-technology` | technology & computing |
 | `650-business` | business, startups, finance |

@@ -1,12 +1,13 @@
 {
   "version": 1,
-  "updated_at": "2026-07-23T18:38:06.614Z",
-  "source_count": 24,
+  "updated_at": "2026-07-23T22:41:44.810Z",
+  "source_count": 25,
   "categories": [
     "000-general",
     "070-news",
     "300-social-sciences",
     "330-economics",
+    "350-public-administration",
     "500-science",
     "600-technology",
     "650-business"
@@ -197,6 +198,28 @@
       "documentSemantics": "append",
       "location": "cloud",
       "config": {}
+    },
+    {
+      "id": "dnv-council-minutes",
+      "name": "DNV Council Meetings",
+      "description": "Agendas, minutes, and reports from District of North Vancouver council meetings — the public record of local government decisions (2011–present)",
+      "icon": "🏛️",
+      "version": "0.1.0",
+      "author": "Hollyburn Analytics Inc.",
+      "category": "350-public-administration",
+      "kind": "scheduled-sync",
+      "transport": "api",
+      "watermark": "idSet",
+      "documentSemantics": "append",
+      "formatting": "reformat",
+      "location": "cloud",
+      "schedule": "daily",
+      "status": "implemented",
+      "config": {},
+      "needs_browser": false,
+      "live": false,
+      "path": "sources/350-public-administration/dnv-council-minutes",
+      "has_code": true
     },
     {
       "id": "financial-times-headlines",
