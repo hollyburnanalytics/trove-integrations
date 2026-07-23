@@ -72,6 +72,57 @@ function assertPublicHttpUrl(target) {
 }
 
 /**
+ * Marker for a response rejected by the size cap — a permanent condition (the
+ * resource is simply too big), unlike a timeout or connection error that may
+ * succeed on retry. Callers branch on {@link isTooLargeError}.
+ */
+const TOO_LARGE_CODE = 'ERESPONSETOOLARGE';
+
+/** Whether an error from {@link fetchPage}/{@link fetchBytes} was a size-cap rejection. */
+export function isTooLargeError(error) {
+  return /** @type {{ code?: string }} */ (error)?.code === TOO_LARGE_CODE;
+}
+
+/** @param {string} message @returns {Error & { code: string }} */
+function tooLargeError(message) {
+  return Object.assign(new Error(message), { code: TOO_LARGE_CODE });
+}
+
+/**
+ * Fetch a URL and return the raw response bytes, enforcing `maxBytes` both on
+ * the declared Content-Length and while streaming the body.
+ *
+ * @param {string} url
+ * @param {number} maxBytes
+ * @param {AbortSignal} signal
+ * @returns {Promise<Uint8Array>}
+ */
+async function fetchCappedBytes(url, maxBytes, signal) {
+  const response = await fetch(url, { headers: HEADERS, signal });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
+
+  const contentLength = response.headers.get('content-length');
+  if (contentLength && Number.parseInt(contentLength, 10) > maxBytes) {
+    throw tooLargeError(`Response too large (${contentLength} bytes) for ${url}`);
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.length;
+    if (totalBytes > maxBytes) {
+      reader.cancel();
+      throw tooLargeError(`Response exceeded ${maxBytes} bytes for ${url}`);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
  * Fetch a URL with our honest bot UA, a hard timeout, and a response-size cap.
  * Rejects non-public hosts (SSRF guard), throws on non-200. Returns body text.
  */
@@ -80,28 +131,31 @@ export async function fetchPage(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { headers: HEADERS, signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
+    const bytes = await fetchCappedBytes(url, MAX_RESPONSE_BYTES, controller.signal);
+    return new TextDecoder().decode(bytes);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-    const contentLength = response.headers.get('content-length');
-    if (contentLength && Number.parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
-      throw new Error(`Response too large (${contentLength} bytes) for ${url}`);
-    }
-
-    const reader = response.body.getReader();
-    const chunks = [];
-    let totalBytes = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.length;
-      if (totalBytes > MAX_RESPONSE_BYTES) {
-        reader.cancel();
-        throw new Error(`Response exceeded ${MAX_RESPONSE_BYTES} bytes for ${url}`);
-      }
-      chunks.push(value);
-    }
-    return new TextDecoder().decode(Buffer.concat(chunks));
+/**
+ * Binary twin of {@link fetchPage}: same SSRF guard, honest UA, timeout, and
+ * streamed size cap, but returns the raw bytes — for document downloads (PDFs)
+ * where text-decoding would corrupt the payload. `maxBytes` lets a source raise
+ * the cap for known-large documents; a cap rejection throws an error that
+ * {@link isTooLargeError} recognizes, so callers can treat it as permanent
+ * (skip the document) rather than transient (retry next run).
+ *
+ * @param {string} url
+ * @param {{ maxBytes?: number }} [options]
+ * @returns {Promise<Uint8Array>}
+ */
+export async function fetchBytes(url, { maxBytes = MAX_RESPONSE_BYTES } = {}) {
+  assertPublicHttpUrl(url);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetchCappedBytes(url, maxBytes, controller.signal);
   } finally {
     clearTimeout(timer);
   }

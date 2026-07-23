@@ -31,6 +31,7 @@ const CATEGORIES = [
   '070-news',
   '300-social-sciences',
   '330-economics',
+  '350-public-administration',
   '500-science',
   '600-technology',
   '650-business',
