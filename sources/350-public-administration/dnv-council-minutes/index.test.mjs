@@ -1,10 +1,25 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
-import { sync } from './index.mjs';
+import { afterAll, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+
+afterAll(() => mock.restore());
+
+const fetchPage = mock();
+const fetchBytes = mock();
+const deadlineReached = mock(() => false);
+
+mock.module('../../lib/http.mjs', () => ({
+  fetchPage,
+  fetchBytes,
+  // Mirrors the real contract: cap rejections carry this code.
+  isTooLargeError: (error) => error?.code === 'ERESPONSETOOLARGE',
+}));
+mock.module('../../lib/feeds.mjs', () => ({ deadlineReached }));
+
+const { sync } = await import('./index.mjs');
 
 function makeContext(overrides = {}) {
   return {
-    log: { info: mock(), warn: mock() },
-    progress: mock(),
+    log: { info: jest.fn(), warn: jest.fn() },
+    progress: jest.fn(),
     config: {},
     cursor: undefined,
     ...overrides,
@@ -53,53 +68,32 @@ function meeting(overrides = {}) {
   };
 }
 
-/** Streamable Response-like object for the mocked fetch. */
-function bytesResponse(bytes, headers = {}) {
-  let delivered = false;
-  return {
-    ok: true,
-    headers: { get: (name) => headers[name.toLowerCase()] },
-    body: {
-      getReader: () => ({
-        read: () => {
-          if (delivered) return Promise.resolve({ done: true });
-          delivered = true;
-          return Promise.resolve({ done: false, value: bytes });
-        },
-        cancel: () => {},
-      }),
-    },
-  };
-}
-
-function jsonResponse(value) {
-  return bytesResponse(new TextEncoder().encode(JSON.stringify(value)));
-}
-
-/** Mock fetch: first call returns the meeting index, then PDFs by docNum. */
-function mockApi(meetings, pdfByNumber) {
-  globalThis.fetch = mock((url) => {
-    if (url.includes('councilsearch')) return Promise.resolve(jsonResponse(meetings));
+/** Route the index to `meetings` and document downloads to `pdfByNumber`. */
+function routeApi(meetings, pdfByNumber) {
+  fetchPage.mockResolvedValue(JSON.stringify(meetings));
+  fetchBytes.mockImplementation((url) => {
     const number = new URL(url).searchParams.get('docNum');
     const pdf = pdfByNumber[number];
-    if (!pdf) return Promise.resolve({ ok: false, status: 404 });
-    return Promise.resolve(typeof pdf === 'function' ? pdf() : bytesResponse(pdf));
+    if (pdf instanceof Error) return Promise.reject(pdf);
+    if (!pdf) return Promise.reject(new Error(`HTTP 404 fetching ${url}`));
+    return Promise.resolve(pdf);
+  });
+}
+
+function tooLargeError() {
+  return Object.assign(new Error('Response too large (67108864 bytes)'), {
+    code: 'ERESPONSETOOLARGE',
   });
 }
 
 describe('dnv-council-minutes source', () => {
-  let realFetch;
   beforeEach(() => {
-    realFetch = globalThis.fetch;
-  });
-
-  afterEach(() => {
-    globalThis.fetch = realFetch;
-    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    deadlineReached.mockReturnValue(false);
   });
 
   it('maps a meeting document to a Trove document with extracted PDF text', async () => {
-    mockApi([meeting()], { 101: minimalPdf('Council adopted the bylaw') });
+    routeApi([meeting()], { 101: minimalPdf('Council adopted the bylaw') });
 
     const result = await sync(makeContext());
 
@@ -122,7 +116,7 @@ describe('dnv-council-minutes source', () => {
       subject: '1565 Rupert Street',
       bylaw: 'Bylaw 8500',
     });
-    mockApi([hearing], { 101: minimalPdf('Hearing text') });
+    routeApi([hearing], { 101: minimalPdf('Hearing text') });
 
     const result = await sync(makeContext());
 
@@ -140,7 +134,7 @@ describe('dnv-council-minutes source', () => {
         { docNumber: '51', docType: 'Video', text: 'Video' },
       ],
     });
-    mockApi([meeting(), older], { 101: minimalPdf('Minutes'), 50: minimalPdf('Agenda') });
+    routeApi([meeting(), older], { 101: minimalPdf('Minutes'), 50: minimalPdf('Agenda') });
 
     const result = await sync(makeContext({ cursor: { type: 'idSet', values: ['101'] } }));
 
@@ -155,32 +149,19 @@ describe('dnv-council-minutes source', () => {
         { docNumber: '102', docType: 'Agenda', text: 'Agenda' },
       ],
     });
-    let calls = 0;
-    mockApi([two], {
-      101: () => {
-        calls++;
-        return bytesResponse(minimalPdf('First'));
-      },
-      102: () => {
-        calls++;
-        return bytesResponse(minimalPdf('Second'));
-      },
-    });
+    routeApi([two], { 101: minimalPdf('First'), 102: minimalPdf('Second') });
+    deadlineReached.mockReturnValue(true);
 
-    // Deadline passes as soon as the first document has been processed.
-    const context = makeContext({ deadline: Date.now() });
-    const result = await sync(context);
+    const result = await sync(makeContext());
 
-    expect(calls).toBe(0);
+    expect(fetchBytes).not.toHaveBeenCalled();
     expect(result.documents).toHaveLength(0);
     expect(result.cursor).toBeUndefined();
     expect(result.stats.remaining).toBe(2);
   });
 
   it('stores a metadata-only document when the PDF exceeds the size cap', async () => {
-    mockApi([meeting()], {
-      101: () => bytesResponse(new Uint8Array(8), { 'content-length': String(64 * 1024 * 1024) }),
-    });
+    routeApi([meeting()], { 101: tooLargeError() });
 
     const context = makeContext();
     const result = await sync(context);
@@ -192,7 +173,7 @@ describe('dnv-council-minutes source', () => {
   });
 
   it('stores a metadata-only document when the PDF cannot be parsed', async () => {
-    mockApi([meeting()], { 101: new TextEncoder().encode('not a pdf') });
+    routeApi([meeting()], { 101: new TextEncoder().encode('not a pdf') });
 
     const result = await sync(makeContext());
 
@@ -202,7 +183,7 @@ describe('dnv-council-minutes source', () => {
   });
 
   it('leaves a transiently failed document unsynced so the next run retries it', async () => {
-    mockApi([meeting()], {}); // document fetch 404s
+    routeApi([meeting()], {}); // document fetch 404s
 
     const context = makeContext();
     const result = await sync(context);
@@ -213,7 +194,7 @@ describe('dnv-council-minutes source', () => {
   });
 
   it('throws when the meeting index is unreachable', async () => {
-    globalThis.fetch = mock(() => Promise.resolve({ ok: false, status: 503 }));
+    fetchPage.mockRejectedValue(new Error('HTTP 503 fetching index'));
 
     expect(sync(makeContext())).rejects.toThrow('HTTP 503');
   });
