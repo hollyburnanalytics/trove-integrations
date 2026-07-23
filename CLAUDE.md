@@ -153,6 +153,14 @@ The harness provides:
 }
 ```
 
+A document's body may take one of three forms (at least one is required):
+inline `text`; an `audio_url` enclosure the server transcribes; or a
+`file_url` + `mime_type` (e.g. a PDF) the server downloads, **retains** (the
+app renders the original), and extracts into the body — any `text` sent
+alongside `file_url` becomes the extraction header, so use it for metadata
+(source, date, subject), not the content. See `350-public-administration/
+dnv-council-minutes` for the `file_url` pattern.
+
 ## Shared Helpers (`sources/lib/feeds.mjs`)
 
 **Use these instead of writing from scratch:**

@@ -1,36 +1,28 @@
 /**
  * District of North Vancouver council meetings — agendas, minutes, notices,
  * staff reports, and related documents from the District's council search API.
- * Each meeting document is a PDF; we download it, extract its text layer, and
- * store it as one Trove document.
+ * Each meeting document is a PDF, emitted as a `file_url` document: the ingest
+ * pipeline downloads it, retains the original (rendered in the app), and
+ * extracts its text into the body, with our `text` riding along as the header.
  *
  * Minutes are published to a meeting's record weeks after the meeting date, so
  * a date watermark would skip them; the cursor is instead an `idSet` of synced
- * document numbers. New documents are processed oldest-first under the host's
- * soft deadline, so the 2011-to-present backfill converges across runs.
+ * document numbers. New documents are offered oldest-first in bounded batches,
+ * so the 2011-to-present backfill converges across runs while the per-document
+ * downloads stay paced.
  */
 
-import { deadlineReached } from '../../lib/feeds.mjs';
-import { fetchBytes, fetchPage, isTooLargeError } from '../../lib/http.mjs';
-import { extractPdfText } from '../../lib/pdf.mjs';
+import { fetchPage } from '../../lib/http.mjs';
 import { idSetWatermark, readIdSet } from '../../lib/watermark.mjs';
 
 const SEARCH_URL = 'https://app.dnv.org/dnv_search/api/v1/councilsearch/search?pageSize=5000';
 const DOCUMENT_URL = 'https://app.dnv.org/OpenDocument/Default.aspx?docNum=';
 const AUTHOR = 'District of North Vancouver';
 
-// Documents above this cap are stored as metadata-only entries linking to the
-// original (the cap rejects on the Content-Length header, before download).
-// Sampled sizes: minutes/agendas/notices/presentations all fit well under
-// 8 MB; only the largest agenda-with-reports packages (up to ~50 MB) exceed
-// it. The binding constraint is memory, not bandwidth: PDF text extraction
-// costs roughly 15-20x the file size, so this cap bounds peak sync memory.
-const MAX_PDF_BYTES = 8 * 1024 * 1024;
-
-// Pause between document downloads.
-const DELAY_MS = 1000;
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Documents offered per sync round. Each becomes one server-side download, so
+// this bounds how hard a round hits the District's document endpoint; the
+// runner's round pacing spreads the ~4,700-document backfill over time.
+const MAX_DOCUMENTS_PER_RUN = 25;
 
 /**
  * @typedef {{ text: string, link: string, docName: string, docNumber: string,
@@ -70,58 +62,26 @@ function meetingLabel(meeting) {
 }
 
 /**
- * Build the Trove document for one meeting document: a short metadata header
- * (meeting, date, subject, bylaw) followed by the PDF's extracted text. An
- * empty body (an image-only scan, or a document we could not download) still
- * yields a searchable entry that links to the original.
+ * Build the Trove document for one meeting document: the PDF by URL, plus a
+ * short metadata header (meeting, date, subject, bylaw) the extractor prepends
+ * to the extracted text.
  *
  * @param {WorkItem} item
- * @param {string} body - extracted PDF text ('' when unavailable)
  */
-function toDocument({ meeting, document }, body) {
-  const header = [
-    `${document.docType} — ${meetingLabel(meeting)}, ${meeting.date}`,
-    meeting.bylaw ? `Bylaw: ${meeting.bylaw}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
+function toDocument({ meeting, document }) {
+  const title = `${document.docType} — ${meetingLabel(meeting)}, ${meeting.date}`;
+  const header = [title, meeting.bylaw ? `Bylaw: ${meeting.bylaw}` : ''].filter(Boolean).join('\n');
   return {
     id: `dnv-council-${document.docNumber}`,
-    title: `${document.docType} — ${meetingLabel(meeting)}, ${meeting.date}`,
-    text: [header, body].filter(Boolean).join('\n\n'),
+    title,
+    text: header,
+    file_url: `${DOCUMENT_URL}${document.docNumber}`,
+    mime_type: 'application/pdf',
     url: `${DOCUMENT_URL}${document.docNumber}`,
     author: AUTHOR,
     date: meeting.date,
     tags: [document.docType, meeting.type],
   };
-}
-
-/**
- * Download one document and extract its text. Returns the extracted body, or
- * '' for permanent conditions (over the size cap, unparseable PDF) where a
- * metadata-only entry is the best we can store. Transient failures (network,
- * HTTP errors) propagate so the caller can retry the document next run.
- *
- * @param {object} context
- * @param {WorkItem} item
- * @returns {Promise<string>}
- */
-async function fetchDocumentBody(context, item) {
-  const url = `${DOCUMENT_URL}${item.document.docNumber}`;
-  let bytes;
-  try {
-    bytes = await fetchBytes(url, { maxBytes: MAX_PDF_BYTES });
-  } catch (error) {
-    if (!isTooLargeError(error)) throw error;
-    context.log.warn(`Storing metadata only for oversized document ${url}: ${error.message}`);
-    return '';
-  }
-  try {
-    return await extractPdfText(bytes);
-  } catch (error) {
-    context.log.warn(`Storing metadata only for unreadable PDF ${url}: ${error.message}`);
-    return '';
-  }
 }
 
 export async function sync(context) {
@@ -134,27 +94,10 @@ export async function sync(context) {
     `${meetings.length} meetings, ${pending.length} new documents (${previousNumbers.length} already synced)`,
   );
 
-  const documents = [];
-  const syncedNumbers = [];
-  let stoppedEarly = false;
-  for (const [index, item] of pending.entries()) {
-    if (deadlineReached(context)) {
-      context.log.info('Time budget reached — resuming next run');
-      stoppedEarly = true;
-      break;
-    }
-    let body;
-    try {
-      body = await fetchDocumentBody(context, item);
-    } catch (error) {
-      context.log.warn(`Failed to fetch document ${item.document.docNumber}: ${error.message}`);
-      continue; // not marked synced — retried next run
-    }
-    documents.push(toDocument(item, body));
-    syncedNumbers.push(item.document.docNumber);
-    context.progress(documents.length, `${documents.length} documents`);
-    if (index < pending.length - 1) await sleep(DELAY_MS);
-  }
+  const batch = pending.slice(0, MAX_DOCUMENTS_PER_RUN);
+  const documents = batch.map((item) => toDocument(item));
+  const syncedNumbers = batch.map((item) => item.document.docNumber);
+  context.progress(documents.length, `${documents.length} documents`);
 
   const cursor =
     syncedNumbers.length > 0
@@ -165,7 +108,7 @@ export async function sync(context) {
     cursor,
     stats: {
       fetched: documents.length,
-      remaining: stoppedEarly ? pending.length - documents.length : 0,
+      remaining: pending.length - documents.length,
     },
   };
 }

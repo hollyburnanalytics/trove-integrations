@@ -140,15 +140,26 @@ describe('validateResult', () => {
     ).not.toThrow();
   });
 
-  it('rejects a document with neither text nor audio_url', () => {
+  it('accepts a file_url-only document (a file the server retains and extracts)', () => {
+    expect(() =>
+      validateResult({
+        documents: [{ id: 'p1', title: 'Paper', file_url: 'https://cdn.example/p1.pdf' }],
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects a document with no text, audio_url, or file_url body', () => {
     expect(() => validateResult({ documents: [{ id: 'a', title: 'b' }] })).toThrow(
-      'neither `text` nor `audio_url`',
+      'none of `text`, `audio_url`, or `file_url`',
     );
     expect(() => validateResult({ documents: [{ id: 'a', title: 'b', text: 1 }] })).toThrow(
-      'neither `text` nor `audio_url`',
+      'none of `text`, `audio_url`, or `file_url`',
     );
     expect(() => validateResult({ documents: [{ id: 'a', title: 'b', audio_url: '' }] })).toThrow(
-      'neither `text` nor `audio_url`',
+      'none of `text`, `audio_url`, or `file_url`',
+    );
+    expect(() => validateResult({ documents: [{ id: 'a', title: 'b', file_url: '' }] })).toThrow(
+      'none of `text`, `audio_url`, or `file_url`',
     );
   });
 });
@@ -195,7 +206,7 @@ describe('runSource', () => {
     ['undefined', 'returned undefined'],
     ['documents-not-array', 'missing a `documents` array'],
     ['doc-not-object', 'index 0 is not an object'],
-    ['bad-text', 'neither `text` nor `audio_url`'],
+    ['bad-text', 'none of `text`, `audio_url`, or `file_url`'],
   ])('rejects an invalid %s result', async (mode, expected) => {
     await expect(runSource({ sourcePath: fixture('bad-shape'), config: { mode } })).rejects.toThrow(
       expected,
