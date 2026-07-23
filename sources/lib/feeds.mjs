@@ -20,7 +20,8 @@ export { fetchPage } from './http.mjs';
 export { parseRSS, xmlText } from './rss-parse.mjs';
 export { decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Pause between paced requests. Exported so source tests can stub the pacing. */
+export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Whether the host-provided soft deadline has passed. The host sets
