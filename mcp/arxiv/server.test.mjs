@@ -58,6 +58,24 @@ function htmlDocument() {
   </div></body></html>`;
 }
 
+/**
+ * A LaTeXML document whose section carries one formula, in the real shape:
+ * rendered MathML glyphs AND an x-tex annotation inside a single <math>.
+ * `bare` drops both the alttext and the annotation, leaving only glyphs.
+ */
+function mathDocument({ bare = false } = {}) {
+  const math = bare
+    ? `<math class="ltx_Math"><semantics><mi>x</mi></semantics></math>`
+    : String.raw`<math class="ltx_Math" alttext="\beta_{0}(t)"><semantics><mrow><msub><mi>β</mi><mn>0</mn></msub><mo>&#8203;</mo><mrow><mo>(</mo><mi>t</mi><mo>)</mo></mrow></mrow><annotation encoding="application/x-tex">\beta_{0}(t)</annotation></semantics></math>`;
+  return `<!DOCTYPE html><html><body><div class="ltx_page_content">
+  <div class="ltx_abstract"><h6 class="ltx_title">Abstract</h6>
+    <p class="ltx_p">Abstract text.</p></div>
+  <section class="ltx_section" id="S1">
+    <h2 class="ltx_title ltx_title_section"><span class="ltx_tag ltx_tag_section">1 </span>Introduction</h2>
+    <div class="ltx_para"><p class="ltx_p">The curve ${math} rises.</p></div></section>
+  </div></body></html>`;
+}
+
 /** Responder that serves the metadata feed and (optionally) HTML full text. */
 function paperResponder({ atom, arxivHtml, ar5ivHtml, onIngest, onFetch } = {}) {
   return (url, init) => {
@@ -311,6 +329,33 @@ describe('arxiv MCP server', () => {
         'results',
       ]);
       expect(result.result.text).toMatch(/no section is classified as "methods"/i);
+    });
+
+    it('collapses MathML to single $…$ spans instead of doubling every formula', async () => {
+      // LaTeXML emits each formula twice inside one <math>: rendered glyphs for
+      // display AND an x-tex annotation. A blanket tag strip kept both, so the
+      // stored text read "β 0 ( t ) \beta_{0}(t)" and papers carried ~7% noise.
+      const result = await callTool(
+        server,
+        'get_paper_content',
+        { id: '2510.20010' },
+        paperResponder({ arxivHtml: { text: mathDocument() } }),
+      );
+      const text = result.result.structured.sections[0].text;
+      expect(text).toBe(String.raw`The curve $\beta_{0}(t)$ rises.`);
+      // The rendered glyphs must NOT survive alongside the TeX.
+      expect(text).not.toContain('β');
+    });
+
+    it('keeps rendered math when the element carries no TeX at all', async () => {
+      const result = await callTool(
+        server,
+        'get_paper_content',
+        { id: '2510.20011' },
+        paperResponder({ arxivHtml: { text: mathDocument({ bare: true }) } }),
+      );
+      // No alttext and no annotation: the content must survive, not vanish.
+      expect(result.result.structured.sections[0].text).toBe('The curve x rises.');
     });
 
     it('falls back to ar5iv when arXiv HTML is missing', async () => {

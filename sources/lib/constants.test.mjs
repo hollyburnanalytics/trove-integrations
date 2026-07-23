@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   VALID_SCHEDULES,
   validateFanOut,
+  validateFormatting,
   validateLocation,
   validateManifest,
   validateSourceTypeFields,
@@ -254,6 +255,26 @@ describe('validateFanOut', () => {
   });
 });
 
+describe('validateFormatting', () => {
+  it('accepts a manifest with no formatting (defaults to verbatim)', () => {
+    expect(validateFormatting({})).toEqual([]);
+  });
+
+  it('accepts formatting: "reformat"', () => {
+    expect(validateFormatting({ formatting: 'reformat' })).toEqual([]);
+  });
+
+  it('accepts formatting: "verbatim"', () => {
+    expect(validateFormatting({ formatting: 'verbatim' })).toEqual([]);
+  });
+
+  it('rejects an unknown formatting value', () => {
+    const errors = validateFormatting({ formatting: 'fancy' });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('invalid formatting "fancy"');
+  });
+});
+
 describe('validateManifest', () => {
   /** A fully valid, cloud-eligible, implemented manifest. */
   const validCloudManifest = {
@@ -299,5 +320,19 @@ describe('validateManifest', () => {
       true,
     );
     expect(errors.some((error) => error.includes('fanOut "missing"'))).toBe(true);
+  });
+
+  it('rejects an invalid formatting value alongside the other checks', () => {
+    const errors = validateManifest(
+      { ...validCloudManifest, formatting: 'fancy' },
+      { implemented: true },
+    );
+    expect(errors.some((error) => error.includes('invalid formatting "fancy"'))).toBe(true);
+  });
+
+  it('accepts a valid formatting value', () => {
+    expect(
+      validateManifest({ ...validCloudManifest, formatting: 'reformat' }, { implemented: true }),
+    ).toEqual([]);
   });
 });

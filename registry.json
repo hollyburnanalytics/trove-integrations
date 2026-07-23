@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-21T06:25:58.902Z",
+  "updated_at": "2026-07-23T18:38:06.614Z",
   "source_count": 24,
   "categories": [
     "000-general",
@@ -57,7 +57,8 @@
           "label": "Search Queries",
           "type": "text[]"
         }
-      }
+      },
+      "formatting": "verbatim"
     },
     {
       "id": "avc",
@@ -464,7 +465,8 @@
           "type": "url[]"
         }
       },
-      "fanOut": "feeds"
+      "fanOut": "feeds",
+      "formatting": "reformat"
     },
     {
       "id": "sec-filings",
@@ -513,7 +515,8 @@
       "watermark": "date",
       "documentSemantics": "append",
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "formatting": "reformat"
     },
     {
       "id": "stratechery",
