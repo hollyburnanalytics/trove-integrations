@@ -10,6 +10,7 @@
   "transport": "api",
   "watermark": "date",
   "documentSemantics": "append",
+  "formatting": "verbatim",
   "location": "client",
   "schedule": "every 6 hours",
   "status": "implemented",

@@ -66,6 +66,19 @@ export const WATERMARK_STRATEGIES = [
 export const DOCUMENT_SEMANTICS = ['append', 'upsert'];
 
 /**
+ * Whether Trove reformats a source's documents into clean Markdown on ingest,
+ * or stores them exactly as received. `reformat` restructures the body — adding
+ * headings, paragraph breaks, lists — while preserving the words verbatim (a
+ * fidelity gate falls back to the original if the model would alter them);
+ * `verbatim` leaves the body untouched. OPTIONAL and defaulted: a manifest that
+ * omits `formatting` means `verbatim`, so a new or third-party source never has
+ * its data altered unless its author opts in. Deliberately NOT a member of
+ * `SOURCE_TYPE_FIELDS` (those are required); validated by {@link validateFormatting}.
+ * @type {readonly string[]}
+ */
+export const FORMATTING = ['reformat', 'verbatim'];
+
+/**
  * The MVP cut: the subset of each type family that the harness and cloud actually
  * build and enforce today. `status: implemented` sources MUST stay within these;
  * stubs may declare deferred values to encode the roadmap.
@@ -194,9 +207,26 @@ export function validateFanOut(manifest) {
 }
 
 /**
+ * Validate the optional `formatting` field. Absence is valid (defaults to
+ * `verbatim`); when present it must be one of {@link FORMATTING}.
+ *
+ * @param {Record<string, unknown>} manifest - the parsed manifest.json
+ * @returns {string[]} validation errors (empty when absent or valid)
+ */
+export function validateFormatting(manifest) {
+  const formatting = manifest.formatting;
+  if (formatting === undefined) return [];
+  if (!FORMATTING.includes(/** @type {string} */ (formatting))) {
+    return [`invalid formatting "${formatting}" (allowed: ${FORMATTING.join(', ')})`];
+  }
+  return [];
+}
+
+/**
  * Validate every cross-cutting manifest invariant a source must satisfy: the
  * four type-system fields (held to the MVP cut when implemented), `location`
- * plus its cloud-eligibility predicate, and the optional `fanOut` reference.
+ * plus its cloud-eligibility predicate, the optional `fanOut` reference, and the
+ * optional `formatting` policy.
  *
  * @param {Record<string, unknown>} manifest - the parsed manifest.json
  * @param {{ implemented: boolean }} options - whether the source has code
@@ -207,5 +237,6 @@ export function validateManifest(manifest, { implemented }) {
     ...validateSourceTypeFields(manifest, { implemented }),
     ...validateLocation(manifest),
     ...validateFanOut(manifest),
+    ...validateFormatting(manifest),
   ];
 }

@@ -34,9 +34,42 @@ function codePoint(n: number): string {
   return Number.isFinite(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '';
 }
 
+/**
+ * Collapse every `<math>` element to a single `$…$` LaTeX span.
+ *
+ * LaTeXML renders each formula TWICE inside one `<math>`: as MathML glyph
+ * elements for display, and again as an `<annotation encoding="application/x-tex">`
+ * holding the source. A blanket tag strip keeps both, so every formula landed
+ * in the text doubled — "β 0 ​ ( t ) \beta_{0}(t)", "0.82 =0.82 – 0.90 0.90" —
+ * inflating a paper by ~7% with unreadable noise that also polluted its
+ * embeddings. Prefer the element's `alttext` (clean, already the TeX source);
+ * fall back to the inner annotation, and finally to the rendered glyphs for
+ * math that carries neither.
+ */
+function collapseMath(html: string): string {
+  return html.replace(
+    /<math\b([^>]*)>([\s\S]*?)<\/math>/gi,
+    (_full, attrs: string, inner: string) => {
+      const alt = /\balttext="([^"]*)"/i.exec(attrs)?.[1];
+      const tex =
+        alt ??
+        /<annotation\b[^>]*encoding="application\/x-tex"[^>]*>([\s\S]*?)<\/annotation>/i.exec(
+          inner,
+        )?.[1];
+      // No TeX anywhere: keep the rendered glyphs, minus any annotation, so the
+      // content survives rather than vanishing.
+      if (tex === undefined) {
+        return ` ${inner.replace(/<annotation\b[^>]*>[\s\S]*?<\/annotation>/gi, ' ')} `;
+      }
+      const clean = squish(decodeEntities(tex));
+      return clean ? ` $${clean}$ ` : ' ';
+    },
+  );
+}
+
 /** Strip HTML/XML tags to plain text (dropping script/style), then decode + squish. */
 function htmlToText(html: string): string {
-  const stripped = html
+  const stripped = collapseMath(html)
     .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<[^>]+>/g, ' ');
   return squish(decodeEntities(stripped));

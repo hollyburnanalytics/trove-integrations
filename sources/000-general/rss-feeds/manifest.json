@@ -10,6 +10,7 @@
   "transport": "feed",
   "watermark": "date",
   "documentSemantics": "append",
+  "formatting": "reformat",
   "location": "cloud",
   "schedule": "every 2 hours",
   "status": "implemented",
