@@ -79,6 +79,33 @@ async function ucpCall(
   return body.result?.structuredContent ?? {};
 }
 
+/**
+ * Build the UCP search `filters` object. Price bands pin an explicit currency
+ * (verified live: without one the band is interpreted in an unspecified
+ * currency and can disagree with the displayed merchant-currency prices).
+ */
+function buildSearchFilters(input: {
+  minPrice?: number;
+  maxPrice?: number;
+  minRating?: number;
+  availability?: string;
+  condition?: string;
+  currency?: string;
+}): Record<string, unknown> {
+  const filters: Record<string, unknown> = {};
+  if (input.minPrice !== undefined || input.maxPrice !== undefined) {
+    filters.price = {
+      ...(input.minPrice !== undefined && { min: Math.round(input.minPrice * 100) }),
+      ...(input.maxPrice !== undefined && { max: Math.round(input.maxPrice * 100) }),
+      currency: input.currency ?? 'USD',
+    };
+  }
+  if (input.minRating !== undefined) filters.rating = { min: input.minRating };
+  if (input.availability) filters.availability = input.availability;
+  if (input.condition) filters.condition = input.condition;
+  return filters;
+}
+
 /** Shared context input: buyer signals for relevance and localization. */
 const contextInput = z
   .object({
@@ -184,19 +211,14 @@ export default defineMcpServer({
             retryable: false,
           });
         }
-        const filters: Record<string, unknown> = {};
-        if (minPrice !== undefined || maxPrice !== undefined) {
-          // An explicit currency makes the band deterministic (verified live);
-          // without one the filter is interpreted in an unspecified currency.
-          filters.price = {
-            ...(minPrice !== undefined && { min: Math.round(minPrice * 100) }),
-            ...(maxPrice !== undefined && { max: Math.round(maxPrice * 100) }),
-            currency: context?.currency ?? 'USD',
-          };
-        }
-        if (minRating !== undefined) filters.rating = { min: minRating };
-        if (availability) filters.availability = availability;
-        if (condition) filters.condition = condition;
+        const filters = buildSearchFilters({
+          minPrice,
+          maxPrice,
+          minRating,
+          availability,
+          condition,
+          currency: context?.currency,
+        });
         const like = [
           ...(similarTo ? [{ id: similarTo }] : []),
           ...(imageUrl ? [{ image: imageUrl }] : []),
