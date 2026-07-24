@@ -75,6 +75,7 @@ describe('shopify-catalog MCP server', () => {
       'https://www.heartwoodgoods.com/products/walnut-desk-organizer?variant=1',
     );
     expect(product.store).toBe('heartwoodgoods.com');
+    expect(product.storeUrl).toBe('https://heartwoodgoods.com');
     expect(product.available).toBe(true);
     expect(product.variantCount).toBe(2);
     expect(product.rating).toBe(4.8);
@@ -86,6 +87,37 @@ describe('shopify-catalog MCP server', () => {
     );
     expect(call.ok).toBe(true);
     expect(call.result.text).toContain('No products found');
+  });
+
+  it('normalizes empty descriptions to null and falls back to variant media for images', async () => {
+    const call = await callTool(server, 'search_products', { query: 'x' }, () =>
+      rpcResult({
+        products: [
+          {
+            id: 'gid://shopify/p/x1',
+            title: 'Sparse Product',
+            description: { plain: '' },
+            price_range: {
+              min: { amount: 100, currency: 'USD' },
+              max: { amount: 100, currency: 'USD' },
+            },
+            variants: [
+              {
+                id: 'v1',
+                url: 'https://shop.example.com/products/sparse',
+                availability: { available: true },
+                media: [{ type: 'image', url: 'https://cdn.example.com/variant.jpg' }],
+              },
+            ],
+          },
+        ],
+        pagination: {},
+      }),
+    );
+    expect(call.ok).toBe(true);
+    const [product] = call.result.structured.products;
+    expect(product.description).toBeNull();
+    expect(product.imageUrl).toBe('https://cdn.example.com/variant.jpg');
   });
 
   it('lookup_products passes ids through and surfaces not_found messages', async () => {

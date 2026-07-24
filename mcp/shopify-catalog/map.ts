@@ -14,6 +14,18 @@ export function price(obj: unknown): { amount: number | null; currency: string |
   return { amount: minor !== null ? minor / 100 : null, currency };
 }
 
+/** The first variant image URL, for products whose own media array is empty. */
+function firstVariantImage(variants: unknown[]): string | null {
+  for (const v of variants) {
+    const media = ((v ?? {}) as Record<string, unknown>).media;
+    if (Array.isArray(media)) {
+      const url = nestedStr(media[0], 'url');
+      if (url) return url;
+    }
+  }
+  return null;
+}
+
 /** The first variant's product-page URL, tracking params stripped. */
 function productUrl(variants: unknown[]): string | null {
   for (const v of variants) {
@@ -56,6 +68,7 @@ export function mapProduct(raw: unknown) {
   // catalog gives us. Tracking params are stripped, variant selection kept.
   const url = productUrl(variants);
   const store = url ? new URL(url).hostname.replace(/^www\./, '') : null;
+  const storeUrl = store ? `https://${store}` : null;
   const available = variants.some((v) => {
     const availability = ((v ?? {}) as Record<string, unknown>).availability;
     return ((availability ?? {}) as Record<string, unknown>).available === true;
@@ -63,9 +76,10 @@ export function mapProduct(raw: unknown) {
   return {
     id: typeof p.id === 'string' ? p.id : null,
     title: typeof p.title === 'string' ? p.title : 'Untitled',
-    description: nestedStr(p.description, 'plain')?.slice(0, 400) ?? null,
+    description: nestedStr(p.description, 'plain')?.slice(0, 400) || null,
     url,
     store,
+    storeUrl,
     available,
     priceMin: min.amount,
     priceMax: max.amount,
@@ -73,7 +87,7 @@ export function mapProduct(raw: unknown) {
     variantCount: variants.length,
     rating: typeof rating.value === 'number' ? rating.value : null,
     ratingCount: typeof rating.count === 'number' ? rating.count : null,
-    imageUrl: nestedStr(media[0], 'url'),
+    imageUrl: nestedStr(media[0], 'url') ?? firstVariantImage(variants),
   };
 }
 
