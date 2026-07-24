@@ -47,7 +47,7 @@ describe('shopify-catalog MCP server', () => {
     expect(captured.body.method).toBe('tools/call');
     expect(captured.body.params.name).toBe('search_catalog');
     expect(captured.body.params.arguments.meta['ucp-agent'].profile).toContain(
-      'trove-integrations/main/mcp/shopify-catalog/ucp-agent-profile.json',
+      'trove-integrations@main/mcp/shopify-catalog/ucp-agent-profile.json',
     );
     expect(captured.body.params.arguments.catalog.query).toBe('walnut desk organizer');
     // Major units in, minor units on the wire.

@@ -22,9 +22,14 @@ import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
 /** Shopify's UCP catalog MCP endpoint. */
 const ENDPOINT = 'https://catalog.shopify.com/api/ucp/mcp';
 
-/** The public agent profile UCP discovery fetches on every request. */
+/**
+ * The public agent profile UCP discovery fetches on every request. Served via
+ * jsDelivr (not GitHub raw) because discovery requires an `application/json`
+ * content type, which raw.githubusercontent.com does not send. The file lives
+ * in this directory (`ucp-agent-profile.json`).
+ */
 const AGENT_PROFILE =
-  'https://raw.githubusercontent.com/hollyburnanalytics/trove-integrations/main/mcp/shopify-catalog/ucp-agent-profile.json';
+  'https://cdn.jsdelivr.net/gh/hollyburnanalytics/trove-integrations@main/mcp/shopify-catalog/ucp-agent-profile.json';
 
 /** UCP JSON-RPC error payload shape. */
 interface JsonRpcError {
