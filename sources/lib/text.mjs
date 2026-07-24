@@ -1,8 +1,10 @@
 /**
  * Text helpers for feed source adapters: HTML entity decoding, tag stripping,
  * plain-text reduction, stable IDs, and safe date parsing. Feed bodies are
- * stored as structured plain text — paragraphs, list items, and code blocks
- * keep their boundaries — not as Markdown.
+ * stored as lightweight Markdown — paragraphs and headings keep their
+ * boundaries, list items become `- ` lines, `<pre>` becomes a fenced code
+ * block and inline `<code>` a backtick span — so the reader renders them as
+ * structured text rather than one run-together paragraph.
  */
 
 import { createHash } from 'node:crypto';
@@ -113,7 +115,7 @@ const LINE_TAGS = new Set([
 
 /** The blank-run or line boundary a block element contributes, if any. */
 function blockBoundary(tag) {
-  if (tag === 'pre' || PARAGRAPH_TAGS.has(tag)) return '\n\n';
+  if (PARAGRAPH_TAGS.has(tag)) return '\n\n';
   if (LINE_TAGS.has(tag)) return '\n';
   return '';
 }
@@ -161,6 +163,31 @@ function renderNode(node, parts, inPre) {
   if (DROP_TAGS.has(tag)) return;
   if (renderVoidElement(tag, node, parts)) return;
 
+  // A `<pre>` becomes a fenced code block, so the reader renders it as code
+  // rather than run-together prose. Children are still parsed (to strip the
+  // highlighting spans feeds embed) but `inPre` keeps their whitespace verbatim.
+  if (tag === 'pre') {
+    const code = [];
+    for (const child of node.childNodes) {
+      renderNode(child, code, true);
+    }
+    const body = code.join('').replace(/^\n+/, '').replace(/\n+$/, '');
+    parts.push(`\n\n\`\`\`\n${body}\n\`\`\`\n\n`);
+    return;
+  }
+
+  // Inline `<code>` becomes a backtick span so it renders as a code chip, not
+  // plain prose. Suppressed inside `<pre>`, where the fence already sets the
+  // block as code and inner backticks would be literal noise.
+  if (tag === 'code' && !inPre) {
+    parts.push('`');
+    for (const child of node.childNodes) {
+      renderNode(child, parts, inPre);
+    }
+    parts.push('`');
+    return;
+  }
+
   // List items open on their own line with a bullet and take no trailing
   // boundary — the next item's opening (or the list's closing) provides it.
   if (tag === 'li') {
@@ -179,11 +206,12 @@ function renderNode(node, parts, inPre) {
 }
 
 /**
- * Reduce an HTML (or already-plain) fragment to clean, structured plain text:
- * paragraphs and headings separated by blank lines, list items as `- ` lines,
- * `<pre>` blocks verbatim, `script`/`style` dropped, images reduced to their
- * alt text, entities decoded. Markup is parsed with a real HTML parser; we
- * still deliberately emit plain text, not Markdown.
+ * Reduce an HTML (or already-plain) fragment to clean, lightweight Markdown:
+ * paragraphs separated by blank lines, list items as `- ` lines, `<pre>` as a
+ * fenced code block and inline `<code>` as a backtick span, `script`/`style`
+ * dropped, images reduced to their alt text, entities decoded. Markup is parsed
+ * with a real HTML parser. The output is deliberately minimal Markdown — enough
+ * structure for the reader, not a full HTML-to-Markdown translation.
  */
 export function htmlToText(html) {
   if (!html) return '';

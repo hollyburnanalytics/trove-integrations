@@ -548,9 +548,12 @@ describe('htmlToText', () => {
       'Hello world & friends',
     );
   });
-  it('keeps code text without highlighting markup', () => {
+  it('fences a pre block and strips highlighting markup', () => {
     const html = `<pre><code><span class="pl-k">const</span> x = <span class="pl-c1">1</span></code></pre>`;
-    expect(htmlToText(html)).toBe('const x = 1');
+    expect(htmlToText(html)).toBe('```\nconst x = 1\n```');
+  });
+  it('wraps inline code in backticks so it renders as a chip', () => {
+    expect(htmlToText('<p>Run <code>npm test</code> now</p>')).toBe('Run `npm test` now');
   });
   it('preserves line breaks but caps blank runs', () => {
     expect(htmlToText('a\n\n\n\nb')).toBe('a\n\nb');
@@ -564,9 +567,9 @@ describe('htmlToText', () => {
   it('renders list items on their own lines', () => {
     expect(htmlToText('<ul><li>First</li><li>Second</li></ul>')).toBe('- First\n- Second');
   });
-  it('preserves line breaks inside pre blocks', () => {
+  it('preserves line breaks inside a fenced pre block', () => {
     const html = '<p>Before</p><pre><code>line1\nline2</code></pre>';
-    expect(htmlToText(html)).toBe('Before\n\nline1\nline2');
+    expect(htmlToText(html)).toBe('Before\n\n```\nline1\nline2\n```');
   });
   it('drops script and style content entirely', () => {
     expect(htmlToText('<p>Keep</p><script>var x=1;</script><style>.a{}</style>')).toBe('Keep');
