@@ -76,6 +76,7 @@ in their manifest `egress`.
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `ebay` | `search_items`, `get_item` | api.ebay.com (Browse API) | **`EBAY_CLIENT_ID` + `EBAY_CLIENT_SECRET`** |
+| `shopify-catalog` | `search_products`, `lookup_products`, `get_product` | catalog.shopify.com (UCP catalog MCP) | none |
 
 ### Actions (mutating)
 | Toolkit | Tools | Upstream | Auth |
