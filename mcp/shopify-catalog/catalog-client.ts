@@ -75,8 +75,9 @@ export function buildSearchFilters(input: {
   minPrice?: number;
   maxPrice?: number;
   minRating?: number;
-  availability?: string;
+  includeUnavailable?: boolean;
   condition?: string;
+  shipsTo?: string;
   currency?: string;
 }): Record<string, unknown> {
   const filters: Record<string, unknown> = {};
@@ -88,8 +89,13 @@ export function buildSearchFilters(input: {
     };
   }
   if (input.minRating !== undefined) filters.rating = { min: input.minRating };
-  if (input.availability) filters.availability = input.availability;
-  if (input.condition) filters.condition = input.condition;
+  // Documented shape: `available` defaults true (sale-ready only); false widens
+  // the set to include unavailable items. There is no "only out-of-stock".
+  if (input.includeUnavailable) filters.available = false;
+  // Documented values: "new" | "secondhand", as an array (OR logic).
+  if (input.condition) filters.condition = [input.condition];
+  // Documented shape: an object with country/region/postal_code.
+  if (input.shipsTo) filters.ships_to = { country: input.shipsTo };
   return filters;
 }
 

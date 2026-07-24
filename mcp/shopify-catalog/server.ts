@@ -70,20 +70,22 @@ export default defineMcpServer({
         minPrice: z.number().min(0).optional().describe('Minimum price (major units).'),
         maxPrice: z.number().min(0).optional().describe('Maximum price (major units).'),
         minRating: z.number().min(0).max(5).optional().describe('Minimum product rating (0–5).'),
-        availability: z
-          .enum(['in_stock', 'out_of_stock'])
+        includeUnavailable: z
+          .boolean()
           .optional()
           .describe(
-            'Stock-status filter — passed through, but the catalog currently appears ' +
-              'to ignore it (verified live); use the per-result `available` flag instead.',
+            'By default only sale-ready items return; true widens results to include ' +
+              'unavailable items (there is no "only out-of-stock" filter upstream).',
           ),
         condition: z
-          .enum(['new', 'used', 'refurbished'])
+          .enum(['new', 'secondhand'])
           .optional()
-          .describe(
-            'Item condition — passed through, but the catalog currently appears to ' +
-              'ignore it (verified live); verify condition on the product page.',
-          ),
+          .describe('Item condition ("secondhand" surfaces genuinely used/antique stock).'),
+        shipsTo: z
+          .string()
+          .length(2)
+          .optional()
+          .describe('ISO 3166 country the item must ship to, e.g. "CA".'),
         context: contextInput,
         cursor: z.string().optional().describe('Pagination cursor from a previous page.'),
         limit: z.number().int().min(1).max(50).default(10).describe('Max products (1–50).'),
@@ -124,8 +126,9 @@ export default defineMcpServer({
           minPrice,
           maxPrice,
           minRating,
-          availability,
+          includeUnavailable,
           condition,
+          shipsTo,
           context,
           cursor,
           limit,
@@ -144,8 +147,9 @@ export default defineMcpServer({
           minPrice,
           maxPrice,
           minRating,
-          availability,
+          includeUnavailable,
           condition,
+          shipsTo,
           currency: context?.currency,
         });
         const like = [
