@@ -1,5 +1,6 @@
 import type { ToolContext } from '@ontrove/mcp';
 import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { formatProduct, mapProduct, price } from './map.ts';
 
 /**
  * Shopify Global Catalog — a hosted MCP server over Shopify's Universal
@@ -78,67 +79,6 @@ async function ucpCall(
   return body.result?.structuredContent ?? {};
 }
 
-/** A UCP `Price` (`amount` in minor units + ISO currency) as a decimal, or null. */
-function price(obj: unknown): { amount: number | null; currency: string | null } {
-  const o = (obj ?? {}) as Record<string, unknown>;
-  const minor = typeof o.amount === 'number' ? o.amount : null;
-  const currency = typeof o.currency === 'string' ? o.currency : null;
-  // UCP amounts are minor units; every currency the catalog serves today uses
-  // exponent 2. Presented as major units for readability.
-  return { amount: minor !== null ? minor / 100 : null, currency };
-}
-
-/** Read a nested string by path, or null. */
-function nestedStr(obj: unknown, ...path: string[]): string | null {
-  let cur: unknown = obj;
-  for (const k of path) {
-    if (!cur || typeof cur !== 'object') return null;
-    cur = (cur as Record<string, unknown>)[k];
-  }
-  return typeof cur === 'string' ? cur : null;
-}
-
-/** Map one UCP product to the compact tool-facing summary. */
-function mapProduct(raw: unknown) {
-  const p = (raw ?? {}) as Record<string, unknown>;
-  const range = (p.price_range ?? {}) as Record<string, unknown>;
-  const min = price(range.min);
-  const max = price(range.max);
-  const variants = Array.isArray(p.variants) ? p.variants : [];
-  const media = Array.isArray(p.media) ? p.media : [];
-  const rating = (p.rating ?? {}) as Record<string, unknown>;
-  return {
-    id: typeof p.id === 'string' ? p.id : null,
-    title: typeof p.title === 'string' ? p.title : 'Untitled',
-    description: typeof p.description === 'string' ? p.description.slice(0, 500) : null,
-    url: typeof p.url === 'string' ? p.url : null,
-    priceMin: min.amount,
-    priceMax: max.amount,
-    currency: min.currency ?? max.currency,
-    seller: nestedStr(p.seller, 'name') ?? nestedStr(p.seller, 'shop_name'),
-    sellerUrl: nestedStr(p.seller, 'url'),
-    variantCount: variants.length,
-    rating: typeof rating.value === 'number' ? rating.value : null,
-    ratingCount: typeof rating.count === 'number' ? rating.count : null,
-    imageUrl: nestedStr(media[0], 'url'),
-  };
-}
-
-/** One-line product summary for the human-readable text block. */
-function formatProduct(product: ReturnType<typeof mapProduct>): string {
-  const priceLabel =
-    product.priceMin !== null
-      ? product.priceMin === product.priceMax || product.priceMax === null
-        ? `${product.currency ?? ''} ${product.priceMin}`
-        : `${product.currency ?? ''} ${product.priceMin}–${product.priceMax}`
-      : 'price n/a';
-  const ratingLabel =
-    product.rating !== null
-      ? ` ★${product.rating}${product.ratingCount ? ` (${product.ratingCount})` : ''}`
-      : '';
-  return `"${product.title}" — ${priceLabel}${product.seller ? ` · ${product.seller}` : ''}${ratingLabel}\n  ${product.url ?? product.id ?? ''}`;
-}
-
 /** Shared context input: buyer signals for relevance and localization. */
 const contextInput = z
   .object({
@@ -158,9 +98,14 @@ export default defineMcpServer({
         'Search products across every Shopify storefront worldwide (the UCP global ' +
         'catalog). Free-text query with optional price range, availability, and ' +
         'condition filters plus buyer-locale context. Returns compact product ' +
-        'summaries — title, price range, seller, rating, URL — with a cursor for ' +
-        'paging. Good for "find X to buy", price comparison across merchants, and ' +
-        'discovering who sells a niche product.',
+        'summaries — title, description, price range, storefront domain, stock ' +
+        'flag, product-page URL — with a cursor for paging. Discovery only: the ' +
+        'catalog is semantic (nearest matches always return, even for nonsense ' +
+        'queries; treat weak matches skeptically), totalEstimate is a rough ' +
+        'fluctuating estimate, and locale context localizes results but does NOT ' +
+        'confirm the merchant ships to that country — check the product page for ' +
+        'fulfillment. Good for "find X to buy", price comparison across merchants, ' +
+        'and discovering who sells a niche product.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
         query: z.string().min(1).describe('Free-text search, e.g. "walnut desk organizer".'),
@@ -176,7 +121,12 @@ export default defineMcpServer({
         limit: z.number().int().min(1).max(50).default(10).describe('Max products (1–50).'),
       }),
       output: z.object({
-        totalEstimate: z.number().nullable(),
+        totalEstimate: z
+          .number()
+          .nullable()
+          .describe(
+            'Rough result-count estimate; fluctuates between calls — do not present as exact.',
+          ),
         count: z.number(),
         nextCursor: z.string().nullable(),
         products: z.array(
@@ -188,8 +138,8 @@ export default defineMcpServer({
             priceMin: z.number().nullable(),
             priceMax: z.number().nullable(),
             currency: z.string().nullable(),
-            seller: z.string().nullable(),
-            sellerUrl: z.string().nullable(),
+            store: z.string().nullable(),
+            available: z.boolean(),
             variantCount: z.number(),
             rating: z.number().nullable(),
             ratingCount: z.number().nullable(),
@@ -214,6 +164,7 @@ export default defineMcpServer({
           'search_catalog',
           {
             query,
+            view: 'offer',
             ...(Object.keys(filters).length > 0 && { filters }),
             ...(context && { context }),
             pagination: { limit, ...(cursor && { cursor }) },
@@ -226,7 +177,10 @@ export default defineMcpServer({
         const structured = {
           totalEstimate: typeof pagination.total_count === 'number' ? pagination.total_count : null,
           count: products.length,
-          nextCursor: typeof pagination.next_cursor === 'string' ? pagination.next_cursor : null,
+          nextCursor:
+            pagination.has_next_page === true && typeof pagination.cursor === 'string'
+              ? pagination.cursor
+              : null,
           products,
         };
         const text =
@@ -263,7 +217,7 @@ export default defineMcpServer({
         ctx.log('lookup_products', { count: args.ids.length });
         const result = await ucpCall(
           'lookup_catalog',
-          { ids: args.ids, ...(args.context && { context: args.context }) },
+          { ids: args.ids, view: 'offer', ...(args.context && { context: args.context }) },
           ctx,
         );
         const rawProducts = Array.isArray(result.products) ? result.products : [];
@@ -310,13 +264,13 @@ export default defineMcpServer({
           'get_product',
           {
             id: args.id,
+            view: 'offer',
             ...(args.selected && { selected: args.selected }),
             ...(args.context && { context: args.context }),
           },
           ctx,
         );
-        const rawProducts = Array.isArray(result.products) ? result.products : [];
-        const first = (rawProducts[0] ?? null) as Record<string, unknown> | null;
+        const first = (result.product ?? null) as Record<string, unknown> | null;
         const summary = first ? mapProduct(first) : null;
         const options = first && Array.isArray(first.options) ? first.options : [];
         const variants = first && Array.isArray(first.variants) ? first.variants : [];
