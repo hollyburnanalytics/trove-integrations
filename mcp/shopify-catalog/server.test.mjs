@@ -201,6 +201,65 @@ describe('shopify-catalog MCP server', () => {
     expect(String(bare.error?.message ?? bare.error)).toMatch(/query, a similarTo/);
   });
 
+  it('rejects an inverted price range with a clean validation error', async () => {
+    const call = await callTool(
+      server,
+      'search_products',
+      { query: 'sofa', minPrice: 5000, maxPrice: 100 },
+      () => rpcResult({ products: [], pagination: {} }),
+    );
+    expect(call.ok).toBe(false);
+    expect(String(call.error?.message ?? call.error)).toMatch(/minPrice must be less than/);
+  });
+
+  it('get_product resolves a URL id via lookup before fetching detail', async () => {
+    const calls = [];
+    const call = await callTool(
+      server,
+      'get_product',
+      { id: 'https://shop.example.com/products/walnut-desk-organizer' },
+      (_url, init) => {
+        const body = JSON.parse(init.body);
+        calls.push(body.params.name);
+        if (body.params.name === 'lookup_catalog') {
+          return rpcResult({ products: [{ id: 'gid://shopify/p/abc123' }] });
+        }
+        return rpcResult({ product: SEARCH_CONTENT.products[0] });
+      },
+    );
+    expect(call.ok).toBe(true);
+    expect(calls).toEqual(['lookup_catalog', 'get_product']);
+    expect(call.result.structured.product.title).toBe('Walnut Desk Organizer');
+  });
+
+  it('converts zero-decimal currencies without dividing by 100', async () => {
+    const call = await callTool(server, 'search_products', { query: 'matcha bowl' }, () =>
+      rpcResult({
+        products: [
+          {
+            id: 'gid://shopify/p/jp1',
+            title: 'Matcha Bowl',
+            price_range: {
+              min: { amount: 5000, currency: 'JPY' },
+              max: { amount: 5000, currency: 'JPY' },
+            },
+            variants: [
+              {
+                id: 'v1',
+                url: 'https://shop.example.jp/products/bowl',
+                availability: { available: true },
+              },
+            ],
+          },
+        ],
+        pagination: {},
+      }),
+    );
+    expect(call.ok).toBe(true);
+    expect(call.result.structured.products[0].priceMin).toBe(5000);
+    expect(call.result.structured.products[0].currency).toBe('JPY');
+  });
+
   it('maps a UCP JSON-RPC error to a ToolError with the failure code', async () => {
     const call = await callTool(server, 'search_products', { query: 'x' }, () => ({
       json: {

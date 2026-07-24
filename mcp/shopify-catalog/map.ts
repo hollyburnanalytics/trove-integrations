@@ -4,14 +4,43 @@
  * Split from server.ts purely for file-size hygiene.
  */
 
+/** ISO 4217 currencies with no minor unit (exponent 0). */
+const ZERO_DECIMAL = new Set([
+  'BIF',
+  'CLP',
+  'DJF',
+  'GNF',
+  'ISK',
+  'JPY',
+  'KMF',
+  'KRW',
+  'PYG',
+  'RWF',
+  'UGX',
+  'VND',
+  'VUV',
+  'XAF',
+  'XOF',
+  'XPF',
+]);
+
+/** ISO 4217 currencies with three-decimal minor units (exponent 3). */
+const THREE_DECIMAL = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND']);
+
 /** A UCP `Price` (`amount` in minor units + ISO currency) as a decimal, or null. */
 export function price(obj: unknown): { amount: number | null; currency: string | null } {
   const o = (obj ?? {}) as Record<string, unknown>;
   const minor = typeof o.amount === 'number' ? o.amount : null;
   const currency = typeof o.currency === 'string' ? o.currency : null;
-  // UCP amounts are minor units; every currency the catalog serves today uses
-  // exponent 2. Presented as major units for readability.
-  return { amount: minor !== null ? minor / 100 : null, currency };
+  // UCP amounts are minor units; the divisor follows the currency's ISO 4217
+  // exponent (JPY/KRW etc. have none, a few dinar currencies have three).
+  const divisor =
+    currency && ZERO_DECIMAL.has(currency)
+      ? 1
+      : currency && THREE_DECIMAL.has(currency)
+        ? 1000
+        : 100;
+  return { amount: minor !== null ? minor / divisor : null, currency };
 }
 
 /** The first variant image URL, for products whose own media array is empty. */
@@ -105,4 +134,25 @@ export function formatProduct(product: ReturnType<typeof mapProduct>): string {
       : '';
   const stock = product.available ? '' : ' [out of stock]';
   return `"${product.title}" — ${priceLabel}${product.store ? ` · ${product.store}` : ''}${ratingLabel}${stock}\n  ${product.url ?? product.id ?? ''}`;
+}
+
+/** Map a UCP search result to the tool's structured page shape. */
+export function mapSearchPage(result: Record<string, unknown>): {
+  totalEstimate: number | null;
+  count: number;
+  nextCursor: string | null;
+  products: ReturnType<typeof mapProduct>[];
+} {
+  const rawProducts = Array.isArray(result.products) ? result.products : [];
+  const products = rawProducts.map(mapProduct);
+  const pagination = (result.pagination ?? {}) as Record<string, unknown>;
+  return {
+    totalEstimate: typeof pagination.total_count === 'number' ? pagination.total_count : null,
+    count: products.length,
+    nextCursor:
+      pagination.has_next_page === true && typeof pagination.cursor === 'string'
+        ? pagination.cursor
+        : null,
+    products,
+  };
 }

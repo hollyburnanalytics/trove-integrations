@@ -1,6 +1,6 @@
-import type { ToolContext } from '@ontrove/mcp';
 import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
-import { formatProduct, mapProduct, price } from './map.ts';
+import { buildSearchFilters, resolveCatalogId, ucpCall } from './catalog-client.ts';
+import { formatProduct, mapProduct, mapSearchPage, price } from './map.ts';
 
 /**
  * Shopify Global Catalog — a hosted MCP server over Shopify's Universal
@@ -19,92 +19,6 @@ import { formatProduct, mapProduct, price } from './map.ts';
  * alongside this server and served from this repository. No key or account is
  * required. Spec: https://ucp.dev/2026-04-08/specification/catalog/mcp/
  */
-
-/** Shopify's UCP catalog MCP endpoint. */
-const ENDPOINT = 'https://catalog.shopify.com/api/ucp/mcp';
-
-/**
- * The public agent profile UCP discovery fetches on every request. Served via
- * jsDelivr (not GitHub raw) because discovery requires an `application/json`
- * content type, which raw.githubusercontent.com does not send. The file lives
- * in this directory (`ucp-agent-profile.json`).
- */
-const AGENT_PROFILE =
-  'https://cdn.jsdelivr.net/gh/hollyburnanalytics/trove-integrations@main/mcp/shopify-catalog/ucp-agent-profile.json';
-
-/** UCP JSON-RPC error payload shape. */
-interface JsonRpcError {
-  code?: number;
-  message?: string;
-  data?: { code?: string; content?: string };
-}
-
-/**
- * Call one upstream UCP catalog tool: wrap `catalog` arguments in the JSON-RPC
- * `tools/call` envelope with our agent profile, POST it, and unwrap the
- * `structuredContent` result. JSON-RPC errors map to ToolErrors with the UCP
- * failure detail (e.g. `profile_unreachable`) surfaced.
- */
-async function ucpCall(
-  tool: string,
-  catalog: Record<string, unknown>,
-  ctx: ToolContext,
-): Promise<Record<string, unknown>> {
-  const body = (await ctx.fetchJson(ENDPOINT, {
-    init: {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'tools/call',
-        params: {
-          name: tool,
-          arguments: {
-            meta: { 'ucp-agent': { profile: AGENT_PROFILE } },
-            catalog,
-          },
-        },
-      }),
-    },
-  })) as { result?: { structuredContent?: Record<string, unknown> }; error?: JsonRpcError };
-
-  if (body.error) {
-    const detail = body.error.data?.content ?? body.error.message ?? 'unknown error';
-    const code = body.error.data?.code ?? String(body.error.code ?? '');
-    throw new ToolError(`Shopify catalog error${code ? ` (${code})` : ''}: ${detail}`, {
-      retryable: body.error.code === -32000,
-    });
-  }
-  return body.result?.structuredContent ?? {};
-}
-
-/**
- * Build the UCP search `filters` object. Price bands pin an explicit currency
- * (verified live: without one the band is interpreted in an unspecified
- * currency and can disagree with the displayed merchant-currency prices).
- */
-function buildSearchFilters(input: {
-  minPrice?: number;
-  maxPrice?: number;
-  minRating?: number;
-  availability?: string;
-  condition?: string;
-  currency?: string;
-}): Record<string, unknown> {
-  const filters: Record<string, unknown> = {};
-  if (input.minPrice !== undefined || input.maxPrice !== undefined) {
-    filters.price = {
-      ...(input.minPrice !== undefined && { min: Math.round(input.minPrice * 100) }),
-      ...(input.maxPrice !== undefined && { max: Math.round(input.maxPrice * 100) }),
-      currency: input.currency ?? 'USD',
-    };
-  }
-  if (input.minRating !== undefined) filters.rating = { min: input.minRating };
-  if (input.availability) filters.availability = input.availability;
-  if (input.condition) filters.condition = input.condition;
-  return filters;
-}
 
 /** Shared context input: buyer signals for relevance and localization. */
 const contextInput = z
@@ -159,7 +73,10 @@ export default defineMcpServer({
         availability: z
           .enum(['in_stock', 'out_of_stock'])
           .optional()
-          .describe('Restrict by stock status.'),
+          .describe(
+            'Stock-status filter — passed through, but the catalog currently appears ' +
+              'to ignore it (verified live); use the per-result `available` flag instead.',
+          ),
         condition: z
           .enum(['new', 'used', 'refurbished'])
           .optional()
@@ -218,6 +135,11 @@ export default defineMcpServer({
             retryable: false,
           });
         }
+        if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) {
+          throw new ToolError('minPrice must be less than or equal to maxPrice.', {
+            retryable: false,
+          });
+        }
         const filters = buildSearchFilters({
           minPrice,
           maxPrice,
@@ -244,22 +166,11 @@ export default defineMcpServer({
           },
           ctx,
         );
-        const rawProducts = Array.isArray(result.products) ? result.products : [];
-        const products = rawProducts.map(mapProduct);
-        const pagination = (result.pagination ?? {}) as Record<string, unknown>;
-        const structured = {
-          totalEstimate: typeof pagination.total_count === 'number' ? pagination.total_count : null,
-          count: products.length,
-          nextCursor:
-            pagination.has_next_page === true && typeof pagination.cursor === 'string'
-              ? pagination.cursor
-              : null,
-          products,
-        };
+        const structured = mapSearchPage(result);
         const text =
-          products.length === 0
-            ? `No products found for "${query}".`
-            : products.map(formatProduct).join('\n');
+          structured.products.length === 0
+            ? `No products found for "${query ?? similarTo ?? imageUrl ?? ''}".`
+            : structured.products.map(formatProduct).join('\n');
         return { structured, text };
       },
     },
@@ -333,10 +244,11 @@ export default defineMcpServer({
       }),
       async handler(args, ctx) {
         ctx.log('get_product', { id: args.id });
+        const id = await resolveCatalogId(args.id, ctx);
         const result = await ucpCall(
           'get_product',
           {
-            id: args.id,
+            id,
             view: 'offer',
             ...(args.selected && { selected: args.selected }),
             ...(args.context && { context: args.context }),
