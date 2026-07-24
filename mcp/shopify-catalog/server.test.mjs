@@ -56,8 +56,9 @@ describe('shopify-catalog MCP server', () => {
     );
     expect(captured.body.params.arguments.catalog.query).toBe('walnut desk organizer');
     expect(captured.body.params.arguments.catalog.view).toBe('offer');
-    // Major units in, minor units on the wire.
+    // Major units in, minor units on the wire, currency pinned for determinism.
     expect(captured.body.params.arguments.catalog.filters.price.max).toBe(8000);
+    expect(captured.body.params.arguments.catalog.filters.price.currency).toBe('USD');
 
     expect(structured.count).toBe(1);
     expect(structured.totalEstimate).toBe(37);
@@ -136,6 +137,36 @@ describe('shopify-catalog MCP server', () => {
     expect(call.result.structured.product.title).toBe('Walnut Desk Organizer');
     expect(call.result.structured.variants).toHaveLength(2);
     expect(call.result.text).toContain('Natural: CAD 49');
+  });
+
+  it('similar-item and visual search populate the like array; bare filter-only calls are rejected', async () => {
+    let captured;
+    const call = await callTool(
+      server,
+      'search_products',
+      {
+        similarTo: 'gid://shopify/p/abc123',
+        imageUrl: 'https://cdn.example.com/ref.jpg',
+        minRating: 4,
+      },
+      (_url, init) => {
+        captured = JSON.parse(init.body);
+        return rpcResult({ products: [], pagination: {} });
+      },
+    );
+    expect(call.ok).toBe(true);
+    expect(captured.params.arguments.catalog.like).toEqual([
+      { id: 'gid://shopify/p/abc123' },
+      { image: 'https://cdn.example.com/ref.jpg' },
+    ]);
+    expect(captured.params.arguments.catalog.filters.rating).toEqual({ min: 4 });
+    expect(captured.params.arguments.catalog.query).toBeUndefined();
+
+    const bare = await callTool(server, 'search_products', {}, () =>
+      rpcResult({ products: [], pagination: {} }),
+    );
+    expect(bare.ok).toBe(false);
+    expect(String(bare.error?.message ?? bare.error)).toMatch(/query, a similarTo/);
   });
 
   it('maps a UCP JSON-RPC error to a ToolError with the failure code', async () => {
