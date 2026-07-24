@@ -160,7 +160,13 @@ export default defineMcpServer({
           .enum(['in_stock', 'out_of_stock'])
           .optional()
           .describe('Restrict by stock status.'),
-        condition: z.enum(['new', 'used', 'refurbished']).optional().describe('Item condition.'),
+        condition: z
+          .enum(['new', 'used', 'refurbished'])
+          .optional()
+          .describe(
+            'Item condition — passed through, but the catalog currently appears to ' +
+              'ignore it (verified live); verify condition on the product page.',
+          ),
         context: contextInput,
         cursor: z.string().optional().describe('Pagination cursor from a previous page.'),
         limit: z.number().int().min(1).max(50).default(10).describe('Max products (1–50).'),
@@ -184,6 +190,7 @@ export default defineMcpServer({
             priceMax: z.number().nullable(),
             currency: z.string().nullable(),
             store: z.string().nullable(),
+            storeUrl: z.string().nullable(),
             available: z.boolean(),
             variantCount: z.number(),
             rating: z.number().nullable(),
