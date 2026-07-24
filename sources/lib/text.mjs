@@ -148,6 +148,15 @@ function renderChildren(node, parts, inPre) {
   }
 }
 
+/** Trim leading and trailing newlines only, keeping inner and other whitespace. */
+function trimNewlines(value) {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === '\n') start++;
+  while (end > start && value[end - 1] === '\n') end--;
+  return value.slice(start, end);
+}
+
 /**
  * Render an element that wraps its children in Markdown syntax — a fenced code
  * block (`<pre>`), an inline code chip (`<code>`), an ATX heading (`<h1>`–`<h6>`),
@@ -161,7 +170,7 @@ function renderWrappedElement(tag, node, parts, inPre) {
   if (tag === 'pre') {
     const code = [];
     renderChildren(node, code, true);
-    const body = code.join('').replace(/^\n+/, '').replace(/\n+$/, '');
+    const body = trimNewlines(code.join(''));
     parts.push(`\n\n\`\`\`\n${body}\n\`\`\`\n\n`);
     return true;
   }
