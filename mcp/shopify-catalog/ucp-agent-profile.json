@@ -1,0 +1,12 @@
+{
+  "ucp": {
+    "version": "2026-04-08",
+    "capabilities": {
+      "dev.ucp.shopping.catalog.search": [{ "version": "2026-04-08" }],
+      "dev.ucp.shopping.catalog.lookup": [{ "version": "2026-04-08" }]
+    }
+  },
+  "name": "Trove",
+  "description": "Trove's personal-knowledge-base agent tools (read-only catalog search and lookup).",
+  "url": "https://github.com/hollyburnanalytics/trove-integrations"
+}
