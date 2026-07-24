@@ -201,6 +201,24 @@ describe('shopify-catalog MCP server', () => {
     expect(String(bare.error?.message ?? bare.error)).toMatch(/query, a similarTo/);
   });
 
+  it('sends documented filter shapes: condition array, available boolean, ships_to object', async () => {
+    let captured;
+    const call = await callTool(
+      server,
+      'search_products',
+      { query: 'vintage chair', condition: 'secondhand', includeUnavailable: true, shipsTo: 'CA' },
+      (_url, init) => {
+        captured = JSON.parse(init.body);
+        return rpcResult({ products: [], pagination: {} });
+      },
+    );
+    expect(call.ok).toBe(true);
+    const filters = captured.params.arguments.catalog.filters;
+    expect(filters.condition).toEqual(['secondhand']);
+    expect(filters.available).toBe(false);
+    expect(filters.ships_to).toEqual({ country: 'CA' });
+  });
+
   it('rejects an inverted price range with a clean validation error', async () => {
     const call = await callTool(
       server,
