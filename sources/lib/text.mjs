@@ -1,8 +1,10 @@
 /**
  * Text helpers for feed source adapters: HTML entity decoding, tag stripping,
  * plain-text reduction, stable IDs, and safe date parsing. Feed bodies are
- * stored as structured plain text — paragraphs, list items, and code blocks
- * keep their boundaries — not as Markdown.
+ * stored as lightweight Markdown — headings become `#` lines, list items `- `
+ * lines, `<pre>` a fenced code block and inline `<code>` a backtick span — so
+ * the reader renders them as structured text rather than one run-together
+ * paragraph.
  */
 
 import { createHash } from 'node:crypto';
@@ -78,21 +80,17 @@ export function decodeHtmlEntities(string_) {
 const DROP_TAGS = new Set(['script', 'style', 'noscript', 'template', 'iframe', 'svg', 'head']);
 
 /** Elements that end a paragraph: a blank line on both sides. */
-const PARAGRAPH_TAGS = new Set([
-  'p',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'blockquote',
-  'figure',
-  'table',
-  'ul',
-  'ol',
-  'dl',
-]);
+const PARAGRAPH_TAGS = new Set(['p', 'blockquote', 'figure', 'table', 'ul', 'ol', 'dl']);
+
+/** Heading tags to their ATX Markdown prefix. */
+const HEADING_MARKERS = {
+  h1: '#',
+  h2: '##',
+  h3: '###',
+  h4: '####',
+  h5: '#####',
+  h6: '######',
+};
 
 /** Elements that end a line: their content stands on its own line. */
 const LINE_TAGS = new Set([
@@ -113,7 +111,7 @@ const LINE_TAGS = new Set([
 
 /** The blank-run or line boundary a block element contributes, if any. */
 function blockBoundary(tag) {
-  if (tag === 'pre' || PARAGRAPH_TAGS.has(tag)) return '\n\n';
+  if (PARAGRAPH_TAGS.has(tag)) return '\n\n';
   if (LINE_TAGS.has(tag)) return '\n';
   return '';
 }
@@ -143,6 +141,66 @@ function renderVoidElement(tag, node, parts) {
   }
 }
 
+/** Render each child of `node` into `parts`. */
+function renderChildren(node, parts, inPre) {
+  for (const child of node.childNodes) {
+    renderNode(child, parts, inPre);
+  }
+}
+
+/** Trim leading and trailing newlines only, keeping inner and other whitespace. */
+function trimNewlines(value) {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === '\n') start++;
+  while (end > start && value[end - 1] === '\n') end--;
+  return value.slice(start, end);
+}
+
+/**
+ * Render an element that wraps its children in Markdown syntax — a fenced code
+ * block (`<pre>`), an inline code chip (`<code>`), an ATX heading (`<h1>`–`<h6>`),
+ * or a bulleted list item (`<li>`). Returns false when `tag` is none of them, so
+ * the caller falls back to plain block/inline handling.
+ */
+function renderWrappedElement(tag, node, parts, inPre) {
+  // `<pre>` keeps its children's whitespace verbatim inside a fence, so the
+  // reader renders it as code rather than run-together prose. Children are still
+  // parsed so feeds' highlighting spans get stripped.
+  if (tag === 'pre') {
+    const code = [];
+    renderChildren(node, code, true);
+    const body = trimNewlines(code.join(''));
+    parts.push(`\n\n\`\`\`\n${body}\n\`\`\`\n\n`);
+    return true;
+  }
+  // Inline `<code>` becomes a backtick chip. Suppressed inside `<pre>`, where the
+  // fence already sets the block as code and inner backticks would be noise.
+  if (tag === 'code' && !inPre) {
+    parts.push('`');
+    renderChildren(node, parts, inPre);
+    parts.push('`');
+    return true;
+  }
+  // Headings become ATX Markdown so the reader sets them as headings rather than
+  // dropping them into indistinguishable body prose.
+  const heading = HEADING_MARKERS[tag];
+  if (heading) {
+    parts.push(`\n\n${heading} `);
+    renderChildren(node, parts, inPre);
+    parts.push('\n\n');
+    return true;
+  }
+  // List items open on their own line with a bullet and take no trailing
+  // boundary — the next item's opening (or the list's closing) provides it.
+  if (tag === 'li') {
+    parts.push('\n- ');
+    renderChildren(node, parts, inPre);
+    return true;
+  }
+  return false;
+}
+
 /**
  * Render one DOM node into `parts`. Inside `<pre>` text is kept verbatim
  * (code keeps its line breaks); elsewhere whitespace runs collapse to single
@@ -160,30 +218,22 @@ function renderNode(node, parts, inPre) {
   const tag = node.rawTagName?.toLowerCase() ?? '';
   if (DROP_TAGS.has(tag)) return;
   if (renderVoidElement(tag, node, parts)) return;
+  if (renderWrappedElement(tag, node, parts, inPre)) return;
 
-  // List items open on their own line with a bullet and take no trailing
-  // boundary — the next item's opening (or the list's closing) provides it.
-  if (tag === 'li') {
-    parts.push('\n- ');
-    for (const child of node.childNodes) {
-      renderNode(child, parts, inPre);
-    }
-    return;
-  }
   const boundary = blockBoundary(tag);
   if (boundary) parts.push(boundary);
-  for (const child of node.childNodes) {
-    renderNode(child, parts, inPre || tag === 'pre');
-  }
+  renderChildren(node, parts, inPre);
   if (boundary) parts.push(boundary);
 }
 
 /**
- * Reduce an HTML (or already-plain) fragment to clean, structured plain text:
- * paragraphs and headings separated by blank lines, list items as `- ` lines,
- * `<pre>` blocks verbatim, `script`/`style` dropped, images reduced to their
- * alt text, entities decoded. Markup is parsed with a real HTML parser; we
- * still deliberately emit plain text, not Markdown.
+ * Reduce an HTML (or already-plain) fragment to clean, lightweight Markdown:
+ * headings as `#` lines, paragraphs separated by blank lines, list items as
+ * `- ` lines, `<pre>` as a fenced code block and inline `<code>` as a backtick
+ * span, `script`/`style` dropped, images reduced to their alt text, entities
+ * decoded. Markup is parsed with a real HTML parser. The output is deliberately
+ * minimal Markdown — enough structure for the reader, not a full
+ * HTML-to-Markdown translation.
  */
 export function htmlToText(html) {
   if (!html) return '';
