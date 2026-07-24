@@ -99,7 +99,10 @@ export default defineMcpServer({
         'catalog). Free-text query with optional price range, availability, and ' +
         'condition filters plus buyer-locale context. Returns compact product ' +
         'summaries — title, description, price range, storefront domain, stock ' +
-        'flag, product-page URL — with a cursor for paging. Discovery only: the ' +
+        'flag, product-page URL — with a cursor for paging. Also does ' +
+        'similar-item search (similarTo: a product id) and visual search ' +
+        '(imageUrl). Price filters apply in context.currency (default USD); ' +
+        "displayed prices stay in each merchant's own currency. Discovery only: the " +
         'catalog is semantic (nearest matches always return, even for nonsense ' +
         'queries; treat weak matches skeptically), totalEstimate is a rough ' +
         'fluctuating estimate, and locale context localizes results but does NOT ' +
@@ -108,9 +111,24 @@ export default defineMcpServer({
         'and discovering who sells a niche product.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
-        query: z.string().min(1).describe('Free-text search, e.g. "walnut desk organizer".'),
+        query: z
+          .string()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe('Free-text search, e.g. "walnut desk organizer".'),
+        similarTo: z
+          .string()
+          .optional()
+          .describe('A catalog product id — find visually/semantically similar products.'),
+        imageUrl: z
+          .string()
+          .url()
+          .optional()
+          .describe('An image URL — visual search for products resembling it.'),
         minPrice: z.number().min(0).optional().describe('Minimum price (major units).'),
         maxPrice: z.number().min(0).optional().describe('Maximum price (major units).'),
+        minRating: z.number().min(0).max(5).optional().describe('Minimum product rating (0–5).'),
         availability: z
           .enum(['in_stock', 'out_of_stock'])
           .optional()
@@ -148,22 +166,48 @@ export default defineMcpServer({
         ),
       }),
       async handler(args, ctx) {
-        const { query, minPrice, maxPrice, availability, condition, context, cursor, limit } = args;
+        const {
+          query,
+          similarTo,
+          imageUrl,
+          minPrice,
+          maxPrice,
+          minRating,
+          availability,
+          condition,
+          context,
+          cursor,
+          limit,
+        } = args;
+        if (!query && !similarTo && !imageUrl) {
+          throw new ToolError('Provide a query, a similarTo product id, or an imageUrl.', {
+            retryable: false,
+          });
+        }
         const filters: Record<string, unknown> = {};
         if (minPrice !== undefined || maxPrice !== undefined) {
+          // An explicit currency makes the band deterministic (verified live);
+          // without one the filter is interpreted in an unspecified currency.
           filters.price = {
             ...(minPrice !== undefined && { min: Math.round(minPrice * 100) }),
             ...(maxPrice !== undefined && { max: Math.round(maxPrice * 100) }),
+            currency: context?.currency ?? 'USD',
           };
         }
+        if (minRating !== undefined) filters.rating = { min: minRating };
         if (availability) filters.availability = availability;
         if (condition) filters.condition = condition;
-        ctx.log('search_products', { query, limit });
+        const like = [
+          ...(similarTo ? [{ id: similarTo }] : []),
+          ...(imageUrl ? [{ image: imageUrl }] : []),
+        ];
+        ctx.log('search_products', { query, similarTo, limit });
 
         const result = await ucpCall(
           'search_catalog',
           {
-            query,
+            ...(query && { query }),
+            ...(like.length > 0 && { like }),
             view: 'offer',
             ...(Object.keys(filters).length > 0 && { filters }),
             ...(context && { context }),
