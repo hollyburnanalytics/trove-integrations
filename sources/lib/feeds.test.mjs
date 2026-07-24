@@ -567,6 +567,10 @@ describe('htmlToText', () => {
   it('renders list items on their own lines', () => {
     expect(htmlToText('<ul><li>First</li><li>Second</li></ul>')).toBe('- First\n- Second');
   });
+  it('renders headings as ATX markdown at their level', () => {
+    expect(htmlToText('<h2>Section</h2><p>Body</p>')).toBe('## Section\n\nBody');
+    expect(htmlToText('<h3>Sub</h3>')).toBe('### Sub');
+  });
   it('preserves line breaks inside a fenced pre block', () => {
     const html = '<p>Before</p><pre><code>line1\nline2</code></pre>';
     expect(htmlToText(html)).toBe('Before\n\n```\nline1\nline2\n```');
