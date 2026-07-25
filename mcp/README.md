@@ -138,18 +138,29 @@ the booking endpoints document `start` as **UTC**. Copying a slot straight into
 `bookingBody` normalises it — the slots → booking round-trip is correct whatever
 zone the slots were asked for.
 
-⏱ `toggl` — **read-only view of the caller's own Toggl Track account**: who the
-token belongs to, which workspaces it can reach, and time entries (optionally
-date-ranged) with a duration roll-up. Auth is Toggl's documented Basic scheme —
-the personal API token as the username, the literal `api_token` as the password
-— resolved per-invocation via `ctx.requireSecret`. The rate limit is the part
-worth knowing: Toggl runs a leaky bucket at roughly **1 request/second per token
-per IP**, counts *every* integration sharing that token (Zapier, Make, Timery…)
-against the same budget, and makes backing off the client's job. A 429 is
-surfaced as a **retryable** error carrying `retryAfter` rather than a hard
-failure, and — unlike a 401 — is never reported as "not authenticated", so a
-burst never looks like a bad token. Running timers report a negative duration
-upstream and are shown as `running` rather than folded into the total.
+⏱ `toggl` — **read-only view of the caller's own Toggl Track account**, built
+for the questions people actually ask it: *what did I work on this week, and how
+much of it was billable to whom.* Entries come back resolved to **workspace,
+project, client and tag names** — not the bare ids the API returns — plus a
+per-client duration roll-up, and `period` accepts `today`/`yesterday`/`week`/
+`lastWeek`/`month`/`lastMonth` alongside explicit dates.
+
+Two design points worth knowing. **Named periods are timezone-aware**: the server
+runs in UTC, so a naive "today" rolls over mid-afternoon for a Pacific user —
+`time_zone` (IANA, default UTC) decides which calendar day is meant, and ranges
+are always `[start, end)` to match the API. **Hydration is bulk, not per-entry**:
+one `/projects`, `/tags` and `/clients` call per *referenced* workspace, then
+in-memory joins, each skipped entirely when no entry needs it. Cost is bounded
+per workspace no matter how many entries return — the alternative, resolving
+names one entry at a time, only works behind a long-lived cache a stateless
+hosted invocation doesn't have.
+
+Rate limiting is the last trap: Toggl runs a leaky bucket at ~**1 request/second
+per token per IP** and counts *every* integration sharing that token (Zapier,
+Make, Timery) against the same budget, so this server can be limited through no
+fault of its own. A 429 is surfaced as a **retryable** error carrying
+`retryAfter` and — unlike a 401 — is never reported as "not authenticated", so a
+burst never looks like a bad token. The account email is masked in output.
 
 ‡ `hathitrust` — covers the **public Bibliographic API** only: given an ISBN/OCLC/LCCN/HathiTrust id it reports holdings + per-copy access rights (Full view = readable public domain, vs Limited = search-only). Its distinctive value over Open Library / Google Books is that **rights signal** — "can I actually read this, or only search it?" — plus a deep-link to the reader for full-view scans. It's an *exact-identifier* lookup against HathiTrust's catalog records, not a fuzzy search: an `htid` is the most reliable key and ISBN works well for modern books, but an arbitrary edition's OCLC can miss even when the work is held. HathiTrust gates corpus-wide *full-text search* (it 403s automated clients and requires partner credentials), so that surface is intentionally not exposed. For full-text search *inside* a book, use `gutenberg`.
 
