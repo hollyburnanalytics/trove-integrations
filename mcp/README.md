@@ -66,6 +66,7 @@ in their manifest `egress`.
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `jonas-premier` | `list_companies`, `search_jobs`, `get_job_transactions`, `get_job_estimate`, `search_vendors`, `get_ap_invoices`, `get_ap_payments`, `get_gl_accounts`, `get_subcontracts`, `get_subcontract_change_orders` | api.jonas-premier.com (Premier Construction Software External API) | **`JONAS_USERNAME` + `JONAS_PASSWORD`** ¶|
+| `toggl` | `check_auth`, `list_workspaces`, `get_time_entries` | api.track.toggl.com (Toggl Track API v9) | **`TOGGL_API_TOKEN`** ⏱|
 
 ### Social
 | Toolkit | Tools | Upstream | Auth |
@@ -82,6 +83,7 @@ in their manifest `egress`.
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `resend` | `send_email` | api.resend.com | **`RESEND_API_KEY` + `RECIPIENT_EMAIL`** ※|
+| `cal-com` | `list_event_types`, `get_available_slots`, `list_bookings`, `create_booking`, `cancel_booking` | api.cal.com (Cal.com API v2) | **`CALCOM_API_KEY`** 📅|
 
 ※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted MCP servers are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
 
@@ -109,6 +111,45 @@ multi-company, so `list_companies` comes first; the AP tools require an
 `get_job_transactions` requires an updated-date range (Premier's rule — it keeps
 pulls time-boxed). Write endpoints (create/pay invoices, create subcontracts) and
 the Payroll module (employee PII) are deliberately not exposed.
+
+📅 `cal-com` — **the scheduling loop end to end**: list event types → find open
+slots → book, plus reading and cancelling existing bookings. Three tools are
+read-only; `create_booking` and `cancel_booking` are `readOnlyHint: false`, so
+the host confirms before a real calendar event is created or an attendee is
+notified. Unlike `resend`, nothing is pinned to a secret — an arbitrary attendee
+*is* the legitimate use of a booking tool, so host confirmation is the control
+that fits. Cancellation is deliberately per-uid; there is no bulk cancel.
+
+The v2 API is **versioned per endpoint group** via a `cal-api-version` header,
+and the values really do differ — `2024-06-14` (event types), `2024-09-04`
+(slots), `2026-05-01` (read bookings), `2026-02-25` (write bookings). Sending the
+wrong value doesn't error; it silently serves an **older contract with a
+different response shape**, so every request states its version explicitly and
+the tests assert each one. Two more quirks worth knowing: an event type is named
+either by numeric id *or* by `slug` + `username` (never half of the pair), and
+Cal.com signals business-rule rejections — an unavailable slot, an already-cancelled
+booking — as `{"status":"error"}` inside an **HTTP 200**, which the server raises
+rather than reporting as an empty success.
+
+The third quirk only shows up against a live account: `/slots` returns starts
+carrying the **requested zone's offset** (`2026-07-27T09:30:00.000-07:00`), while
+the booking endpoints document `start` as **UTC**. Copying a slot straight into
+`create_booking` would therefore post a non-UTC instant for a UTC field, so
+`bookingBody` normalises it — the slots → booking round-trip is correct whatever
+zone the slots were asked for.
+
+⏱ `toggl` — **read-only view of the caller's own Toggl Track account**: who the
+token belongs to, which workspaces it can reach, and time entries (optionally
+date-ranged) with a duration roll-up. Auth is Toggl's documented Basic scheme —
+the personal API token as the username, the literal `api_token` as the password
+— resolved per-invocation via `ctx.requireSecret`. The rate limit is the part
+worth knowing: Toggl runs a leaky bucket at roughly **1 request/second per token
+per IP**, counts *every* integration sharing that token (Zapier, Make, Timery…)
+against the same budget, and makes backing off the client's job. A 429 is
+surfaced as a **retryable** error carrying `retryAfter` rather than a hard
+failure, and — unlike a 401 — is never reported as "not authenticated", so a
+burst never looks like a bad token. Running timers report a negative duration
+upstream and are shown as `running` rather than folded into the total.
 
 ‡ `hathitrust` — covers the **public Bibliographic API** only: given an ISBN/OCLC/LCCN/HathiTrust id it reports holdings + per-copy access rights (Full view = readable public domain, vs Limited = search-only). Its distinctive value over Open Library / Google Books is that **rights signal** — "can I actually read this, or only search it?" — plus a deep-link to the reader for full-view scans. It's an *exact-identifier* lookup against HathiTrust's catalog records, not a fuzzy search: an `htid` is the most reliable key and ISBN works well for modern books, but an arbitrary edition's OCLC can miss even when the work is held. HathiTrust gates corpus-wide *full-text search* (it 403s automated clients and requires partner credentials), so that surface is intentionally not exposed. For full-text search *inside* a book, use `gutenberg`.
 
