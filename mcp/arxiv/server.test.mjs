@@ -403,7 +403,6 @@ describe('arxiv MCP server', () => {
       );
       expect(result.ok).toBe(true);
       expect(result.result.structured.ingested).toBe(1);
-      expect(result.result.structured.includedFullText).toBe(false);
       expect(ingested.operation).toBe('ingest');
       const [document] = ingested.variables.documents;
       expect(document.title).toBe('Saved Paper');
@@ -418,16 +417,12 @@ describe('arxiv MCP server', () => {
       expect(document.externalId).toBe('2510.30001');
     });
 
-    it('sends the HTML url with the PDF as the server-side fallback — and probes NOTHING', async () => {
-      // The save used to make three arXiv requests: the metadata, then two HEAD
-      // probes to find out whether the paper had rendered HTML. The platform
-      // cancels a tool call at about eight seconds, and each of those requests sits
-      // behind a three-second politeness throttle — so when arXiv slowed under a
-      // burst, one of them could spend the entire window and the caller was told
-      // "tool timed out or crashed".
-      //
-      // "Does this paper have HTML?" is a question the SERVER can answer, in a
-      // Workflow nobody is waiting on. We hand it both URLs and let it find out.
+    it('captures from ar5iv with no fallback — one source — and probes NOTHING', async () => {
+      // ar5iv is the single full-text source: its HTML carries the LaTeX math the
+      // capture turns into clean $…$, where arXiv's own /html/ renders bare glyphs.
+      // No PDF fallback by design — a paper ar5iv can't render is abstract-only, one
+      // predictable path. And the "does this have HTML?" question stays server-side,
+      // in a Workflow nobody waits on, so the tool makes ZERO html requests.
       let ingested;
       const calls = [];
       const result = await callTool(
@@ -445,13 +440,11 @@ describe('arxiv MCP server', () => {
       );
 
       const [document] = ingested.variables.documents;
-      expect(document.fileUrl).toBe('https://arxiv.org/html/2510.30005');
+      expect(document.fileUrl).toBe('https://ar5iv.labs.arxiv.org/html/2510.30005');
       expect(document.mimeType).toBe('text/html');
-      // The fallback the server takes when the paper has no rendered HTML. Every
-      // arXiv paper has a PDF, so a save can always capture the paper itself.
-      expect(document.fallback.fileUrl).toContain('/pdf/');
-      expect(document.fallback.mimeType).toBe('application/pdf');
-      expect(result.result.structured.captured).toBe('html-or-pdf');
+      // No fallback — one source, not a degrade chain.
+      expect(document.fallback).toBeUndefined();
+      expect(result.result.structured.captured).toBe('ar5iv-html');
 
       // NOT ONE request to arxiv.org/html or ar5iv. That is the whole point.
       expect(calls.filter((u) => u.includes('/html/'))).toHaveLength(0);
@@ -496,14 +489,17 @@ describe('arxiv MCP server', () => {
       expect(result.result.structured.id).toBe('2510.30005');
     });
 
-    it('indexes full text when includeFullText is set', async () => {
+    it('indexes only the header — the capture is the single reducer, not this tool', async () => {
+      // The tool no longer parses the body itself; it indexes the header (abstract)
+      // and points the capture at ar5iv, which derives the full text server-side.
+      // So the ingested doc.text is header-only — never a tool-parsed body.
       let ingested;
       const result = await callTool(
         server,
         'save_paper',
-        { id: '2510.30002', includeFullText: true },
+        { id: '2510.30002' },
         paperResponder({
-          atom: feed([entry({ id: '2510.30002' })]),
+          atom: feed([entry({ id: '2510.30002', summary: 'The abstract sentence.' })]),
           arxivHtml: { text: htmlDocument() },
           onIngest: (b) => {
             ingested = b;
@@ -511,8 +507,10 @@ describe('arxiv MCP server', () => {
         }),
         ['trove:ingest'],
       );
-      expect(result.result.structured.includedFullText).toBe(true);
-      expect(ingested.variables.documents[0].text).toContain('strong results');
+      expect(result.ok).toBe(true);
+      const [document] = ingested.variables.documents;
+      expect(document.text).toContain('The abstract sentence.');
+      expect(document.text).not.toContain('strong results'); // no tool-parsed body
     });
 
     it('errors clearly when the trove:ingest scope is not granted', async () => {
