@@ -1,15 +1,18 @@
 import { defineMcpServer, z } from '@ontrove/mcp';
 import { dataOutput, getChartData } from './chart.ts';
 import { GRAPHER, searchCharts, searchIndicators } from './client.ts';
+import { getIndicatorData, indicatorOutput } from './indicator.ts';
 import { collectMetadata, metadataOutput } from './metadata.ts';
-import { renderData, renderMetadata } from './render.ts';
+import { renderData, renderIndicator, renderMetadata } from './render.ts';
 
 /**
  * Our World in Data — a keyless hosted MCP server over OWID's public data APIs.
- * Four read-only surfaces:
+ * Five read-only surfaces:
  *  - `search_charts` — find a chart slug by keyword (OWID's own search index),
  *  - `search_indicators` — semantic search over the indicator catalogue,
- *  - `get_chart_data` — the numbers behind a chart, filtered by entity + time,
+ *  - `get_chart_data` — every column a chart plots, filtered by entity + time,
+ *  - `get_indicator_data` — one variable by id, including the many that appear
+ *    on no chart and are otherwise unreachable,
  *  - `get_chart_metadata` — units, definitions, provenance and licensing.
  *
  * No API key. OWID documents these URLs as the supported path for automated
@@ -20,7 +23,9 @@ import { renderData, renderMetadata } from './render.ts';
  * terms, so every result carries the upstream citation, and
  * `get_chart_metadata` reports each source's licence by name. Where OWID is not
  * permitted to redistribute at all, the CSV endpoint 403s and `get_chart_data`
- * surfaces that refusal verbatim rather than as a generic failure.
+ * surfaces that refusal verbatim rather than as a generic failure. The indicator
+ * data endpoint does NOT apply that gate, so `get_indicator_data` applies it
+ * itself rather than becoming the way around it.
  *
  * Nothing here writes to the knowledge base — no `trove:ingest` scope, no save
  * tool.
@@ -129,11 +134,10 @@ export default defineMcpServer({
       name: 'search_indicators',
       title: 'Our World in Data: Search indicators',
       description:
-        'FALLBACK discovery, for when search_charts finds nothing. Semantic search over the ' +
-        'underlying variables (indicators) rather than chart titles, ranked by meaning. Returns ' +
-        'indicator titles, ids and bulk-data URLs — NOT chart slugs, and no tool fetches an ' +
-        'indicator by id. Either query the returned parquetUrl directly, or feed an indicator ' +
-        'title back into search_charts as keywords to get a slug for get_chart_data.',
+        'Semantic search over Our World in Data’s underlying variables (indicators), ranked by ' +
+        'meaning rather than keyword. Use it when search_charts finds nothing, or when you want a ' +
+        'specific variable rather than whatever a chart happens to plot — most indicators appear ' +
+        'on no chart at all. Pass a returned indicatorId to get_indicator_data for the numbers.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
         query: z.string().min(1).describe('Plain-language description of the data wanted.'),
@@ -152,12 +156,6 @@ export default defineMcpServer({
           z.object({
             indicatorId: z.number(),
             title: z.string(),
-            unit: z
-              .string()
-              .nullable()
-              .describe(
-                'Usually null — the indicator search does not return units. Use get_chart_metadata for units.',
-              ),
             description: z.string().nullable(),
             catalogPath: z.string().nullable(),
             chartCount: z.number(),
@@ -180,7 +178,6 @@ export default defineMcpServer({
           .map((hit) => ({
             indicatorId: hit.indicator_id,
             title: hit.title ?? '',
-            unit: hit.metadata?.unit ?? null,
             description: hit.description === '' ? null : (hit.description ?? hit.snippet ?? null),
             catalogPath: hit.catalog_path ?? null,
             chartCount: hit.n_charts ?? hit.metadata?.chart_count ?? 0,
@@ -198,7 +195,7 @@ export default defineMcpServer({
         const lines = indicators
           .map(
             (i) =>
-              `  #${String(i.indicatorId)} — ${i.title}${i.unit ? ` (${i.unit})` : ''}${
+              `  #${String(i.indicatorId)} — ${i.title}${
                 i.chartCount > 0 ? ` · ${String(i.chartCount)} chart(s)` : ''
               }`,
           )
@@ -206,7 +203,7 @@ export default defineMcpServer({
         return {
           text:
             `${String(indicators.length)} indicator(s) for "${query}":\n${lines}\n` +
-            'No tool fetches indicator data by id. Either query a `parquetUrl` above directly (DuckDB reads it over HTTP), or retry search_charts using one of these titles as the query to get a chart slug.',
+            'Pass an indicatorId to get_indicator_data for the observations, or query a `parquetUrl` directly (DuckDB reads it over HTTP).',
           structured,
         };
       },
@@ -261,6 +258,53 @@ export default defineMcpServer({
         ctx.log('get_chart_data', { slug, countries, time, max_rows });
         const data = await getChartData(ctx, { slug, countries, time, maxRows: max_rows });
         return { text: renderData(data), structured: data };
+      },
+    },
+    {
+      name: 'get_indicator_data',
+      title: 'Our World in Data: Get indicator data',
+      description:
+        'Fetch the observations for one indicator by numeric id (from search_indicators). Use ' +
+        'this for variables that appear on no chart, or when you want a single named variable ' +
+        'rather than every column a chart happens to plot. Unlike get_chart_data, `from`/`to` ' +
+        'really filter — there is no snapping to the nearest year. Indicators their provider ' +
+        'does not permit to be re-shared are refused.',
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      input: z.object({
+        indicator_id: z
+          .number()
+          .int()
+          .positive()
+          .describe('Numeric indicator id from search_indicators, e.g. 1269960.'),
+        countries: z
+          .array(z.string().min(1))
+          .max(40)
+          .default([])
+          .describe(
+            'Entities to return: names ("United States"), ISO-3 codes ("USA"), or Our World in Data aggregates ("World"). Omit for every entity the indicator covers.',
+          ),
+        from: z.number().int().optional().describe('Earliest year, inclusive.'),
+        to: z.number().int().optional().describe('Latest year, inclusive.'),
+        max_rows: z
+          .number()
+          .int()
+          .min(1)
+          .max(2000)
+          .default(200)
+          .describe('Max observations returned (1–2000).'),
+      }),
+      output: indicatorOutput,
+      async handler(args, ctx) {
+        const { indicator_id, countries, from, to, max_rows } = args;
+        ctx.log('get_indicator_data', { indicator_id, countries, from, to, max_rows });
+        const result = await getIndicatorData(ctx, {
+          indicatorId: indicator_id,
+          countries,
+          from,
+          to,
+          maxRows: max_rows,
+        });
+        return { text: renderIndicator(result), structured: result };
       },
     },
     {

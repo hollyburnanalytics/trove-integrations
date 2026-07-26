@@ -1,4 +1,5 @@
 import type { ChartData } from './chart.ts';
+import type { IndicatorResult } from './indicator.ts';
 import type { MetadataView } from './metadata.ts';
 
 /**
@@ -77,6 +78,55 @@ export function renderData(data: ChartData): string {
   lines.push(`Chart: ${data.url}`);
   lines.push(`Full dataset (all entities and years, CSV): ${data.downloads.csv}`);
   return lines.join('\n');
+}
+
+/**
+ * Render one indicator's observations.
+ *
+ * Narrower than a chart table — a single variable, so one value column and the
+ * unit stated once in the heading rather than repeated per row.
+ */
+export function renderIndicator(result: IndicatorResult): string {
+  const lines: string[] = [`${result.title}${result.unit ? ` — ${result.unit}` : ''}`];
+  if (result.description) lines.push(clip(result.description, 300));
+  const facts = [
+    `indicator #${String(result.indicatorId)}`,
+    result.datasetName ? `dataset: ${result.datasetName}` : '',
+    result.timespan ? `covers ${result.timespan}` : '',
+  ].filter((f) => f !== '');
+  lines.push(facts.join(' · '));
+
+  for (const note of result.notes) lines.push(`⚠ ${note}`);
+
+  lines.push(...indicatorTable(result));
+
+  if (result.attribution) lines.push('', `Source: ${clip(result.attribution, 600)}`);
+  else if (result.citation) lines.push('', `Source: ${result.citation}`);
+  if (result.parquetUrl) {
+    lines.push(
+      `Whole series as Parquet (DuckDB reads it in place): ${result.parquetUrl}${result.parquetColumn ? ` · column ${result.parquetColumn}` : ''}`,
+    );
+  }
+  return lines.join('\n');
+}
+
+/** The observation table for one indicator, or a plain statement that there is none. */
+function indicatorTable(result: IndicatorResult): string[] {
+  if (result.rows.length === 0) return ['', 'No observations returned.'];
+  const lines = ['', `entity | year | value${result.unit ? ` [${result.unit}]` : ''}`];
+  for (const row of result.rows.slice(0, MAX_TEXT_ROWS)) {
+    lines.push(`  ${row.entity} | ${row.time} | ${cell(row.value)}`);
+  }
+  if (result.rows.length > MAX_TEXT_ROWS) {
+    lines.push(
+      `  … ${String(result.rows.length - MAX_TEXT_ROWS)} more — all ${String(result.rows.length)} are in this tool's structured output.`,
+    );
+  }
+  lines.push(
+    '',
+    `${String(result.rows.length)}${result.truncated ? ` of ${String(result.totalRows)}` : ''} observation(s) across ${String(result.entities.length)} entities.`,
+  );
+  return lines;
 }
 
 /** One indicator's block: what it measures, in what units, over what period. */

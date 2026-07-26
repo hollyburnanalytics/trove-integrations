@@ -49,6 +49,7 @@ export const indicatorMetadataWire = z.object({
   catalogPath: z.string().nullish(),
   datasetName: z.string().nullish(),
   descriptionShort: z.string().nullish(),
+  timespan: z.string().nullish(),
   updatePeriodDays: z.number().nullish(),
   /**
    * OWID's own machine-readable redistribution gate. When true the CSV endpoint
@@ -138,4 +139,15 @@ export const semanticSearchWire = z.object({
       }),
     )
     .nullish(),
+});
+
+/**
+ * An indicator's data, as three PARALLEL arrays: `values[i]` is the observation
+ * for `entities[i]` in `years[i]`. Entities are numeric ids that only the
+ * indicator's metadata can resolve to names.
+ */
+export const indicatorDataWire = z.object({
+  values: z.array(z.union([z.number(), z.string(), z.null()])).nullish(),
+  years: z.array(z.number()).nullish(),
+  entities: z.array(z.number()).nullish(),
 });

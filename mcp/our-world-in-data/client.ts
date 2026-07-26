@@ -3,6 +3,7 @@ import { createEgressClient } from '../lib/egress.ts';
 import {
   chartMetadataWire,
   type columnWire,
+  indicatorDataWire,
   indicatorMetadataWire,
   searchChartsWire,
   semanticSearchWire,
@@ -332,6 +333,30 @@ export function columnIndicatorId(column: ChartColumn): number | undefined {
   const match = /\/indicators\/(\d+)\.metadata\.json/.exec(column.fullMetadata ?? '');
   const id = match?.[1];
   return id === undefined ? undefined : Number(id);
+}
+
+export type IndicatorData = z.infer<typeof indicatorDataWire>;
+
+/**
+ * Fetch one indicator's observations.
+ *
+ * This is the only route to an indicator that appears on no chart — the CSV
+ * endpoint is keyed by chart slug, so without this a caller can find a variable
+ * and then have no way to read it.
+ *
+ * **It does not enforce OWID's redistribution gate.** The chart CSV answers 403
+ * for restricted data and the catalog omits the table entirely, but this
+ * endpoint serves it regardless. Callers must check `nonRedistributable` on the
+ * indicator's metadata first; see `getIndicatorData`.
+ */
+export async function fetchIndicatorData(
+  ctx: Ctx,
+  indicatorId: number,
+): Promise<IndicatorData | undefined> {
+  const url = `${INDICATORS}/${String(indicatorId)}.data.json`;
+  const { status, body } = await owid.fetch(ctx, url, { accept: 'application/json' });
+  if (status !== 200) return undefined;
+  return parseJson(indicatorDataWire, body, 'indicator data');
 }
 
 // --- search ------------------------------------------------------------------

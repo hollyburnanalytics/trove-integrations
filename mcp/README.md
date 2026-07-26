@@ -42,7 +42,7 @@ in their manifest `egress`.
 |---|---|---|---|
 | `sec-edgar` | `get_financials`, `get_xbrl_concept`, `get_filing_document`, `insider_transactions`, `get_fund_holdings`, `get_company`, `search_filings`, `company_filings` | SEC EDGAR (efts/data/www.sec.gov) | — |
 | `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — |
-| `our-world-in-data` | `search_charts`, `search_indicators`, `get_chart_data`, `get_chart_metadata` | ourworldindata.org + api.ourworldindata.org + search.owid.io | — ⊕|
+| `our-world-in-data` | `search_charts`, `search_indicators`, `get_chart_data`, `get_indicator_data`, `get_chart_metadata` | ourworldindata.org + api.ourworldindata.org + search.owid.io | — ⊕|
 | `canada-open-data` | `search_datasets`, `get_dataset`, `query_dataset`, `find_organizations` | open.canada.ca (CKAN — federal + provincial) | — |
 | `openparliament` | `find_mp`, `mp_speeches`, `search_bills` | api.openparliament.ca (Canada Hansard) | — |
 | `dnv-permits` | `search_permits`, `suggest_addresses`, `recent_permits` | app.dnv.org (District of North Vancouver) | — |
@@ -90,10 +90,25 @@ in their manifest `egress`.
 
 ⊕ `our-world-in-data` — **the numbers behind OWID's charts**, keyless: keyword
 search over ~13k charts, semantic (embedding) search over the indicator
-catalogue, tidy `{entity, time, value}` rows for any chart slug, and the
-metadata behind it — units, definitions, processing notes, coverage, update
-schedule, and full provenance. Read-only; nothing is written to the knowledge
-base.
+catalogue, tidy `{entity, time, value}` rows either **by chart slug** or **by
+indicator id**, and the metadata behind it — units, definitions, processing
+notes, coverage, update schedule, and full provenance. Read-only; nothing is
+written to the knowledge base.
+
+The two data tools exist because the two lookups are genuinely different.
+`get_chart_data` returns every column a chart plots, filtered through grapher
+(where `time` *snaps* to the nearest available point). `get_indicator_data`
+returns one named variable by id, and its year filter really filters. Most
+indicators appear on **no chart at all**, so without the second tool
+`search_indicators` is a dead end: you find exactly the variable you wanted and
+have no way to read it.
+
+**The redistribution gate is enforced here, not just relayed.** OWID refuses
+restricted data on the chart CSV (403) and omits the table from the catalog
+(404) — but the indicator data endpoint serves it anyway. `get_indicator_data`
+therefore checks `nonRedistributable` on the metadata *before* fetching any
+observations and raises the same refusal, so this toolkit is not the one way
+around a licence its own other tools respect.
 
 **Licensing is an output, not a footnote.** Most OWID data is third-party (WHO,
 UN, World Bank, Defra, IHME…) under the *original provider's* terms, so every

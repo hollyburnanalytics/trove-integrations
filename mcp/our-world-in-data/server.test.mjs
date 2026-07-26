@@ -150,6 +150,29 @@ function metadataForIndicator(indicatorId) {
   };
 }
 
+/** The three parallel arrays the indicator data endpoint really returns. */
+const DATA = { values: [12.5, 3.25, 44.1], years: [2000, 2000, 2001], entities: [33, 1, 33] };
+
+/** Indicator metadata for the by-id tool, overridable per test. */
+const META = (over = {}) => ({
+  ...INDICATOR,
+  id: 777_001,
+  name: 'Share of egg-laying hens in non-organic, free-range farms',
+  unit: '%',
+  timespan: '1996-2025',
+  catalogPath: 'grapher/animal_welfare/2026-06-11/eggs/eggs#share_free_range',
+  ...over,
+});
+
+/** Serve an indicator's metadata + data pair. */
+const indicatorResponder =
+  (over = {}) =>
+  (url) => {
+    if (url.includes('.data.json')) return over.data ?? { json: DATA };
+    if (url.includes('.metadata.json')) return over.meta ?? { json: META() };
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+
 /** Serve the standard chart trio (csv + chart metadata + indicator metadata). */
 function chartResponder(overrides = {}) {
   return (url) => {
@@ -167,10 +190,11 @@ function chartResponder(overrides = {}) {
 }
 
 describe('our-world-in-data MCP server', () => {
-  it('lists the four read-only tools', () => {
+  it('lists the five read-only tools', () => {
     expect(server.tools.map((t) => t.name).toSorted()).toEqual([
       'get_chart_data',
       'get_chart_metadata',
+      'get_indicator_data',
       'search_charts',
       'search_indicators',
     ]);
@@ -279,8 +303,9 @@ describe('our-world-in-data MCP server', () => {
       expect(result.ok).toBe(true);
       const indicator = result.result.structured.indicators[0];
       expect(indicator.indicatorId).toBe(1_269_972);
-      // The live indicator search returns no unit; the fixture matches it.
-      expect(indicator.unit).toBeNull();
+      // The live indicator search returns no unit, so the tool no longer
+      // advertises a field that is always null; units come from the indicator.
+      expect(indicator.unit).toBeUndefined();
       expect(indicator.chartCount).toBe(1);
       // Bulk access must survive: a caller should be able to query the dataset
       // itself rather than paging rows through the context window.
@@ -925,6 +950,113 @@ describe('our-world-in-data MCP server', () => {
         );
         expect(result.ok).toBe(true);
       }
+    });
+  });
+
+  describe('get_indicator_data', () => {
+    it('reads an indicator that appears on no chart', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator_data',
+        { indicator_id: 777_001 },
+        indicatorResponder(),
+      );
+      expect(result.ok).toBe(true);
+      const d = result.result.structured;
+      expect(d.title).toContain('free-range');
+      expect(d.unit).toBe('%');
+      expect(d.rows).toHaveLength(3);
+      // Numeric entity ids resolved against the metadata's entity dimension.
+      expect(d.rows[0]).toEqual({ entity: 'Canada', code: 'CAN', time: '2000', value: 12.5 });
+      expect(d.entities.toSorted()).toEqual(['Canada', 'United States']);
+      expect(d.parquetUrl).toContain('eggs.parquet');
+      expect(d.parquetColumn).toBe('share_free_range');
+    });
+
+    it('REFUSES a non-redistributable indicator the upstream would serve', async () => {
+      // The chart CSV 403s for this data and the catalog omits the table, but
+      // the indicator endpoint hands it over regardless. Reading it here would
+      // make this toolkit the one way around a licence its other tools respect.
+      let fetchedData = false;
+      const result = await callTool(
+        server,
+        'get_indicator_data',
+        { indicator_id: 777_002 },
+        (url) => {
+          if (url.includes('.data.json')) {
+            fetchedData = true;
+            return { json: DATA };
+          }
+          return { json: META({ id: 777_002, nonRedistributable: true }) };
+        },
+      );
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/non-redistributable/i);
+      expect(result.retryable).toBe(false);
+      // The gate is checked BEFORE the data is fetched, not after.
+      expect(fetchedData).toBe(false);
+    });
+
+    it('filters years for real, with no snapping', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator_data',
+        { indicator_id: 777_003, from: 2001, to: 2001 },
+        indicatorResponder({ meta: { json: META({ id: 777_003 }) } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.rows).toHaveLength(1);
+      expect(result.result.structured.rows[0].time).toBe('2001');
+    });
+
+    it('says so when a requested year has nothing, rather than returning a neighbour', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator_data',
+        { indicator_id: 777_004, from: 1800, to: 1810 },
+        indicatorResponder({ meta: { json: META({ id: 777_004 }) } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.rows).toHaveLength(0);
+      expect(result.result.structured.notes.join(' ')).toMatch(/no observations in the requested/i);
+    });
+
+    it('selects entities by name or code, case-insensitively', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator_data',
+        { indicator_id: 777_005, countries: ['can'] },
+        indicatorResponder({ meta: { json: META({ id: 777_005 }) } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.entities).toEqual(['Canada']);
+    });
+
+    it('drops an observation whose parallel arrays disagree', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator_data',
+        { indicator_id: 777_006 },
+        indicatorResponder({
+          meta: { json: META({ id: 777_006 }) },
+          // A third value with no matching year: emitting it would invent an
+          // observation the upstream never reported.
+          data: { json: { values: [1, 2, 3], years: [2000, 2001], entities: [33, 33, 33] } },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.rows).toHaveLength(2);
+    });
+
+    it('errors helpfully on an unknown indicator id', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator_data',
+        { indicator_id: 777_007 },
+        { status: 404, json: { status: 404, error: 'Not found' } },
+      );
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('search_indicators');
     });
   });
 
