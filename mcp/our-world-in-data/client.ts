@@ -1,5 +1,12 @@
 import { ToolError, z } from '@ontrove/mcp';
 import { createEgressClient } from '../lib/egress.ts';
+import {
+  chartMetadataWire,
+  type columnWire,
+  indicatorMetadataWire,
+  searchChartsWire,
+  semanticSearchWire,
+} from './wire.ts';
 
 /**
  * Shared Our World in Data plumbing: the egress client, the four upstream
@@ -23,6 +30,7 @@ const GRAPHER = `${SITE}/grapher`;
 const SEARCH = `${SITE}/api/search`;
 const INDICATORS = 'https://api.ourworldindata.org/v1/indicators';
 const SEMANTIC = 'https://search.owid.io/indicators';
+const CATALOG = 'https://catalog.ourworldindata.org';
 
 /**
  * Refuse to parse a chart body past this size.
@@ -50,10 +58,24 @@ const owid = createEgressClient({
   headers: { 'user-agent': 'Trove MCP (our-world-in-data@ontrove.sh)' },
   throttleMs: 250,
   bodyStatuses: [403],
-  cache: { ttlMs: 10 * 60_000, maxEntries: 64, maxEntryBytes: 1024 * 1024 },
+  // `maxTotalBytes` matters more than `maxEntries` here: chart CSVs run to
+  // hundreds of KB, so 64 entries alone would let one isolate retain tens of
+  // megabytes. Bodies above `maxEntryBytes` are served but not cached.
+  cache: {
+    ttlMs: 10 * 60_000,
+    maxEntries: 64,
+    maxEntryBytes: 1024 * 1024,
+    maxTotalBytes: 12 * 1024 * 1024,
+  },
 });
 
-type Ctx = Parameters<typeof owid.fetch>[0];
+/**
+ * The invocation context every helper here needs. Exported so the rest of the
+ * toolkit names it once instead of re-deriving it from whichever function
+ * happened to be in scope — `entities.ts` was importing a network function
+ * purely to read its first parameter's type.
+ */
+export type Ctx = Parameters<typeof owid.fetch>[0];
 
 /** OWID's JSON error envelope, e.g. `{"status":404,"error":"Not found"}`. */
 const errorWire = z.object({ status: z.number().nullish(), error: z.string().nullish() });
@@ -104,6 +126,70 @@ function queryString(params: URLSearchParams): string {
   return params.toString().replaceAll('+', '%20');
 }
 
+// --- bulk access -------------------------------------------------------------
+
+/**
+ * Where the WHOLE dataset lives, so a caller can work on it directly.
+ *
+ * These tools return rows into a context window, which is the wrong place for a
+ * dataset of any size — one chart runs to megabytes. Handing back the URLs lets
+ * the client download or query the data itself (DuckDB reads the Parquet over
+ * HTTP without copying it locally) and keeps this server out of the middle.
+ */
+export const downloadsSchema = z
+  .object({
+    /** Every entity and year, CSV. Headers match the `key` of every reported column. */
+    csv: z.string(),
+    /** Chart + column metadata as JSON. */
+    metadata: z.string(),
+    /** CSV + metadata + a README describing the columns, zipped. */
+    zip: z.string(),
+    /** The chart page itself. */
+    chart: z.string(),
+  })
+  .describe(
+    'Direct URLs for the WHOLE dataset. Prefer these over raising `max_rows`: fetch or query them client-side instead of paging thousands of rows through the context window. The CSV headers match `columns[].key`.',
+  );
+
+export type ChartDownloads = z.infer<typeof downloadsSchema>;
+
+/**
+ * Bulk-download URLs for a chart.
+ *
+ * `useColumnShortNames=true` on the CSV is not cosmetic: it makes the
+ * downloaded headers identical to the `key` of every column these tools
+ * report, so a caller can line the two up without a translation table.
+ */
+export function chartDownloads(slug: string): ChartDownloads {
+  const base = `${GRAPHER}/${encodeURIComponent(slug)}`;
+  return {
+    csv: `${base}.csv?csvType=full&useColumnShortNames=true`,
+    metadata: `${base}.metadata.json`,
+    zip: `${base}.zip`,
+    chart: base,
+  };
+}
+
+/**
+ * The Parquet file backing an indicator's catalog path, for direct SQL.
+ *
+ * A catalog path is `<table path>#<column>`: the table is one Parquet file and
+ * the fragment names the column inside it. DuckDB queries it in place —
+ * `SELECT country, year, <column> FROM '<url>'` — with no local download.
+ *
+ * Callers must suppress this for non-redistributable indicators. OWID does not
+ * publish those tables to the catalog (the URL 404s), and advertising one would
+ * read as a way around the licence its CSV endpoint refuses on purpose.
+ */
+export function catalogParquet(
+  catalogPath: string | null | undefined,
+): { url: string; column: string | null } | undefined {
+  if (typeof catalogPath !== 'string' || catalogPath === '') return undefined;
+  const [table, column] = catalogPath.split('#');
+  if (table === undefined || table === '') return undefined;
+  return { url: `${CATALOG}/${table}.parquet`, column: column ?? null };
+}
+
 // --- chart data --------------------------------------------------------------
 
 /** A chart CSV, or the reason OWID declined to serve it. */
@@ -148,16 +234,21 @@ export async function fetchChartCsv(
 
   if (status === 404) return { kind: 'notFound' };
   if (status === 403) {
-    return {
-      kind: 'restricted',
-      reason:
-        upstreamReason(body) ??
-        'Our World in Data does not permit this chart’s data to be downloaded.',
-    };
+    // Only call it a LICENCE refusal when OWID actually says so. Their refusal
+    // arrives as JSON naming the reason; a CDN bot-block or edge rate-limit
+    // arrives as HTML with the same status. Asserting "not permitted to
+    // redistribute" over the latter would be a confident, wrong claim about
+    // someone's licence — the exact failure this 403 handling exists to avoid.
+    const reason = upstreamReason(body);
+    if (reason !== undefined) return { kind: 'restricted', reason };
+    throw new ToolError(
+      `Our World in Data refused the data request for "${slug}" (HTTP 403) without giving a reason — most likely an edge block rather than a licence restriction. Try again shortly.`,
+      { retryable: true },
+    );
   }
   if (status === 400) {
     throw new ToolError(
-      `Our World in Data rejected the request for "${slug}" (check the time range format).`,
+      `Our World in Data rejected the request for "${slug}". Try a single year or omit \`time\`; if that fails, re-check the slug with search_charts.`,
       { retryable: false },
     );
   }
@@ -171,38 +262,6 @@ export async function fetchChartCsv(
 }
 
 // --- chart metadata ----------------------------------------------------------
-
-const columnWire = z.object({
-  titleShort: z.string().nullish(),
-  titleLong: z.string().nullish(),
-  descriptionShort: z.string().nullish(),
-  descriptionProcessing: z.string().nullish(),
-  shortName: z.string().nullish(),
-  unit: z.string().nullish(),
-  shortUnit: z.string().nullish(),
-  timespan: z.string().nullish(),
-  lastUpdated: z.string().nullish(),
-  nextUpdate: z.string().nullish(),
-  owidVariableId: z.number().nullish(),
-  citationShort: z.string().nullish(),
-  citationLong: z.string().nullish(),
-  fullMetadata: z.string().nullish(),
-  type: z.string().nullish(),
-});
-
-const chartMetadataWire = z.object({
-  chart: z
-    .object({
-      title: z.string().nullish(),
-      subtitle: z.string().nullish(),
-      citation: z.string().nullish(),
-      originalChartUrl: z.string().nullish(),
-      selection: z.array(z.string()).nullish(),
-    })
-    .nullish(),
-  columns: z.record(z.string(), columnWire).nullish(),
-  dateDownloaded: z.string().nullish(),
-});
 
 export type ChartMetadata = z.infer<typeof chartMetadataWire>;
 export type ChartColumn = z.infer<typeof columnWire>;
@@ -223,10 +282,9 @@ export async function fetchChartMetadata(
   const { status, body } = await owid.fetch(ctx, url, { accept: 'application/json' });
   if (status === 404) return undefined;
   if (status === 403 || status === 400) {
+    const reason = upstreamReason(body);
     throw new ToolError(
-      `Our World in Data refused the metadata request for "${slug}" (HTTP ${String(status)})${
-        upstreamReason(body) ? `: ${upstreamReason(body)}` : '.'
-      }`,
+      `Our World in Data refused the metadata request for "${slug}" (HTTP ${String(status)})${reason ? `: ${reason}` : '.'}`,
       { retryable: false },
     );
   }
@@ -234,53 +292,6 @@ export async function fetchChartMetadata(
 }
 
 // --- indicator metadata (provenance + licensing) -----------------------------
-
-const licenseWire = z.object({ name: z.string().nullish(), url: z.string().nullish() });
-
-const indicatorMetadataWire = z.object({
-  id: z.number().nullish(),
-  name: z.string().nullish(),
-  unit: z.string().nullish(),
-  catalogPath: z.string().nullish(),
-  datasetName: z.string().nullish(),
-  descriptionShort: z.string().nullish(),
-  updatePeriodDays: z.number().nullish(),
-  /**
-   * OWID's own machine-readable redistribution gate. When true the CSV endpoint
-   * 403s — they enforce the upstream provider's terms server-side rather than
-   * leaving it to callers.
-   */
-  nonRedistributable: z.boolean().nullish(),
-  license: licenseWire.nullish(),
-  origins: z
-    .array(
-      z.object({
-        producer: z.string().nullish(),
-        citationFull: z.string().nullish(),
-        urlMain: z.string().nullish(),
-        dateAccessed: z.string().nullish(),
-        license: licenseWire.nullish(),
-      }),
-    )
-    .nullish(),
-  dimensions: z
-    .object({
-      entities: z
-        .object({
-          values: z
-            .array(
-              z.object({
-                id: z.number().nullish(),
-                name: z.string().nullish(),
-                code: z.string().nullish(),
-              }),
-            )
-            .nullish(),
-        })
-        .nullish(),
-    })
-    .nullish(),
-});
 
 export type IndicatorMetadata = z.infer<typeof indicatorMetadataWire>;
 
@@ -297,7 +308,14 @@ export async function fetchIndicatorMetadata(
   indicatorId: number,
 ): Promise<IndicatorMetadata | undefined> {
   const url = `${INDICATORS}/${String(indicatorId)}.metadata.json`;
-  const { status, body } = await owid.fetch(ctx, url, { accept: 'application/json' });
+  // A tighter budget than the default 20s, because these are fetched in a LOOP:
+  // one per indicator on a chart. Each is optional enrichment, so any one of
+  // them is worth far less than the caller's patience — thirteen sequential
+  // 20-second budgets is four minutes for a tool nobody will still be waiting on.
+  const { status, body } = await owid.fetch(ctx, url, {
+    accept: 'application/json',
+    overallTimeoutMs: 6_000,
+  });
   if (status !== 200) return undefined;
   try {
     return parseJson(indicatorMetadataWire, body, 'indicator metadata');
@@ -318,30 +336,6 @@ export function columnIndicatorId(column: ChartColumn): number | undefined {
 
 // --- search ------------------------------------------------------------------
 
-const searchChartsWire = z.object({
-  query: z.string().nullish(),
-  nbHits: z.number().nullish(),
-  page: z.number().nullish(),
-  nbPages: z.number().nullish(),
-  hitsPerPage: z.number().nullish(),
-  results: z
-    .array(
-      z.object({
-        title: z.string().nullish(),
-        slug: z.string().nullish(),
-        subtitle: z.string().nullish(),
-        variantName: z.string().nullish(),
-        type: z.string().nullish(),
-        availableEntities: z.array(z.string()).nullish(),
-        availableTabs: z.array(z.string()).nullish(),
-        publishedAt: z.string().nullish(),
-        updatedAt: z.string().nullish(),
-        url: z.string().nullish(),
-      }),
-    )
-    .nullish(),
-});
-
 export type ChartSearchResponse = z.infer<typeof searchChartsWire>;
 
 /** Search OWID's chart collection by keyword, optionally requiring entities. */
@@ -361,36 +355,9 @@ export async function searchCharts(
   const { status, body } = await owid.fetch(ctx, `${SEARCH}?${queryString(params)}`, {
     accept: 'application/json',
   });
-  if (status !== 200) {
-    throw new ToolError(
-      `Our World in Data search rejected the query${status === 400 ? ' (bad parameters)' : ''}.`,
-      { retryable: false },
-    );
-  }
+  if (status !== 200) throw searchFailure('Our World in Data search', status);
   return parseJson(searchChartsWire, body, 'search results');
 }
-
-const semanticSearchWire = z.object({
-  query: z.string().nullish(),
-  total_results: z.number().nullish(),
-  results: z
-    .array(
-      z.object({
-        title: z.string().nullish(),
-        indicator_id: z.number().nullish(),
-        snippet: z.string().nullish(),
-        description: z.string().nullish(),
-        score: z.number().nullish(),
-        popularity: z.number().nullish(),
-        n_charts: z.number().nullish(),
-        catalog_path: z.string().nullish(),
-        metadata: z
-          .object({ unit: z.string().nullish(), chart_count: z.number().nullish() })
-          .nullish(),
-      }),
-    )
-    .nullish(),
-});
 
 export type IndicatorSearchResponse = z.infer<typeof semanticSearchWire>;
 
@@ -408,12 +375,25 @@ export async function searchIndicators(
   });
   // FastAPI answers a bad parameter with 422, which the egress client does not
   // pass through — so only 400 can arrive here as a status.
-  if (status !== 200) {
-    throw new ToolError('Our World in Data indicator search rejected the query.', {
-      retryable: false,
-    });
-  }
+  if (status !== 200) throw searchFailure('Our World in Data indicator search', status);
   return parseJson(semanticSearchWire, body, 'indicator search results');
+}
+
+/**
+ * Distinguish "the service is having a moment" from "the query was wrong".
+ *
+ * Collapsing every non-200 into a non-retryable rejection tells the caller a
+ * CDN 502 is their fault and that retrying is pointless — permanently wrong
+ * advice about a transient fault.
+ */
+function searchFailure(service: string, status: number): ToolError {
+  const transient = status === 429 || status >= 500;
+  return new ToolError(
+    transient
+      ? `${service} is temporarily unavailable (HTTP ${String(status)}). Try again shortly.`
+      : `${service} rejected the query. Simplify it to plain keywords, and drop \`countries\` if set.`,
+    { retryable: transient },
+  );
 }
 
 /** Parse + validate a JSON body, mapping both failures to one retryable error. */
@@ -435,4 +415,4 @@ function parseJson<S extends z.ZodTypeAny>(schema: S, body: string, what: string
   return parsed.data as z.infer<S>;
 }
 
-export { GRAPHER, SITE };
+export { GRAPHER };

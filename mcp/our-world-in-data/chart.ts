@@ -1,47 +1,108 @@
-import { ToolError } from '@ontrove/mcp';
+import { ToolError, z } from '@ontrove/mcp';
 import {
   type ChartColumn,
   type ChartMetadata,
+  type Ctx,
+  chartDownloads,
   columnIndicatorId,
+  downloadsSchema,
   fetchChartCsv,
   fetchChartMetadata,
   GRAPHER,
 } from './client.ts';
 import { type CsvRow, type CsvTable, parseChartCsv } from './csv.ts';
 import { chartEntities, diagnoseMissing, selectEntities, unmatchedRequests } from './entities.ts';
+import { noteTimeSnap, timeRange } from './time.ts';
 
 /**
  * Assembling one `get_chart_data` answer: fetch, join to metadata, and — when
  * the result is empty — work out *why* before handing back nothing.
  */
 
-type Ctx = Parameters<typeof fetchChartCsv>[0];
+/**
+ * The tool's output contract, declared once beside the code that produces it.
+ *
+ * Derived, not restated: a hand-written interface alongside this schema drifts
+ * the moment a field is added to one and not the other, and the drift is
+ * silent — the extra field is simply stripped from `structured` at runtime.
+ */
+export const columnSchema = z.object({
+  key: z
+    .string()
+    .describe(
+      'Stable column key. Join these columns to get_chart_metadata columns on this key, never on position — the two tools order them independently.',
+    ),
+  title: z.string(),
+  unit: z.string().nullable(),
+  indicatorId: z.number().nullable(),
+});
 
-/** A value column, joined from the CSV header to its metadata record. */
-export interface DataColumn {
-  key: string;
-  title: string;
-  unit: string | null;
-  indicatorId: number | null;
-}
+export const dataOutput = z.object({
+  slug: z.string(),
+  title: z.string(),
+  subtitle: z.string().nullable(),
+  url: z.string(),
+  timeUnit: z
+    .enum(['year', 'day'])
+    .describe(
+      '"year" — `rows[].time` is a year, which may be NEGATIVE for BCE on long-run series (e.g. "-10000"). "day" — `rows[].time` is YYYY-MM-DD.',
+    ),
+  columns: z.array(columnSchema),
+  entities: z.array(z.string()),
+  rows: z.array(
+    z.object({
+      entity: z.string(),
+      code: z.string().nullable(),
+      time: z.string(),
+      values: z
+        .array(z.union([z.number(), z.string(), z.null()]))
+        .describe(
+          'One value per entry in `columns`, in the same order. null = no observation (not zero); a string means a categorical/ordinal indicator.',
+        ),
+    }),
+  ),
+  totalRows: z.number().describe('Rows matching the request, before `max_rows` truncation.'),
+  totalRowsBeforeSelection: z
+    .number()
+    .describe(
+      'Rows the upstream returned before this server enforced `countries`. A large gap is normal — it means the chart ignored the entity selection and this server applied it, not that data is missing.',
+    ),
+  truncated: z.boolean(),
+  timeRange: z.object({ first: z.string(), last: z.string() }).nullable(),
+  citation: z.string().nullable(),
+  attribution: z.string().nullable(),
+  downloads: downloadsSchema,
+  notes: z.array(z.string()),
+});
 
-export interface ChartData {
-  slug: string;
-  title: string;
-  subtitle: string | null;
-  url: string;
-  timeUnit: 'year' | 'day';
-  columns: DataColumn[];
-  entities: string[];
-  rows: CsvRow[];
-  totalRows: number;
-  /** Rows the upstream returned before this server applied `countries`. */
-  totalRowsBeforeSelection: number;
-  truncated: boolean;
-  timeRange: { first: string; last: string } | null;
-  citation: string | null;
-  attribution: string | null;
-  notes: string[];
+export type DataColumn = z.infer<typeof columnSchema>;
+export type ChartData = z.infer<typeof dataOutput>;
+
+/**
+ * The citations for the columns actually returned, deduped and in column order.
+ *
+ * Taking the FIRST column's citation and printing it as "Source:" for the whole
+ * table is wrong the moment a chart stacks indicators from different producers
+ * — and OWID charts routinely do. `child-mortality-vs-health-expenditure` draws
+ * on UN IGME, WHO/World Bank and HYDE at once; crediting only UN IGME would put
+ * three other organisations' numbers under one wrong name, which is exactly the
+ * failure the licensing work here exists to prevent.
+ */
+function citations(
+  columns: DataColumn[],
+  metadata: ChartMetadata | undefined,
+  pick: (column: ChartColumn) => string | null | undefined,
+): string[] {
+  const byShortName = new Map<string, ChartColumn>();
+  for (const column of Object.values(metadata?.columns ?? {})) {
+    if (typeof column.shortName === 'string') byShortName.set(column.shortName, column);
+  }
+  const seen = new Set<string>();
+  for (const column of columns) {
+    const value = pick(byShortName.get(column.key) ?? {});
+    if (typeof value === 'string' && value !== '') seen.add(value);
+  }
+  return [...seen];
 }
 
 /** Join CSV header keys to metadata columns via `shortName`, falling back to position. */
@@ -66,72 +127,6 @@ function joinColumns(keys: string[], metadata: ChartMetadata | undefined): DataC
       indicatorId: columnIndicatorId(column) ?? null,
     };
   });
-}
-
-/** The `[first, last]` time values present in the rows, in sorted order. */
-function timeRange(rows: CsvRow[]): { first: string; last: string } | null {
-  const first = rows[0]?.time;
-  if (first === undefined) return null;
-  let low = first;
-  let high = first;
-  for (const row of rows) {
-    if (earlier(row.time, low)) low = row.time;
-    if (earlier(high, row.time)) high = row.time;
-  }
-  return { first: low, last: high };
-}
-
-/**
- * Is `a` an earlier time than `b`?
- *
- * Years are compared as numbers, not text. OWID charts reach back past year
- * zero — population series start at -10000 — and lexically "-10000" sorts
- * after "1750", which would report a range running backwards.  `YYYY-MM-DD`
- * days are fixed-width, so string order is already chronological.
- */
-function earlier(a: string, b: string): boolean {
-  const na = Number(a);
-  const nb = Number(b);
-  if (Number.isFinite(na) && Number.isFinite(nb)) return na < nb;
-  return a < b;
-}
-
-/** The inclusive numeric bounds a `time` argument asks for, when it states any. */
-function requestedBounds(time: string | undefined): { from: number; to: number } | undefined {
-  if (!time) return undefined;
-  const range = /^(-?\d+)\.\.(-?\d+)$/.exec(time);
-  if (range?.[1] !== undefined && range[2] !== undefined) {
-    return { from: Number(range[1]), to: Number(range[2]) };
-  }
-  return /^-?\d+$/.test(time) ? { from: Number(time), to: Number(time) } : undefined;
-}
-
-/**
- * Note when the data came back from outside the window that was asked for.
- *
- * Grapher does not treat `time` as a filter that can return nothing: asked for
- * `1800..1810` on a series starting in 1831, it answers with 1831. Silently
- * relabelling that as the requested decade would be the worst outcome here —
- * a wrong year attached to a real number.
- */
-function noteTimeSnap(
-  rows: CsvRow[],
-  timeUnit: 'year' | 'day',
-  time: string | undefined,
-  notes: string[],
-): void {
-  const bounds = requestedBounds(time);
-  if (!bounds || rows.length === 0) return;
-  // A year is the whole cell, NOT its first four characters: OWID's long-run
-  // series carry BCE years like "-10000", and slicing those to "-100" would
-  // put every prehistoric row outside its own requested range.
-  const years = rows
-    .map((row) => (timeUnit === 'year' ? Number(row.time) : Number(row.time.slice(0, 4))))
-    .filter((year) => Number.isFinite(year));
-  if (years.some((year) => year >= bounds.from && year <= bounds.to)) return;
-  notes.push(
-    `No data exists in the requested range ${String(bounds.from)}–${String(bounds.to)}; Our World in Data returned the nearest available time instead. Check the dates on each row.`,
-  );
 }
 
 /** Fetch and parse a chart CSV, mapping every refusal to a caller-shaped error. */
@@ -185,7 +180,7 @@ async function repairSelection(
   },
 ): Promise<CsvTable | undefined> {
   const { slug, countries, missing, metadata, time, notes } = options;
-  const entities = await chartEntities(ctx, metadata);
+  const entities = await chartEntities(ctx, metadata).catch(() => undefined);
   if (!entities) return undefined;
 
   const corrections = new Map<string, string>();
@@ -200,11 +195,20 @@ async function repairSelection(
   const table = await loadTable(ctx, slug, corrected, time).catch(() => undefined);
   if (!table) return undefined;
 
-  notes.push(
-    `Our World in Data’s entity names are case-sensitive; read ${[...corrections]
-      .map(([from, to]) => `"${from}" as "${to}"`)
-      .join(', ')}.`,
+  // Only claim a correction worked if it actually produced rows. A zero-row
+  // retry still yields a table, and announcing `read "jpn" as "Japan"` next to
+  // a note saying Japan has no data reads as two contradictory answers.
+  const landed = new Set(
+    table.rows.flatMap((row) => (row.code === null ? [row.entity] : [row.entity, row.code])),
   );
+  const applied = [...corrections].filter(([, to]) => landed.has(to));
+  if (applied.length > 0) {
+    notes.push(
+      `Our World in Data’s entity names are case-sensitive; read ${applied
+        .map(([from, to]) => `"${from}" as "${to}"`)
+        .join(', ')}.`,
+    );
+  }
   return table;
 }
 
@@ -245,7 +249,11 @@ async function resolveRows(
     rows = selectEntities(table.rows, countries);
   }
   const stillMissing = unmatchedRequests(rows, countries);
-  if (stillMissing.length > 0) await diagnoseMissing(ctx, metadata, stillMissing, notes);
+  if (stillMissing.length > 0) {
+    await diagnoseMissing(ctx, metadata, stillMissing, notes).catch(() => {
+      notes.push(`No data returned for: ${stillMissing.map((m) => `"${m}"`).join(', ')}.`);
+    });
+  }
   return { table, rows };
 }
 
@@ -273,13 +281,29 @@ export async function getChartData(
   const truncated = selected.length > maxRows;
   if (truncated) {
     notes.push(
-      `Showing the first ${String(maxRows)} of ${String(selected.length)} rows. Narrow \`countries\` or \`time\`, or raise \`max_rows\`, to see the rest.`,
+      `Showing the first ${String(maxRows)} of ${String(selected.length)} rows. Narrow \`countries\`/\`time\` to see fewer — or, for the whole dataset, download \`downloads.csv\` rather than paging it through the context window.`,
     );
   }
   // Truncate AFTER selecting: capping first would drop the requested entity
   // whenever the upstream leads with the other 200.
   const rows = truncated ? selected.slice(0, maxRows) : selected;
-  const firstColumn = Object.values(metadata?.columns ?? {})[0];
+  const columns = joinColumns(table.columns, metadata);
+
+  // Coverage is described from the SELECTION, not the page of it that fits.
+  // OWID's CSV is entity-major and oldest-first, so a 200-row cap on two
+  // countries cuts mid-way through the second: reporting the visible slice's
+  // last year as the chart's coverage claimed life-expectancy ends in 2018.
+  const entities = [...new Set(selected.map((r) => r.entity))];
+  const shown = new Set(rows.map((r) => r.entity));
+  const dropped = entities.filter((entity) => !shown.has(entity));
+  if (dropped.length > 0) {
+    notes.push(
+      `Truncation cut these entities out of the rows entirely: ${dropped.join(', ')}. Request them directly in \`countries\`, or use \`downloads.csv\`.`,
+    );
+  }
+
+  const short = citations(columns, metadata, (c) => c.citationShort);
+  const long = citations(columns, metadata, (c) => c.citationLong);
 
   return {
     slug,
@@ -287,8 +311,8 @@ export async function getChartData(
     subtitle: metadata?.chart?.subtitle ?? null,
     url: `${GRAPHER}/${slug}`,
     timeUnit: table.timeUnit,
-    columns: joinColumns(table.columns, metadata),
-    entities: [...new Set(rows.map((r) => r.entity))],
+    columns,
+    entities,
     rows,
     // Rows matching the request — which is what `truncated` and the truncation
     // note count against. The upstream total is reported separately; conflating
@@ -296,9 +320,10 @@ export async function getChartData(
     totalRows: selected.length,
     truncated,
     totalRowsBeforeSelection: table.rows.length,
-    timeRange: timeRange(rows),
-    citation: firstColumn?.citationShort ?? metadata?.chart?.citation ?? null,
-    attribution: firstColumn?.citationLong ?? null,
+    timeRange: timeRange(selected),
+    citation: short.length > 0 ? short.join('; ') : (metadata?.chart?.citation ?? null),
+    attribution: long.length > 0 ? long.join('\n\n') : null,
+    downloads: chartDownloads(slug),
     notes,
   };
 }

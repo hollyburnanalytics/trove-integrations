@@ -1,7 +1,7 @@
 import { defineMcpServer, z } from '@ontrove/mcp';
-import { getChartData } from './chart.ts';
+import { dataOutput, getChartData } from './chart.ts';
 import { GRAPHER, searchCharts, searchIndicators } from './client.ts';
-import { collectMetadata } from './metadata.ts';
+import { collectMetadata, metadataOutput } from './metadata.ts';
 import { renderData, renderMetadata } from './render.ts';
 
 /**
@@ -36,72 +36,6 @@ import { renderData, renderMetadata } from './render.ts';
 const TIME_POINT = String.raw`(?:latest|earliest|-?\d{1,6}(?:-\d{2}-\d{2})?)`;
 const TIME_PATTERN = new RegExp(`^${TIME_POINT}(?:\\.\\.${TIME_POINT})?$`);
 
-const columnSchema = z.object({
-  key: z.string(),
-  title: z.string(),
-  unit: z.string().nullable(),
-  indicatorId: z.number().nullable(),
-});
-
-const dataOutput = z.object({
-  slug: z.string(),
-  title: z.string(),
-  subtitle: z.string().nullable(),
-  url: z.string(),
-  timeUnit: z.enum(['year', 'day']),
-  columns: z.array(columnSchema),
-  entities: z.array(z.string()),
-  rows: z.array(
-    z.object({
-      entity: z.string(),
-      code: z.string().nullable(),
-      time: z.string(),
-      values: z.array(z.union([z.number(), z.string(), z.null()])),
-    }),
-  ),
-  totalRows: z.number(),
-  totalRowsBeforeSelection: z.number(),
-  truncated: z.boolean(),
-  timeRange: z.object({ first: z.string(), last: z.string() }).nullable(),
-  citation: z.string().nullable(),
-  attribution: z.string().nullable(),
-  notes: z.array(z.string()),
-});
-
-const sourceSchema = z.object({
-  producer: z.string().nullable(),
-  license: z.string().nullable(),
-  licenseUrl: z.string().nullable(),
-  citation: z.string().nullable(),
-  url: z.string().nullable(),
-  dateAccessed: z.string().nullable(),
-});
-
-const metadataOutput = z.object({
-  slug: z.string(),
-  title: z.string(),
-  subtitle: z.string().nullable(),
-  url: z.string(),
-  citation: z.string().nullable(),
-  attribution: z.string().nullable(),
-  nonRedistributable: z.boolean(),
-  columns: z.array(
-    z.object({
-      key: z.string(),
-      title: z.string(),
-      unit: z.string().nullable(),
-      timespan: z.string().nullable(),
-      lastUpdated: z.string().nullable(),
-      nextUpdate: z.string().nullable(),
-      description: z.string().nullable(),
-      processingNotes: z.string().nullable(),
-      indicatorId: z.number().nullable(),
-    }),
-  ),
-  sources: z.array(sourceSchema),
-  notes: z.array(z.string()),
-});
-
 export default defineMcpServer({
   tools: [
     {
@@ -135,7 +69,10 @@ export default defineMcpServer({
             slug: z.string(),
             title: z.string(),
             subtitle: z.string().nullable(),
-            variantName: z.string().nullable(),
+            variantName: z
+              .string()
+              .nullable()
+              .describe('Disambiguator when several charts share a title (e.g. by sex or source).'),
             url: z.string(),
             entityCount: z.number(),
             tabs: z.array(z.string()),
@@ -153,13 +90,13 @@ export default defineMcpServer({
           requireAllCountries: require_all_countries,
         });
         const charts = (body.results ?? [])
-          .filter((hit) => typeof hit.slug === 'string' && hit.slug !== '')
+          .filter((hit): hit is typeof hit & { slug: string } => Boolean(hit.slug))
           .map((hit) => ({
-            slug: hit.slug ?? '',
-            title: hit.title ?? hit.slug ?? '',
+            slug: hit.slug,
+            title: hit.title ?? hit.slug,
             subtitle: hit.subtitle ?? null,
             variantName: hit.variantName === '' ? null : (hit.variantName ?? null),
-            url: hit.url ?? `${GRAPHER}/${hit.slug ?? ''}`,
+            url: hit.url ?? `${GRAPHER}/${hit.slug}`,
             // The raw hit carries every entity name on the chart — 265 of them
             // for life-expectancy. That is a list nobody reads and everybody
             // pays for, so the count travels and the names stay behind.
@@ -177,7 +114,10 @@ export default defineMcpServer({
           return { text: `No Our World in Data charts matching "${query}".`, structured };
         }
         const lines = charts
-          .map((c) => `  ${c.slug} — ${c.title}${c.subtitle ? ` (${c.subtitle})` : ''}`)
+          .map(
+            (c) =>
+              `  ${c.slug} — ${c.title}${c.variantName ? ` [${c.variantName}]` : ''}${c.subtitle ? ` (${c.subtitle})` : ''}`,
+          )
           .join('\n');
         return {
           text: `${String(charts.length)} of ${String(structured.totalHits)} chart(s) for "${query}":\n${lines}`,
@@ -189,10 +129,11 @@ export default defineMcpServer({
       name: 'search_indicators',
       title: 'Our World in Data: Search indicators',
       description:
-        'Semantic search over Our World in Data’s indicator catalogue — describe what you want ' +
-        'in plain language ("share of hens in cages", "how much energy comes from wind") and ' +
-        'get matching indicators ranked by meaning, not keyword. Use this when search_charts ' +
-        'finds nothing; it matches the underlying variables rather than chart titles.',
+        'FALLBACK discovery, for when search_charts finds nothing. Semantic search over the ' +
+        'underlying variables (indicators) rather than chart titles, ranked by meaning. Returns ' +
+        'indicator titles, ids and bulk-data URLs — NOT chart slugs, and no tool fetches an ' +
+        'indicator by id. Either query the returned parquetUrl directly, or feed an indicator ' +
+        'title back into search_charts as keywords to get a slug for get_chart_data.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
         query: z.string().min(1).describe('Plain-language description of the data wanted.'),
@@ -211,11 +152,19 @@ export default defineMcpServer({
           z.object({
             indicatorId: z.number(),
             title: z.string(),
-            unit: z.string().nullable(),
+            unit: z
+              .string()
+              .nullable()
+              .describe(
+                'Usually null — the indicator search does not return units. Use get_chart_metadata for units.',
+              ),
             description: z.string().nullable(),
             catalogPath: z.string().nullable(),
             chartCount: z.number(),
             score: z.number().nullable(),
+            parquetUrl: z.string().nullable(),
+            parquetColumn: z.string().nullable(),
+            sqlTemplate: z.string().nullable(),
           }),
         ),
       }),
@@ -224,15 +173,23 @@ export default defineMcpServer({
         ctx.log('search_indicators', { query, limit, min_popularity });
         const body = await searchIndicators(ctx, { query, limit, minPopularity: min_popularity });
         const indicators = (body.results ?? [])
-          .filter((hit) => typeof hit.indicator_id === 'number')
+          .filter(
+            (hit): hit is typeof hit & { indicator_id: number } =>
+              typeof hit.indicator_id === 'number',
+          )
           .map((hit) => ({
-            indicatorId: hit.indicator_id ?? 0,
+            indicatorId: hit.indicator_id,
             title: hit.title ?? '',
             unit: hit.metadata?.unit ?? null,
             description: hit.description === '' ? null : (hit.description ?? hit.snippet ?? null),
             catalogPath: hit.catalog_path ?? null,
             chartCount: hit.n_charts ?? hit.metadata?.chart_count ?? 0,
             score: hit.score ?? null,
+            // Bulk access, free: the upstream already hands back the Parquet
+            // table and a runnable DuckDB query for each indicator.
+            parquetUrl: hit.metadata?.parquet_url ?? null,
+            parquetColumn: hit.metadata?.column ?? null,
+            sqlTemplate: hit.metadata?.run_sql_template ?? null,
           }));
         const structured = { query, count: indicators.length, indicators };
         if (indicators.length === 0) {
@@ -249,7 +206,7 @@ export default defineMcpServer({
         return {
           text:
             `${String(indicators.length)} indicator(s) for "${query}":\n${lines}\n` +
-            'Indicators are the underlying variables; use search_charts to find a chart slug you can fetch data for.',
+            'No tool fetches indicator data by id. Either query a `parquetUrl` above directly (DuckDB reads it over HTTP), or retry search_charts using one of these titles as the query to get a chart slug.',
           structured,
         };
       },
@@ -265,17 +222,26 @@ export default defineMcpServer({
         'refused with the reason.',
       annotations: { readOnlyHint: true, openWorldHint: true },
       input: z.object({
-        slug: z.string().min(1).describe('Chart slug, e.g. "life-expectancy".'),
+        slug: z
+          .string()
+          .min(1)
+          .describe(
+            'Chart slug from search_charts, e.g. "life-expectancy" — the last path segment of an ourworldindata.org/grapher/ URL. Not an indicator id, not a catalog path.',
+          ),
         countries: z
           .array(z.string().min(1))
           .max(40)
           .default([])
-          .describe('Entity names or ISO-3 codes. Omit for the chart’s own default selection.'),
+          .describe(
+            'Entities to return: country names ("United States"), ISO-3 codes ("USA"), or Our World in Data aggregates ("World", "Europe", "High-income countries"). Omit for the chart’s own default selection.',
+          ),
         time: z
           .string()
           .regex(TIME_PATTERN)
           .optional()
-          .describe('"2020", "2000..2020", "latest", or "earliest".'),
+          .describe(
+            'Time filter: "2020", "2000..2020", "2015-03-01..2020-12-31" (daily charts), "latest" or "earliest". Omit to get every time point — hundreds of rows on a long-run series. Out-of-range requests SNAP to the nearest available time rather than returning nothing, so check the time on each row.',
+          ),
         // The ceiling is a context budget, not an API limit: rows land in both
         // the structured payload and the text mirror, and 275 rows of a
         // six-column chart already costs ~12k tokens.

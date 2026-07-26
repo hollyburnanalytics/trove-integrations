@@ -45,18 +45,12 @@ export interface CsvTable {
  * field only when an entity name contains a comma — so the scan-per-character
  * branch is the rare case, not the common one.
  */
-export function parseCsv(text: string): string[][] {
+function parseCsv(text: string): string[][] {
   // A BOM would otherwise ride along inside the first header cell, so `entity`
   // silently stops matching and every column looks missing.
   const input = text.charCodeAt(0) === 0xfe_ff ? text.slice(1) : text;
   if (input === '') return [];
-  if (!input.includes('"')) {
-    return input
-      .split('\n')
-      .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
-      .filter((line) => line !== '')
-      .map((line) => line.split(','));
-  }
+  if (!input.includes('"')) return splitLines(input).map((line) => line.split(','));
   return parseQuotedCsv(input);
 }
 
@@ -117,8 +111,23 @@ function parseQuotedCsv(input: string): string[][] {
     if (state.quoted) i += scanQuoted(state, ch, input.charAt(i + 1));
     else scanPlain(state, ch);
   }
+  if (state.quoted) {
+    // The body ended mid-quote, so a stray `"` swallowed every newline after
+    // it. The scan produced a perfectly well-formed table that is silently
+    // MISSING rows — the worst possible outcome for a data tool. Fall back to
+    // the naive split, which at least keeps one row per line.
+    return splitLines(input).map((line) => line.split(','));
+  }
   if (state.dirty || state.field !== '') endRow(state);
   return state.rows;
+}
+
+/** Non-empty lines, CRLF or LF. */
+function splitLines(input: string): string[] {
+  return input
+    .split('\n')
+    .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
+    .filter((line) => line !== '');
 }
 
 /** Index of the first header equal to one of `names`, case-insensitively; -1 if absent. */

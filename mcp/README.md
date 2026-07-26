@@ -132,6 +132,24 @@ Sizing is deliberate: `csvType=full` is the API default and reaches megabytes
 (`max_rows`, default 200), the text mirror spells out at most 60 of them, and an
 oversized body is refused with advice rather than parsed.
 
+**A context window is the wrong place for a dataset**, so every result also
+names where the whole thing lives: `downloads.csv` (all entities and years,
+headers matching the reported `columns[].key`), `.zip`, and — per indicator —
+the **Parquet table in OWID's catalog**, which DuckDB queries in place over HTTP
+(`SELECT country, year, <parquetColumn> FROM '<parquetUrl>'`). `search_indicators`
+passes through the upstream's own runnable SQL. Parquet URLs are suppressed for
+non-redistributable indicators: OWID does not publish those tables to the catalog,
+and advertising one would read as a way around the licence its CSV endpoint
+refuses on purpose.
+
+Two things follow from *most OWID data being third-party*. Attribution is
+collected across **every** column in the result, not the first — a chart
+stacking UN IGME, WHO and HYDE credits all three, because crediting one would
+put the other two organisations' numbers under the wrong name. And coverage is
+described from the whole selection rather than the truncated page: the CSV is
+entity-major and oldest-first, so reporting the visible slice's last year once
+claimed life expectancy ended in 2018.
+
 ◊ `orgbook-bc` — **verify BC-registered legal entities** in the province's public
 registry (OrgBook BC, the verifiable-credential mirror of the BC Corporate
 Registry): ranked name search, exact lookup by registration number (`BC…`/`FM…`/

@@ -1,11 +1,57 @@
-import { ToolError } from '@ontrove/mcp';
+import { ToolError, z } from '@ontrove/mcp';
 import {
+  type Ctx,
+  catalogParquet,
+  chartDownloads,
   columnIndicatorId,
+  downloadsSchema,
   fetchChartMetadata,
   fetchIndicatorMetadata,
   GRAPHER,
 } from './client.ts';
-import type { MetadataView } from './render.ts';
+export const sourceSchema = z.object({
+  producer: z.string().nullable(),
+  license: z.string().nullable(),
+  licenseUrl: z.string().nullable(),
+  citation: z.string().nullable(),
+  url: z.string().nullable(),
+  dateAccessed: z.string().nullable(),
+});
+
+export const metadataOutput = z.object({
+  slug: z.string(),
+  title: z.string(),
+  subtitle: z.string().nullable(),
+  url: z.string(),
+  citation: z.string().nullable(),
+  attribution: z.string().nullable(),
+  nonRedistributable: z.boolean(),
+  columns: z.array(
+    z.object({
+      key: z.string(),
+      title: z.string(),
+      unit: z.string().nullable(),
+      timespan: z.string().nullable(),
+      lastUpdated: z.string().nullable(),
+      nextUpdate: z.string().nullable(),
+      description: z.string().nullable(),
+      processingNotes: z.string().nullable(),
+      indicatorId: z.number().nullable(),
+      parquetUrl: z
+        .string()
+        .nullable()
+        .describe(
+          "Parquet table backing this indicator, queryable in place: SELECT country, year, <parquetColumn> FROM '<parquetUrl>'. Null when Our World in Data does not publish the table (e.g. non-redistributable data).",
+        ),
+      parquetColumn: z.string().nullable().describe("This indicator's column inside parquetUrl."),
+    }),
+  ),
+  sources: z.array(sourceSchema),
+  downloads: downloadsSchema,
+  notes: z.array(z.string()),
+});
+
+export type MetadataView = z.infer<typeof metadataOutput>;
 
 /**
  * Assembling one `get_chart_metadata` answer: the chart's own record, plus the
@@ -18,10 +64,6 @@ import type { MetadataView } from './render.ts';
  * the chart itself.
  */
 
-type Ctx = Parameters<typeof fetchChartMetadata>[0];
-
-export type ChartMetadataView = MetadataView;
-
 /** One source, deduped across every indicator that cites it. */
 type Source = MetadataView['sources'][number];
 
@@ -30,7 +72,7 @@ export async function collectMetadata(
   ctx: Ctx,
   slug: string,
   maxIndicators: number,
-): Promise<ChartMetadataView> {
+): Promise<MetadataView> {
   const metadata = await fetchChartMetadata(ctx, slug);
   if (!metadata) {
     throw new ToolError(
@@ -40,7 +82,7 @@ export async function collectMetadata(
   }
 
   const entries = Object.entries(metadata.columns ?? {});
-  const columns = entries.map(([title, column]) => ({
+  const bare = entries.map(([title, column]) => ({
     key: column.shortName ?? title,
     title: column.titleShort ?? title,
     unit: column.unit ?? null,
@@ -52,16 +94,36 @@ export async function collectMetadata(
     indicatorId: columnIndicatorId(column) ?? null,
   }));
 
-  const ids = columns
+  const ids = bare
     .map((column) => column.indicatorId)
     .filter((id): id is number => typeof id === 'number');
   const resolved = ids.slice(0, maxIndicators);
-  const { sources, nonRedistributable } = await collectSources(ctx, resolved);
+  const {
+    sources,
+    nonRedistributable,
+    tables,
+    resolved: covered,
+  } = await collectSources(ctx, resolved);
+
+  // Attach the Parquet table backing each indicator, so a caller can query the
+  // whole thing in place rather than pulling rows through a context window.
+  const columns = bare.map((column) => {
+    const table = column.indicatorId === null ? undefined : tables.get(column.indicatorId);
+    return {
+      ...column,
+      parquetUrl: table?.parquet ?? null,
+      parquetColumn: table?.column ?? null,
+    };
+  });
 
   const notes: string[] = [];
-  if (ids.length > resolved.length) {
+  const partial = covered < ids.length;
+  if (partial) {
+    // The redistribution verdict is only as complete as the provenance behind
+    // it. Reporting `nonRedistributable: false` after reading 6 of 8
+    // indicators states a licence fact that was never checked for the other 2.
     notes.push(
-      `Provenance resolved for ${String(resolved.length)} of ${String(ids.length)} indicators; raise \`max_indicators\` for the rest.`,
+      `Provenance covers ${String(covered)} of ${String(ids.length)} indicators; the licence and redistribution verdict below describe only those. Raise \`max_indicators\` to check the rest.`,
     );
   }
   if (nonRedistributable) {
@@ -81,6 +143,7 @@ export async function collectMetadata(
     nonRedistributable,
     columns,
     sources,
+    downloads: chartDownloads(slug),
     notes,
   };
 }
@@ -95,24 +158,50 @@ export async function collectMetadata(
 async function collectSources(
   ctx: Ctx,
   indicatorIds: number[],
-): Promise<{ sources: Source[]; nonRedistributable: boolean }> {
+): Promise<{
+  sources: Source[];
+  nonRedistributable: boolean;
+  tables: Map<number, { parquet: string; column: string | null }>;
+  resolved: number;
+}> {
   const sources: Source[] = [];
   const seen = new Set<string>();
+  const tables = new Map<number, { parquet: string; column: string | null }>();
   let nonRedistributable = false;
+  let resolved = 0;
 
+  // A wall-clock ceiling for the WHOLE loop. Each request is individually
+  // bounded, but twelve of them in sequence are not — and provenance is an
+  // enrichment: better to return what was gathered, and say so, than to spend
+  // the caller's whole deadline on the twelfth indicator.
+  const deadline = Date.now() + 15_000;
   for (const id of indicatorIds) {
-    const indicator = await fetchIndicatorMetadata(ctx, id);
+    if (Date.now() > deadline) break;
+    const indicator = await fetchIndicatorMetadata(ctx, id).catch(() => undefined);
     if (!indicator) continue;
-    if (indicator.nonRedistributable === true) nonRedistributable = true;
-    for (const origin of indicator.origins ?? []) {
-      const source = toSource(origin);
-      const key = `${source.producer ?? ''}|${source.license ?? ''}|${source.citation ?? ''}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      sources.push(source);
-    }
+    resolved++;
+    const restricted = indicator.nonRedistributable === true;
+    if (restricted) nonRedistributable = true;
+    // Only advertise a Parquet URL for data OWID actually publishes. It does
+    // not push non-redistributable tables to the catalog — that URL 404s — and
+    // offering one would read as a way around a licence the CSV endpoint
+    // enforces on purpose.
+    const table = restricted ? undefined : catalogParquet(indicator.catalogPath);
+    if (table) tables.set(id, { parquet: table.url, column: table.column });
+    addSources(indicator.origins ?? [], sources, seen);
   }
-  return { sources, nonRedistributable };
+  return { sources, nonRedistributable, tables, resolved };
+}
+
+/** Append each origin not already represented, deduped on producer|licence|citation. */
+function addSources(origins: Origin[], sources: Source[], seen: Set<string>): void {
+  for (const origin of origins) {
+    const source = toSource(origin);
+    const key = `${source.producer ?? ''}|${source.license ?? ''}|${source.citation ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    sources.push(source);
+  }
 }
 
 type Origin = NonNullable<

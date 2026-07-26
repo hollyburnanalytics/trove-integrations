@@ -1,7 +1,7 @@
 import {
   type ChartMetadata,
+  type Ctx,
   columnIndicatorId,
-  type fetchChartCsv,
   fetchIndicatorMetadata,
 } from './client.ts';
 import type { CsvRow } from './csv.ts';
@@ -20,8 +20,6 @@ import type { CsvRow } from './csv.ts';
  * came back, correct the spelling and ask again if needed, and enforce the
  * selection here regardless of what the upstream chose to send.
  */
-
-type Ctx = Parameters<typeof fetchChartCsv>[0];
 
 /** Every entity on a chart, indexed for case-insensitive lookup. */
 export interface EntityIndex {
@@ -111,17 +109,26 @@ function distanceRow(ch: string, b: string, previous: number[], rowIndex: number
  */
 function suggestions(wanted: string, names: string[]): string[] {
   const needle = wanted.trim().toLowerCase();
-  if (needle === '') return [];
-  const budget = needle.length <= 4 ? 1 : Math.min(3, Math.floor(needle.length / 4));
+  // A substring match is only evidence when the substring is distinctive.
+  // "us" is contained in Australia, Austria and Belarus — proposing those for
+  // someone who typed "us" is worse than proposing nothing, because it reads as
+  // a considered answer.
+  if (needle.length < 4) return [];
+  const budget = Math.min(3, Math.floor(needle.length / 4));
   const scored: Array<{ name: string; distance: number }> = [];
   for (const name of names) {
     const candidate = name.toLowerCase();
-    if (candidate.includes(needle) || needle.includes(candidate)) {
+    if (candidate.startsWith(needle) || needle.startsWith(candidate)) {
       scored.push({ name, distance: 0 });
       continue;
     }
+    if (candidate.includes(needle) || needle.includes(candidate)) {
+      scored.push({ name, distance: 1 });
+      continue;
+    }
     const distance = editDistance(needle, candidate, budget);
-    if (distance <= budget) scored.push({ name, distance });
+    // Rank a genuine near-miss above a coincidental substring.
+    if (distance <= budget) scored.push({ name, distance: distance === 0 ? 0 : distance + 1 });
   }
   scored.sort((a, b) => a.distance - b.distance || a.name.localeCompare(b.name, 'en'));
   return scored.slice(0, 3).map((s) => s.name);
@@ -134,7 +141,7 @@ export async function diagnoseMissing(
   missing: string[],
   notes: string[],
 ): Promise<void> {
-  const entities = await chartEntities(ctx, metadata);
+  const entities = await chartEntities(ctx, metadata).catch(() => undefined);
   if (!entities) {
     notes.push(
       `No data returned for: ${missing.map((m) => `"${m}"`).join(', ')}. Check the spelling — entity names are Our World in Data’s own (e.g. "United States", "World") or ISO-3 codes (e.g. "USA").`,

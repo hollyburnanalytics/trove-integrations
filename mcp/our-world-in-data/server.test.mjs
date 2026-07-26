@@ -116,7 +116,15 @@ const INDICATOR_SEARCH = {
       popularity: 0.568_736,
       n_charts: 1,
       catalog_path: 'grapher/animal_welfare/2026-06-11/eggs/eggs#n_eggs_free_range',
-      metadata: { chart_count: 1, unit: 'eggs' },
+      metadata: {
+        chart_count: 1,
+        catalog_path: 'grapher/animal_welfare/2026-06-11/eggs/eggs#n_eggs_free_range',
+        parquet_url:
+          'https://catalog.ourworldindata.org/grapher/animal_welfare/2026-06-11/eggs/eggs.parquet',
+        column: 'n_eggs_free_range',
+        run_sql_template:
+          "SELECT country, year, n_eggs_free_range FROM 'https://catalog.ourworldindata.org/grapher/animal_welfare/2026-06-11/eggs/eggs.parquet' WHERE country = '??' LIMIT 100",
+      },
     },
   ],
 };
@@ -271,8 +279,14 @@ describe('our-world-in-data MCP server', () => {
       expect(result.ok).toBe(true);
       const indicator = result.result.structured.indicators[0];
       expect(indicator.indicatorId).toBe(1_269_972);
-      expect(indicator.unit).toBe('eggs');
+      // The live indicator search returns no unit; the fixture matches it.
+      expect(indicator.unit).toBeNull();
       expect(indicator.chartCount).toBe(1);
+      // Bulk access must survive: a caller should be able to query the dataset
+      // itself rather than paging rows through the context window.
+      expect(indicator.parquetUrl).toContain('catalog.ourworldindata.org');
+      expect(indicator.parquetColumn).toBe('n_eggs_free_range');
+      expect(indicator.sqlTemplate).toContain('SELECT');
       // An empty description must not masquerade as a real one.
       expect(indicator.description).toBeNull();
     });
@@ -530,7 +544,7 @@ describe('our-world-in-data MCP server', () => {
       expect(result.result.structured.rows).toHaveLength(4);
       expect(result.result.structured.totalRows).toBe(10);
       expect(result.result.structured.truncated).toBe(true);
-      expect(result.result.structured.notes.join(' ')).toContain('max_rows');
+      expect(result.result.structured.notes.join(' ')).toContain('downloads.csv');
     });
 
     it('reads a daily series as a day axis', async () => {
@@ -656,15 +670,26 @@ describe('our-world-in-data MCP server', () => {
     });
 
     it('ignores whitespace-only country entries', async () => {
+      // Pin the OUTGOING request too: without the boundary trim, `country=~`
+      // is sent upstream and a spurious diagnosis fires — neither of which the
+      // row count alone would reveal.
+      let seen = '';
       const result = await callTool(
         server,
         'get_chart_data',
         { slug: 'blank-country', countries: ['   '] },
-        chartResponder(),
+        (url) => {
+          if (url.includes('.csv')) {
+            seen = url;
+            return { text: CSV };
+          }
+          return { json: METADATA };
+        },
       );
       expect(result.ok).toBe(true);
-      // No usable selection means no selection — not an empty table.
+      expect(seen).not.toContain('country=');
       expect(result.result.structured.rows.length).toBeGreaterThan(0);
+      expect(result.result.structured.notes).toEqual([]);
     });
 
     it('caps the rows spelled out in text while keeping them all in structured', async () => {
@@ -695,6 +720,120 @@ describe('our-world-in-data MCP server', () => {
       expect(result.result.structured.title).toBe('meta-down');
     });
 
+    it('credits every producer on a multi-indicator chart, not just the first', async () => {
+      // Crediting column 1's producer for a table containing four producers'
+      // numbers is the licensing failure this toolkit exists to avoid.
+      const twoColumns = {
+        chart: { title: 'Two sources' },
+        columns: {
+          'Child mortality': {
+            shortName: 'child_mortality',
+            citationShort: 'UN IGME (2025)',
+            citationLong: 'UN IGME (2025) – processed by Our World in Data.',
+          },
+          'Health expenditure': {
+            shortName: 'health_expenditure',
+            citationShort: 'WHO (2025)',
+            citationLong: 'WHO (2025) – processed by Our World in Data.',
+          },
+        },
+      };
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'two-producers', countries: ['Canada'] },
+        chartResponder({
+          csv: {
+            text: 'entity,code,year,child_mortality,health_expenditure\nCanada,CAN,2020,4.5,11.2',
+          },
+          metadata: { json: twoColumns },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.citation).toContain('UN IGME');
+      expect(result.result.structured.citation).toContain('WHO');
+      expect(result.result.text).toContain('WHO (2025)');
+    });
+
+    it('describes coverage from the selection, not from the truncated page', async () => {
+      // OWID's CSV is entity-major and oldest-first, so a cap lands mid-way
+      // through the second entity. Reporting the visible slice's last year as
+      // the chart's coverage understated life-expectancy by five years.
+      const rows = [
+        'entity,code,year,v',
+        ...Array.from({ length: 5 }, (_, index) => `Canada,CAN,${2000 + index},${index}`),
+        ...Array.from({ length: 5 }, (_, index) => `Japan,JPN,${2010 + index},${index}`),
+      ].join('\n');
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'coverage-truncate', countries: ['Canada', 'Japan'], max_rows: 3 },
+        chartResponder({ csv: { text: rows } }),
+      );
+      expect(result.ok).toBe(true);
+      const data = result.result.structured;
+      expect(data.rows).toHaveLength(3);
+      // Range spans the whole selection (2000–2014), not the 3 rows shown.
+      expect(data.timeRange).toEqual({ first: '2000', last: '2014' });
+      expect(data.entities).toEqual(['Canada', 'Japan']);
+      expect(data.notes.join(' ')).toContain('Japan');
+    });
+
+    it('does not warn about a reversed time range that the data satisfies', async () => {
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'reversed-range', countries: ['Canada'], time: '2020..2000' },
+        chartResponder({ csv: { text: 'entity,code,year,v\nCanada,CAN,2010,1' } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.notes.join(' ')).not.toMatch(/OUTSIDE/i);
+    });
+
+    it('warns when only some entities snapped outside the range', async () => {
+      // One entity in range used to satisfy `some()` and silence the warning
+      // for the other, whose rows were nowhere near the decade requested.
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'partial-snap', countries: ['Canada', 'Japan'], time: '1800..1810' },
+        chartResponder({
+          csv: { text: 'entity,code,year,v\nJapan,JPN,1800,1\nCanada,CAN,1831,2' },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      const notes = result.result.structured.notes.join(' ');
+      expect(notes).toMatch(/OUTSIDE/);
+      expect(notes).toContain('Canada');
+    });
+
+    it('warns on a snapped DATE range, not only a year range', async () => {
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'date-snap', countries: ['World'], time: '1990-01-01..2000-12-31' },
+        chartResponder({ csv: { text: 'entity,code,day,v\nWorld,OWID_WRL,2020-01-22,5' } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.notes.join(' ')).toMatch(/OUTSIDE/);
+    });
+
+    it('exposes bulk-download URLs so the dataset need not go through context', async () => {
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'downloads-check', countries: ['Canada'] },
+        chartResponder(),
+      );
+      expect(result.ok).toBe(true);
+      const { downloads } = result.result.structured;
+      expect(downloads.csv).toContain('csvType=full');
+      // Headers in the downloaded CSV must line up with the reported keys.
+      expect(downloads.csv).toContain('useColumnShortNames=true');
+      expect(downloads.zip).toContain('.zip');
+      expect(result.result.text).toContain(downloads.csv);
+    });
+
     it('refuses an oversized body and says which knob to turn', async () => {
       const huge = `entity,code,year,v\n${'Canada,CAN,2000,1\n'.repeat(250_000)}`;
       const result = await callTool(
@@ -709,7 +848,7 @@ describe('our-world-in-data MCP server', () => {
       expect(result.retryable).toBe(false);
     });
 
-    it('maps a 400 to a time-format complaint, not a generic failure', async () => {
+    it('maps a 400 to actionable advice, not a generic failure', async () => {
       const result = await callTool(
         server,
         'get_chart_data',
@@ -717,7 +856,8 @@ describe('our-world-in-data MCP server', () => {
         chartResponder({ csv: { status: 400, json: { status: 400, error: 'bad' } } }),
       );
       expect(result.ok).toBe(false);
-      expect(result.error).toMatch(/time range/i);
+      expect(result.error).toMatch(/single year|omit `time`/i);
+      expect(result.error).toContain('search_charts');
       expect(result.retryable).toBe(false);
     });
 
@@ -750,11 +890,41 @@ describe('our-world-in-data MCP server', () => {
     });
 
     it('rejects a malformed time argument before any request', async () => {
-      const result = await callTool(server, 'get_chart_data', {
-        slug: 'x',
-        time: 'last tuesday',
-      });
+      // Assert the SHAPE of the failure and that no fetch happened. Checking
+      // only `ok === false` passed even with the regex deleted, because the
+      // no-network responder throws and that also reads as a failure.
+      let fetches = 0;
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'time-invalid', time: 'last tuesday' },
+        () => {
+          fetches++;
+          return { text: CSV };
+        },
+      );
       expect(result.ok).toBe(false);
+      expect(fetches).toBe(0);
+      expect(result.error).toMatch(/time/i);
+    });
+
+    it('accepts every documented time form, including BCE ranges', async () => {
+      for (const [index, time] of [
+        '2020',
+        '2000..2020',
+        '-10000..-5000',
+        'latest',
+        'earliest',
+        '2015-03-01..2020-12-31',
+      ].entries()) {
+        const result = await callTool(
+          server,
+          'get_chart_data',
+          { slug: `time-ok-${String(index)}`, time },
+          chartResponder(),
+        );
+        expect(result.ok).toBe(true);
+      }
     });
   });
 
@@ -764,7 +934,9 @@ describe('our-world-in-data MCP server', () => {
         server,
         'get_chart_metadata',
         { slug: 'eggs-meta' },
-        chartResponder(),
+        // Its own indicator id: sharing 1269958 meant this assertion ran
+        // against a fixture installed by an unrelated get_chart_data test.
+        chartResponder({ metadata: { json: metadataForIndicator(909_090) } }),
       );
       expect(result.ok).toBe(true);
       const view = result.result.structured;
@@ -823,7 +995,12 @@ describe('our-world-in-data MCP server', () => {
       );
       expect(result.ok).toBe(false);
       expect(result.error).not.toMatch(/no our world in data chart/i);
-      expect(result.error).toContain('403');
+      // The SPECIFIC message, not just the status: the generic egress error
+      // also contains "403", so matching that alone passed even with the
+      // body-pass-through removed.
+      expect(result.error).toContain('refused the metadata request');
+      expect(result.error).toContain('Forbidden');
+      expect(result.retryable).toBe(false);
     });
 
     it('errors helpfully on an unknown slug', async () => {

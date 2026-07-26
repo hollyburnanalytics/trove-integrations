@@ -1,4 +1,5 @@
 import type { ChartData } from './chart.ts';
+import type { MetadataView } from './metadata.ts';
 
 /**
  * Model-visible rendering for the two heavyweight tools.
@@ -39,14 +40,23 @@ export function renderData(data: ChartData): string {
   const heading = data.subtitle ? `${data.title} — ${data.subtitle}` : data.title;
   lines.push(clip(heading, 200));
 
-  const units = data.columns.map((c) => `${c.title}${c.unit ? ` (${c.unit})` : ''}`).join(' · ');
-  if (units !== '') lines.push(units);
+  // Caveats FIRST. A note like "these rows are outside the range you asked
+  // for" changes how the whole table must be read; printed under sixty rows of
+  // numbers it arrives after the reader has already drawn a conclusion.
+  for (const note of data.notes) lines.push(`⚠ ${note}`);
 
   if (data.rows.length > 0) {
-    const header = [data.timeUnit === 'day' ? 'day' : 'year', ...data.columns.map((c) => c.key)];
-    lines.push('', `entity, ${header.join(', ')}`);
+    // Each column carries its own unit. The alternative — a units line above a
+    // header of bare short names — asks the reader to zip two lists by index,
+    // and getting that wrong attaches the wrong unit to a real number.
+    const header = [
+      data.timeUnit === 'day' ? 'day' : 'year',
+      ...data.columns.map((c) => `${c.title}${c.unit ? ` [${c.unit}]` : ''}`),
+    ];
+    // Pipe-separated: entity names and indicator titles both contain commas.
+    lines.push('', `entity | ${header.join(' | ')}`);
     for (const row of data.rows.slice(0, MAX_TEXT_ROWS)) {
-      lines.push(`  ${row.entity}, ${row.time}, ${row.values.map(cell).join(', ')}`);
+      lines.push(`  ${row.entity} | ${row.time} | ${row.values.map(cell).join(' | ')}`);
     }
     if (data.rows.length > MAX_TEXT_ROWS) {
       lines.push(
@@ -60,45 +70,13 @@ export function renderData(data: ChartData): string {
     lines.push('', 'No rows returned.');
   }
 
-  for (const note of data.notes) lines.push(`Note: ${note}`);
-
   // Attribution is not decoration: OWID's terms ask that the ORIGINAL data
   // providers be credited, and citationLong is the string that names them all.
-  if (data.attribution) lines.push('', `Source: ${clip(data.attribution, 600)}`);
+  if (data.attribution) lines.push('', `Source: ${clip(data.attribution, 1200)}`);
   else if (data.citation) lines.push('', `Source: ${data.citation} — via Our World in Data`);
   lines.push(`Chart: ${data.url}`);
+  lines.push(`Full dataset (all entities and years, CSV): ${data.downloads.csv}`);
   return lines.join('\n');
-}
-
-/** The metadata tool's structured result, as rendered here. */
-export interface MetadataView {
-  slug: string;
-  title: string;
-  subtitle: string | null;
-  url: string;
-  citation: string | null;
-  attribution: string | null;
-  nonRedistributable: boolean;
-  columns: Array<{
-    key: string;
-    title: string;
-    unit: string | null;
-    timespan: string | null;
-    lastUpdated: string | null;
-    nextUpdate: string | null;
-    description: string | null;
-    processingNotes: string | null;
-    indicatorId: number | null;
-  }>;
-  sources: Array<{
-    producer: string | null;
-    license: string | null;
-    licenseUrl: string | null;
-    citation: string | null;
-    url: string | null;
-    dateAccessed: string | null;
-  }>;
-  notes: string[];
 }
 
 /** One indicator's block: what it measures, in what units, over what period. */
@@ -142,9 +120,44 @@ function renderSources(sources: MetadataView['sources']): string[] {
   return lines;
 }
 
+/**
+ * Where to get the data itself.
+ *
+ * The point of naming these is that a caller wanting the whole dataset should
+ * fetch or query it directly rather than asking this server to page thousands
+ * of rows through a context window. DuckDB reads the Parquet over HTTP without
+ * downloading it: `SELECT country, year, <column> FROM '<parquet url>'`.
+ */
+function renderDownloads(view: MetadataView): string[] {
+  const lines = ['Get the data:', `  Full CSV (all entities and years): ${view.downloads.csv}`];
+  const tables = new Map<string, string[]>();
+  for (const column of view.columns) {
+    if (!column.parquetUrl) continue;
+    const columns = tables.get(column.parquetUrl) ?? [];
+    if (column.parquetColumn) columns.push(column.parquetColumn);
+    tables.set(column.parquetUrl, columns);
+  }
+  for (const [url, columns] of tables) {
+    lines.push(`  Parquet (DuckDB-queryable in place): ${url}`);
+    if (columns.length > 0) lines.push(`    columns: ${columns.join(', ')}`);
+  }
+  lines.push(`  CSV + metadata + README, zipped: ${view.downloads.zip}`);
+  lines.push(`  Chart: ${view.url}`);
+  return lines;
+}
+
 /** Render chart metadata, leading with what it measures and ending with licensing. */
 export function renderMetadata(view: MetadataView): string {
   const lines: string[] = [view.subtitle ? `${view.title} — ${view.subtitle}` : view.title];
+
+  // Whether the data can be fetched at all decides what the caller does next,
+  // so it goes above the provenance rather than below it.
+  if (view.nonRedistributable) {
+    lines.push(
+      '⚠ Marked non-redistributable by its provider: get_chart_data will refuse this chart. The chart itself stays viewable on Our World in Data.',
+    );
+  }
+  for (const note of view.notes) lines.push(`⚠ ${note}`);
 
   if (view.columns.length > 0) {
     lines.push('', `Measures (${String(view.columns.length)}):`);
@@ -153,11 +166,7 @@ export function renderMetadata(view: MetadataView): string {
 
   if (view.sources.length > 0) lines.push(...renderSources(view.sources));
 
-  if (view.nonRedistributable) {
-    lines.push('', '⚠ This data is marked non-redistributable by its provider.');
-  }
-  for (const note of view.notes) lines.push(`Note: ${note}`);
-  if (view.attribution) lines.push('', `Citation: ${clip(view.attribution, 600)}`);
-  lines.push(`Chart: ${view.url}`);
+  if (view.attribution) lines.push('', `Citation: ${clip(view.attribution, 1200)}`);
+  lines.push('', ...renderDownloads(view));
   return lines.join('\n');
 }
