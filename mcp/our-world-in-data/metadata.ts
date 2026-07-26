@@ -1,5 +1,7 @@
 import { ToolError, z } from '@ontrove/mcp';
 import {
+  type ChartColumn,
+  type ChartMetadata,
   type Ctx,
   catalogParquet,
   chartDownloads,
@@ -67,6 +69,37 @@ export type MetadataView = z.infer<typeof metadataOutput>;
 /** One source, deduped across every indicator that cites it. */
 type Source = MetadataView['sources'][number];
 
+/**
+ * The citations for a set of columns, deduped and in column order.
+ *
+ * Taking the FIRST column's citation and printing it as "Source:" for the whole
+ * table is wrong the moment a chart stacks indicators from different producers
+ * — and OWID charts routinely do. `child-mortality-vs-health-expenditure` draws
+ * on UN IGME, WHO/World Bank and HYDE at once; crediting only UN IGME would put
+ * three other organisations' numbers under one wrong name, which is exactly the
+ * failure the licensing work here exists to prevent.
+ *
+ * Shared by both data tools deliberately. The bug was fixed once in the chart
+ * path and left standing in this one — a single implementation is what stops
+ * that happening a third time.
+ */
+export function columnCitations(
+  columns: Array<{ key: string }>,
+  metadata: ChartMetadata | undefined,
+  pick: (column: ChartColumn) => string | null | undefined,
+): string[] {
+  const byShortName = new Map<string, ChartColumn>();
+  for (const column of Object.values(metadata?.columns ?? {})) {
+    if (typeof column.shortName === 'string') byShortName.set(column.shortName, column);
+  }
+  const seen = new Set<string>();
+  for (const column of columns) {
+    const value = pick(byShortName.get(column.key) ?? {});
+    if (typeof value === 'string' && value !== '') seen.add(value);
+  }
+  return [...seen];
+}
+
 /** Fetch chart metadata and per-indicator provenance for `slug`. */
 export async function collectMetadata(
   ctx: Ctx,
@@ -116,6 +149,9 @@ export async function collectMetadata(
     };
   });
 
+  const shortCitations = columnCitations(bare, metadata, (c) => c.citationShort);
+  const longCitations = columnCitations(bare, metadata, (c) => c.citationLong);
+
   const notes: string[] = [];
   const partial = covered < ids.length;
   if (partial) {
@@ -132,14 +168,17 @@ export async function collectMetadata(
     );
   }
 
-  const first = entries[0]?.[1];
   return {
     slug,
     title: metadata.chart?.title ?? slug,
     subtitle: metadata.chart?.subtitle ?? null,
     url: metadata.chart?.originalChartUrl ?? `${GRAPHER}/${slug}`,
-    citation: first?.citationShort ?? metadata.chart?.citation ?? null,
-    attribution: first?.citationLong ?? null,
+    // Every column's producer, not the first one's. This tool is the one a
+    // caller consults before republishing, so an incomplete credit here is
+    // the most costly place in the toolkit to get it wrong.
+    citation:
+      shortCitations.length > 0 ? shortCitations.join('; ') : (metadata.chart?.citation ?? null),
+    attribution: longCitations.length > 0 ? longCitations.join('\n\n') : null,
     nonRedistributable,
     columns,
     sources,

@@ -541,6 +541,42 @@ describe('our-world-in-data MCP server', () => {
       expect(notes).toContain('United Kingdom');
     });
 
+    it('knows entities that only a later indicator carries', async () => {
+      // Charts that join sources have different coverage per indicator. Asking
+      // only the first one denied entities the chart genuinely plots.
+      const twoIndicators = {
+        chart: { title: 'Joined sources' },
+        columns: {
+          First: { shortName: 'first_col', owidVariableId: 808_001 },
+          Second: { shortName: 'second_col', owidVariableId: 808_002 },
+        },
+      };
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'union-entities', countries: ['Bhutan'] },
+        (url) => {
+          if (url.includes('808002')) {
+            return {
+              json: {
+                ...INDICATOR,
+                id: 808_002,
+                dimensions: { entities: { values: [{ id: 5, name: 'Bhutan', code: 'BTN' }] } },
+              },
+            };
+          }
+          if (url.includes('808001')) return { json: { ...INDICATOR, id: 808_001 } };
+          if (url.includes('.metadata.json')) return { json: twoIndicators };
+          return { text: 'Entity,Year,Share\n' };
+        },
+      );
+      expect(result.ok).toBe(true);
+      const notes = result.result.structured.notes.join(' ');
+      // Bhutan is on the SECOND indicator, so it must not be denied.
+      expect(notes).not.toMatch(/not entities on this chart/i);
+      expect(notes).toMatch(/no data in the requested range/i);
+    });
+
     it('says coverage, not spelling, when every entity is valid but empty', async () => {
       const result = await callTool(
         server,
@@ -1080,6 +1116,39 @@ describe('our-world-in-data MCP server', () => {
       expect(view.nonRedistributable).toBe(false);
       expect(result.result.text).toContain('OGL v3.0');
       expect(result.result.text).toMatch(/third-party/i);
+    });
+
+    it('credits EVERY column, not just the first', async () => {
+      // The bug fixed in get_chart_data was still standing here: one tool
+      // learned the lesson and the other did not, until both shared an
+      // implementation. This is the tool a caller consults before publishing.
+      const twoProducers = {
+        chart: { title: 'Two producers' },
+        columns: {
+          'Child mortality': {
+            shortName: 'child_mortality',
+            citationShort: 'UN IGME (2025)',
+            citationLong: 'UN IGME (2025) – processed by Our World in Data.',
+            owidVariableId: 606_001,
+          },
+          'Health spending': {
+            shortName: 'health_spending',
+            citationShort: 'WHO (2025)',
+            citationLong: 'WHO (2025) – processed by Our World in Data.',
+            owidVariableId: 606_002,
+          },
+        },
+      };
+      const result = await callTool(
+        server,
+        'get_chart_metadata',
+        { slug: 'two-producer-meta' },
+        chartResponder({ metadata: { json: twoProducers } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.citation).toContain('UN IGME');
+      expect(result.result.structured.citation).toContain('WHO');
+      expect(result.result.structured.attribution).toContain('WHO (2025)');
     });
 
     it('flags a non-redistributable chart and explains the consequence', async () => {

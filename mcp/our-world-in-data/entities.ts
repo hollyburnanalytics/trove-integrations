@@ -29,29 +29,51 @@ export interface EntityIndex {
   canonical: Map<string, string>;
 }
 
-/** Build the entity index for a chart from its first indicator's metadata. */
+/**
+ * How many of a chart's indicators contribute to the entity index.
+ *
+ * One is not enough. A chart that joins UN IGME child mortality to World Bank
+ * health spending has genuinely different coverage per indicator, so an entity
+ * carried by the second and not the first was being reported as "not an entity
+ * on this chart" — a confident denial of something the chart plots. Three
+ * bounds the cost on what is already a failure path, and the responses are
+ * cached.
+ */
+const INDEXED_INDICATORS = 3;
+
+/** Build the entity index for a chart, unioned across its first few indicators. */
 export async function chartEntities(
   ctx: Ctx,
   metadata: ChartMetadata | undefined,
 ): Promise<EntityIndex | undefined> {
-  const first = Object.values(metadata?.columns ?? {})[0];
-  const indicatorId = first ? columnIndicatorId(first) : undefined;
-  if (indicatorId === undefined) return undefined;
-  const indicator = await fetchIndicatorMetadata(ctx, indicatorId);
-  const values = indicator?.dimensions?.entities?.values;
-  if (!values || values.length === 0) return undefined;
-  const names: string[] = [];
-  const canonical = new Map<string, string>();
+  const ids = Object.values(metadata?.columns ?? {})
+    .map((column) => columnIndicatorId(column))
+    .filter((id): id is number => typeof id === 'number')
+    .slice(0, INDEXED_INDICATORS);
+  if (ids.length === 0) return undefined;
+
+  const index: EntityIndex = { names: [], canonical: new Map() };
+  for (const id of ids) {
+    const indicator = await fetchIndicatorMetadata(ctx, id);
+    addEntities(index, indicator?.dimensions?.entities?.values ?? []);
+  }
+  return index.canonical.size === 0 ? undefined : index;
+}
+
+/** Fold one indicator's entity list into the index, keeping the first spelling seen. */
+function addEntities(
+  index: EntityIndex,
+  values: Array<{ name?: string | null; code?: string | null }>,
+): void {
   for (const value of values) {
     const name = typeof value.name === 'string' ? value.name : '';
-    if (name === '') continue;
-    names.push(name);
-    canonical.set(name.toLowerCase(), name);
+    if (name === '' || index.canonical.has(name.toLowerCase())) continue;
+    index.names.push(name);
+    index.canonical.set(name.toLowerCase(), name);
     if (typeof value.code === 'string' && value.code !== '') {
-      canonical.set(value.code.toLowerCase(), name);
+      index.canonical.set(value.code.toLowerCase(), name);
     }
   }
-  return { names, canonical };
 }
 
 /**

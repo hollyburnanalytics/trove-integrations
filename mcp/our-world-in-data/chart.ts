@@ -12,6 +12,7 @@ import {
 } from './client.ts';
 import { type CsvRow, type CsvTable, parseChartCsv } from './csv.ts';
 import { chartEntities, diagnoseMissing, selectEntities, unmatchedRequests } from './entities.ts';
+import { columnCitations } from './metadata.ts';
 import { noteTimeSnap, timeRange } from './time.ts';
 
 /**
@@ -77,33 +78,6 @@ export const dataOutput = z.object({
 
 export type DataColumn = z.infer<typeof columnSchema>;
 export type ChartData = z.infer<typeof dataOutput>;
-
-/**
- * The citations for the columns actually returned, deduped and in column order.
- *
- * Taking the FIRST column's citation and printing it as "Source:" for the whole
- * table is wrong the moment a chart stacks indicators from different producers
- * — and OWID charts routinely do. `child-mortality-vs-health-expenditure` draws
- * on UN IGME, WHO/World Bank and HYDE at once; crediting only UN IGME would put
- * three other organisations' numbers under one wrong name, which is exactly the
- * failure the licensing work here exists to prevent.
- */
-function citations(
-  columns: DataColumn[],
-  metadata: ChartMetadata | undefined,
-  pick: (column: ChartColumn) => string | null | undefined,
-): string[] {
-  const byShortName = new Map<string, ChartColumn>();
-  for (const column of Object.values(metadata?.columns ?? {})) {
-    if (typeof column.shortName === 'string') byShortName.set(column.shortName, column);
-  }
-  const seen = new Set<string>();
-  for (const column of columns) {
-    const value = pick(byShortName.get(column.key) ?? {});
-    if (typeof value === 'string' && value !== '') seen.add(value);
-  }
-  return [...seen];
-}
 
 /** Join CSV header keys to metadata columns via `shortName`, falling back to position. */
 function joinColumns(keys: string[], metadata: ChartMetadata | undefined): DataColumn[] {
@@ -302,8 +276,8 @@ export async function getChartData(
     );
   }
 
-  const short = citations(columns, metadata, (c) => c.citationShort);
-  const long = citations(columns, metadata, (c) => c.citationLong);
+  const short = columnCitations(columns, metadata, (c) => c.citationShort);
+  const long = columnCitations(columns, metadata, (c) => c.citationLong);
 
   return {
     slug,

@@ -157,6 +157,24 @@ non-redistributable indicators: OWID does not publish those tables to the catalo
 and advertising one would read as a way around the licence its CSV endpoint
 refuses on purpose.
 
+**The recurring bug shape, written down because it recurred.** Almost every
+defect found in this toolkit was a *confidently wrong answer*, not a failure —
+and almost all of them arrived as HTTP 200. Two generalisations earned their
+keep, and both found further bugs after being named:
+
+1. **The upstream's defaults are the unsafe path.** `csvType` defaults to the
+   whole indicator; no `tab` means map semantics; no `country` means every
+   entity. Every safe request here states a non-default explicitly.
+2. **Nothing that can have many values may be read from the first one.** The
+   first column's citation stood in for a chart drawing on four producers; the
+   first indicator's entity list denied entities a later one carried; the first
+   `max_indicators` decided a licence verdict for all of them. Each was found
+   separately before the shape was named — then naming it turned up two more.
+
+The corollary for the licence gate: **do not assume the upstream enforces it
+consistently.** The same restricted dataset 403s on the chart CSV, 404s in the
+catalog, and returns 200 with 214 KB of data on the indicator endpoint.
+
 Two things follow from *most OWID data being third-party*. Attribution is
 collected across **every** column in the result, not the first — a chart
 stacking UN IGME, WHO and HYDE credits all three, because crediting one would
