@@ -361,6 +361,52 @@ describe('our-world-in-data MCP server', () => {
       expect(result.result.text).toContain('Source: European Commission');
     });
 
+    it('refuses to label an ambiguous column rather than guessing positionally', async () => {
+      // Two columns sharing a shortName identify nothing. Falling back to
+      // position would put one indicator's unit on another's numbers.
+      const ambiguous = {
+        chart: { title: 'Ambiguous' },
+        columns: {
+          'First take': { shortName: 'dup', titleShort: 'First take', unit: 'kg' },
+          'Second take': { shortName: 'dup', titleShort: 'Second take', unit: '%' },
+        },
+      };
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'ambiguous-cols', countries: ['Canada'] },
+        chartResponder({
+          csv: { text: 'entity,code,year,dup,other\nCanada,CAN,2020,1,2' },
+          metadata: { json: ambiguous },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      const [dup] = result.result.structured.columns;
+      expect(dup.key).toBe('dup');
+      // Labelled by its own key, with no unit borrowed from either candidate.
+      expect(dup.title).toBe('dup');
+      expect(dup.unit).toBeNull();
+    });
+
+    it('falls back to position when the header key is unknown, not ambiguous', async () => {
+      const result = await callTool(
+        server,
+        'get_chart_data',
+        { slug: 'positional-cols', countries: ['Canada'] },
+        chartResponder({
+          csv: { text: 'entity,code,year,mystery\nCanada,CAN,2020,7' },
+          metadata: {
+            json: {
+              chart: { title: 'Positional' },
+              columns: { 'Only column': { titleShort: 'Only column', unit: 'kg' } },
+            },
+          },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.columns[0].unit).toBe('kg');
+    });
+
     it('always asks for filtered CSV with short column names', async () => {
       let seen = '';
       await callTool(

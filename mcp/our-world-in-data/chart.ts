@@ -79,21 +79,29 @@ export const dataOutput = z.object({
 export type DataColumn = z.infer<typeof columnSchema>;
 export type ChartData = z.infer<typeof dataOutput>;
 
-/** Join CSV header keys to metadata columns via `shortName`, falling back to position. */
+/**
+ * Join CSV header keys to metadata columns by `shortName`, falling back to
+ * position only when the header carries no usable key.
+ *
+ * An ambiguous key resolves to NOTHING, deliberately. If two columns share a
+ * short name, neither identifies the other, and guessing positionally would
+ * put one indicator's unit and title on another's numbers — the failure this
+ * join exists to avoid. Such a column comes back labelled with its own key and
+ * a null unit: less informative, but not wrong.
+ */
 function joinColumns(keys: string[], metadata: ChartMetadata | undefined): DataColumn[] {
   const columns = Object.values(metadata?.columns ?? {});
-  const byShortName = new Map<string, ChartColumn>();
+  const byShortName = new Map<string, ChartColumn | 'ambiguous'>();
   for (const column of columns) {
-    // A duplicated shortName cannot identify a column; drop both so the join
-    // falls through to position rather than labelling a column wrongly.
     const name = column.shortName;
     if (typeof name !== 'string' || name === '') continue;
-    if (byShortName.has(name)) byShortName.set(name, {});
-    else byShortName.set(name, column);
+    byShortName.set(name, byShortName.has(name) ? 'ambiguous' : column);
   }
   return keys.map((key, index) => {
-    const matched = byShortName.get(key) ?? (keys.length === columns.length ? columns[index] : {});
-    const column = matched ?? {};
+    const matched = byShortName.get(key);
+    // Position is a fallback for an UNKNOWN key, never for an ambiguous one.
+    const positional = keys.length === columns.length ? columns[index] : undefined;
+    const column = matched === 'ambiguous' ? {} : (matched ?? positional ?? {});
     return {
       key,
       title: column.titleShort ?? column.titleLong ?? key,
