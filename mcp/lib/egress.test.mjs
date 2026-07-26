@@ -50,6 +50,39 @@ describe('egress client', () => {
     });
   });
 
+  it('hands back the BODY of a status listed in bodyStatuses', async () => {
+    // Our World in Data explains a licensing refusal in the body of a 403;
+    // flattened to "unexpected status (403)" it is indistinguishable from a
+    // bot block, and the reason is lost.
+    const c = client({ bodyStatuses: [403] });
+    const body = '{"status":403,"error":"non-redistributable data"}';
+    const result = await c.fetch(
+      fakeContext([new Response(body, { status: 403 })]),
+      'https://x.test/forbidden',
+    );
+    expect(result).toMatchObject({ status: 403, body });
+  });
+
+  it('does not cache a pass-through non-2xx', async () => {
+    const c = client({ bodyStatuses: [403] });
+    const context = fakeContext([
+      new Response('first', { status: 403 }),
+      new Response('second', { status: 403 }),
+    ]);
+    await c.fetch(context, 'https://x.test/nocache');
+    const second = await c.fetch(context, 'https://x.test/nocache');
+    expect(second.body).toBe('second');
+    expect(context.calls).toHaveLength(2);
+  });
+
+  it('lets the rate-limit reading win when a status is in both lists', async () => {
+    // 403 as a rate-limit signal must still be retried, not handed back.
+    const c = client({ rateLimitStatuses: [403], bodyStatuses: [403] });
+    await expect(c.fetch(fakeContext([status(403)]), 'https://x.test/both')).rejects.toMatchObject({
+      retryable: true,
+    });
+  });
+
   it('throws non-retryable on an unexpected status', async () => {
     const c = client();
     await expect(c.fetch(fakeContext([status(418)]), 'https://x.test/t')).rejects.toMatchObject({

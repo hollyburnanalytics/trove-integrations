@@ -42,6 +42,7 @@ in their manifest `egress`.
 |---|---|---|---|
 | `sec-edgar` | `get_financials`, `get_xbrl_concept`, `get_filing_document`, `insider_transactions`, `get_fund_holdings`, `get_company`, `search_filings`, `company_filings` | SEC EDGAR (efts/data/www.sec.gov) | — |
 | `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — |
+| `our-world-in-data` | `search_charts`, `search_indicators`, `get_chart_data`, `get_indicator_data`, `get_chart_metadata` | ourworldindata.org + api.ourworldindata.org + search.owid.io | — ⊕|
 | `canada-open-data` | `search_datasets`, `get_dataset`, `query_dataset`, `find_organizations` | open.canada.ca (CKAN — federal + provincial) | — |
 | `openparliament` | `find_mp`, `mp_speeches`, `search_bills` | api.openparliament.ca (Canada Hansard) | — |
 | `dnv-permits` | `search_permits`, `suggest_addresses`, `recent_permits` | app.dnv.org (District of North Vancouver) | — |
@@ -86,6 +87,107 @@ in their manifest `egress`.
 | `cal-com` | `list_event_types`, `get_available_slots`, `list_bookings`, `create_booking`, `cancel_booking` | api.cal.com (Cal.com API v2) | **`CALCOM_API_KEY`** 📅|
 
 ※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted MCP servers are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
+
+⊕ `our-world-in-data` — an **independent client for Our World in Data's public
+APIs**, not affiliated with or endorsed by Our World in Data or Global Change
+Data Lab. The name is used descriptively, to say which API this talks to; no
+OWID logo or branding is used, and nothing here reproduces their Grapher
+software, which is separately licensed and requires written permission to reuse.
+
+**The numbers behind OWID's charts**, keyless: keyword
+search over ~13k charts, semantic (embedding) search over the indicator
+catalogue, tidy `{entity, time, value}` rows either **by chart slug** or **by
+indicator id**, and the metadata behind it — units, definitions, processing
+notes, coverage, update schedule, and full provenance. Read-only; nothing is
+written to the knowledge base.
+
+The two data tools exist because the two lookups are genuinely different.
+`get_chart_data` returns every column a chart plots, filtered through grapher
+(where `time` *snaps* to the nearest available point). `get_indicator_data`
+returns one named variable by id, and its year filter really filters. Most
+indicators appear on **no chart at all**, so without the second tool
+`search_indicators` is a dead end: you find exactly the variable you wanted and
+have no way to read it.
+
+**The redistribution gate is enforced here, not just relayed.** OWID refuses
+restricted data on the chart CSV (403) and omits the table from the catalog
+(404) — but the indicator data endpoint serves it anyway. `get_indicator_data`
+therefore checks `nonRedistributable` on the metadata *before* fetching any
+observations and raises the same refusal, so this toolkit is not the one way
+around a licence its own other tools respect.
+
+**Licensing is an output, not a footnote.** Most OWID data is third-party (WHO,
+UN, World Bank, Defra, IHME…) under the *original provider's* terms, so every
+data result carries `citationLong` — the string naming every upstream producer —
+and `get_chart_metadata` reports each source's licence by name and URL. Where
+OWID is not permitted to redistribute at all, the CSV endpoint answers **403**
+with the reason, which is surfaced verbatim rather than as a generic failure;
+metadata still works for those charts, so the licence remains inspectable.
+
+Four upstream behaviours drove the design, each of which fails **silently with
+an HTTP 200** and is covered by a regression test:
+
+1. **The entity selector splits on `~` — but on `+`/space when no `~` is
+   present.** So `country=United States` returns a header row and no data. A
+   leading `~` is always emitted, and query strings encode spaces as `%20`
+   rather than `+`, so no value ever contains the other separator.
+2. **`csvType=filtered` means "what the chart is showing", and a map-default
+   chart is showing every country** — the entity selection is not part of a
+   map's state. `covid-cases` asked for `World` returns 395 rows for 250
+   countries; `tab=chart` returns 14 for World. Map-*only* charts ignore the
+   selection regardless, so the selection is also enforced server-side after
+   parsing: the tool never presents 250 countries under the one requested.
+3. **The selector is case-sensitive** (`JPN` works, `jpn` returns nothing). A
+   miss is repaired rather than reported: the entity list supplies the canonical
+   spelling and the data is re-fetched once, so `["USA","jpn"]` returns both
+   countries with a note. Anything still unmatched is named, with edit-distance
+   suggestions ("United Kingdon" → "United Kingdom").
+4. **`time` snaps rather than filters** — asked for `1800..1810` on a series
+   starting in 1831, grapher answers with 1831. Rows outside the requested
+   window are flagged instead of being relabelled. Long-run series are indexed
+   in BCE years (`-10000`), which the time parsing and ordering handle as
+   numbers, not text.
+
+Sizing is deliberate: `csvType=full` is the API default and reaches megabytes
+(`co2-by-source` is ~1.4 MB), so every request is `filtered`, rows are capped
+(`max_rows`, default 200), the text mirror spells out at most 60 of them, and an
+oversized body is refused with advice rather than parsed.
+
+**A context window is the wrong place for a dataset**, so every result also
+names where the whole thing lives: `downloads.csv` (all entities and years,
+headers matching the reported `columns[].key`), `.zip`, and — per indicator —
+the **Parquet table in OWID's catalog**, which DuckDB queries in place over HTTP
+(`SELECT country, year, <parquetColumn> FROM '<parquetUrl>'`). `search_indicators`
+passes through the upstream's own runnable SQL. Parquet URLs are suppressed for
+non-redistributable indicators: OWID does not publish those tables to the catalog,
+and advertising one would read as a way around the licence its CSV endpoint
+refuses on purpose.
+
+**The recurring bug shape, written down because it recurred.** Almost every
+defect found in this toolkit was a *confidently wrong answer*, not a failure —
+and almost all of them arrived as HTTP 200. Two generalisations earned their
+keep, and both found further bugs after being named:
+
+1. **The upstream's defaults are the unsafe path.** `csvType` defaults to the
+   whole indicator; no `tab` means map semantics; no `country` means every
+   entity. Every safe request here states a non-default explicitly.
+2. **Nothing that can have many values may be read from the first one.** The
+   first column's citation stood in for a chart drawing on four producers; the
+   first indicator's entity list denied entities a later one carried; the first
+   `max_indicators` decided a licence verdict for all of them. Each was found
+   separately before the shape was named — then naming it turned up two more.
+
+The corollary for the licence gate: **do not assume the upstream enforces it
+consistently.** The same restricted dataset 403s on the chart CSV, 404s in the
+catalog, and returns 200 with 214 KB of data on the indicator endpoint.
+
+Two things follow from *most OWID data being third-party*. Attribution is
+collected across **every** column in the result, not the first — a chart
+stacking UN IGME, WHO and HYDE credits all three, because crediting one would
+put the other two organisations' numbers under the wrong name. And coverage is
+described from the whole selection rather than the truncated page: the CSV is
+entity-major and oldest-first, so reporting the visible slice's last year once
+claimed life expectancy ended in 2018.
 
 ◊ `orgbook-bc` — **verify BC-registered legal entities** in the province's public
 registry (OrgBook BC, the verifiable-credential mirror of the BC Corporate
