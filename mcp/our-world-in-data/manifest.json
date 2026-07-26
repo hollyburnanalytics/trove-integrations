@@ -1,0 +1,12 @@
+{
+  "id": "our-world-in-data",
+  "name": "Our World in Data",
+  "description": "Charts, indicators and the data behind them from Our World in Data — with units, definitions, and per-source licensing. No key required.",
+  "icon": "🌍",
+  "version": "1.0.0",
+  "sdk": "@ontrove/mcp@^0.1",
+  "secrets": [],
+  "egress": ["ourworldindata.org", "api.ourworldindata.org", "search.owid.io"],
+  "scopes": [],
+  "visibility": "public"
+}

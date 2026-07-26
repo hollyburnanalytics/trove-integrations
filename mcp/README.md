@@ -42,6 +42,7 @@ in their manifest `egress`.
 |---|---|---|---|
 | `sec-edgar` | `get_financials`, `get_xbrl_concept`, `get_filing_document`, `insider_transactions`, `get_fund_holdings`, `get_company`, `search_filings`, `company_filings` | SEC EDGAR (efts/data/www.sec.gov) | — |
 | `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — |
+| `our-world-in-data` | `search_charts`, `search_indicators`, `get_chart_data`, `get_chart_metadata` | ourworldindata.org + api.ourworldindata.org + search.owid.io | — ⊕|
 | `canada-open-data` | `search_datasets`, `get_dataset`, `query_dataset`, `find_organizations` | open.canada.ca (CKAN — federal + provincial) | — |
 | `openparliament` | `find_mp`, `mp_speeches`, `search_bills` | api.openparliament.ca (Canada Hansard) | — |
 | `dnv-permits` | `search_permits`, `suggest_addresses`, `recent_permits` | app.dnv.org (District of North Vancouver) | — |
@@ -86,6 +87,50 @@ in their manifest `egress`.
 | `cal-com` | `list_event_types`, `get_available_slots`, `list_bookings`, `create_booking`, `cancel_booking` | api.cal.com (Cal.com API v2) | **`CALCOM_API_KEY`** 📅|
 
 ※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted MCP servers are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
+
+⊕ `our-world-in-data` — **the numbers behind OWID's charts**, keyless: keyword
+search over ~13k charts, semantic (embedding) search over the indicator
+catalogue, tidy `{entity, time, value}` rows for any chart slug, and the
+metadata behind it — units, definitions, processing notes, coverage, update
+schedule, and full provenance. Read-only; nothing is written to the knowledge
+base.
+
+**Licensing is an output, not a footnote.** Most OWID data is third-party (WHO,
+UN, World Bank, Defra, IHME…) under the *original provider's* terms, so every
+data result carries `citationLong` — the string naming every upstream producer —
+and `get_chart_metadata` reports each source's licence by name and URL. Where
+OWID is not permitted to redistribute at all, the CSV endpoint answers **403**
+with the reason, which is surfaced verbatim rather than as a generic failure;
+metadata still works for those charts, so the licence remains inspectable.
+
+Four upstream behaviours drove the design, each of which fails **silently with
+an HTTP 200** and is covered by a regression test:
+
+1. **The entity selector splits on `~` — but on `+`/space when no `~` is
+   present.** So `country=United States` returns a header row and no data. A
+   leading `~` is always emitted, and query strings encode spaces as `%20`
+   rather than `+`, so no value ever contains the other separator.
+2. **`csvType=filtered` means "what the chart is showing", and a map-default
+   chart is showing every country** — the entity selection is not part of a
+   map's state. `covid-cases` asked for `World` returns 395 rows for 250
+   countries; `tab=chart` returns 14 for World. Map-*only* charts ignore the
+   selection regardless, so the selection is also enforced server-side after
+   parsing: the tool never presents 250 countries under the one requested.
+3. **The selector is case-sensitive** (`JPN` works, `jpn` returns nothing). A
+   miss is repaired rather than reported: the entity list supplies the canonical
+   spelling and the data is re-fetched once, so `["USA","jpn"]` returns both
+   countries with a note. Anything still unmatched is named, with edit-distance
+   suggestions ("United Kingdon" → "United Kingdom").
+4. **`time` snaps rather than filters** — asked for `1800..1810` on a series
+   starting in 1831, grapher answers with 1831. Rows outside the requested
+   window are flagged instead of being relabelled. Long-run series are indexed
+   in BCE years (`-10000`), which the time parsing and ordering handle as
+   numbers, not text.
+
+Sizing is deliberate: `csvType=full` is the API default and reaches megabytes
+(`co2-by-source` is ~1.4 MB), so every request is `filtered`, rows are capped
+(`max_rows`, default 200), the text mirror spells out at most 60 of them, and an
+oversized body is refused with advice rather than parsed.
 
 ◊ `orgbook-bc` — **verify BC-registered legal entities** in the province's public
 registry (OrgBook BC, the verifiable-credential mirror of the BC Corporate

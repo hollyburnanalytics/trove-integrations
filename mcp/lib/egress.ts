@@ -50,6 +50,22 @@ export interface EgressClientOptions {
    * add e.g. 403 for hosts that signal rate limits with it.
    */
   rateLimitStatuses?: number[];
+  /**
+   * Extra non-2xx statuses handed back as a {@link FetchResult} **with their
+   * body**, instead of being thrown as an "unexpected status". Default `[]`
+   * (400 and 404 are always handed back, but body-less, as they always were).
+   *
+   * Widen it when the upstream says something WORTH READING in the body of a
+   * status this client would otherwise flatten. Our World in Data answers a
+   * request for a chart it may not redistribute with a 403 whose body names the
+   * reason — the licence, not a fault of ours. Thrown as "unexpected status
+   * (403)", that becomes indistinguishable from a bot block, and the one thing
+   * the caller needed to know is gone.
+   *
+   * Statuses listed here are still NOT retried: this is about preserving the
+   * explanation, not about treating the status as success.
+   */
+  bodyStatuses?: number[];
   /** Exponential-backoff base delay in ms (kept small so tests stay fast). */
   backoffBaseMs?: number;
   /**
@@ -184,6 +200,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     service,
     headers = {},
     rateLimitStatuses = [429],
+    bodyStatuses = [],
     backoffBaseMs = 50,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxQueueMs = DEFAULT_MAX_QUEUE_MS,
@@ -192,6 +209,10 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
   } = options;
   const throttleMs = inTestRuntime && !options.forceThrottleInTests ? 0 : options.throttleMs;
   const limitStatuses = new Set([429, ...rateLimitStatuses]);
+  // A status cannot both be retried as a rate limit and handed back with its
+  // body; the rate-limit reading wins, so a host that signals limits with 403
+  // keeps its retry behaviour even if 403 is also listed here.
+  const bodyPassThrough = new Set(bodyStatuses.filter((s) => !limitStatuses.has(s)));
   const cache = createResponseCache(cacheOptions);
 
   // --- throttle --------------------------------------------------------------
@@ -275,7 +296,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     if (res.status === 400 || res.status === 404) {
       return { result: { status: res.status, body: '', url: res.url, redirected: res.redirected } };
     }
-    if (!res.ok) {
+    if (!res.ok && !bodyPassThrough.has(res.status)) {
       throw new ToolError(`${service} returned an unexpected status (${res.status}).`, {
         retryable: false,
       });
