@@ -88,7 +88,13 @@ in their manifest `egress`.
 
 ※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted MCP servers are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
 
-⊕ `our-world-in-data` — **the numbers behind OWID's charts**, keyless: keyword
+⊕ `our-world-in-data` — an **independent client for Our World in Data's public
+APIs**, not affiliated with or endorsed by Our World in Data or Global Change
+Data Lab. The name is used descriptively, to say which API this talks to; no
+OWID logo or branding is used, and nothing here reproduces their Grapher
+software, which is separately licensed and requires written permission to reuse.
+
+**The numbers behind OWID's charts**, keyless: keyword
 search over ~13k charts, semantic (embedding) search over the indicator
 catalogue, tidy `{entity, time, value}` rows either **by chart slug** or **by
 indicator id**, and the metadata behind it — units, definitions, processing
