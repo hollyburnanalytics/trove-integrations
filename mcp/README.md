@@ -41,7 +41,7 @@ in their manifest `egress`.
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `sec-edgar` | `get_financials`, `get_xbrl_concept`, `get_filing_document`, `insider_transactions`, `get_fund_holdings`, `get_company`, `search_filings`, `company_filings` | SEC EDGAR (efts/data/www.sec.gov) | — |
-| `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — |
+| `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — 🌍|
 | `our-world-in-data` | `search_charts`, `search_indicators`, `get_chart_data`, `get_indicator_data`, `get_chart_metadata` | ourworldindata.org + api.ourworldindata.org + search.owid.io | — ⊕|
 | `canada-open-data` | `search_datasets`, `get_dataset`, `query_dataset`, `find_organizations` | open.canada.ca (CKAN — federal + provincial) | — |
 | `openparliament` | `find_mp`, `mp_speeches`, `search_bills` | api.openparliament.ca (Canada Hansard) | — |
@@ -87,6 +87,39 @@ in their manifest `egress`.
 | `cal-com` | `list_event_types`, `get_available_slots`, `list_bookings`, `create_booking`, `cancel_booking` | api.cal.com (Cal.com API v2) | **`CALCOM_API_KEY`** 📅|
 
 ※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted MCP servers are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
+
+🌍 `world-bank` — **global development indicators**, keyless. The same
+silent-answer failures `fred` was audited for were found here and fixed, which
+is the argument for auditing the rest of the fleet against the two rules at the
+end of this file rather than one toolkit at a time:
+
+- **The page was reported as the answer.** `per_page` was pinned at 120 with no
+  `limit` in the schema at all, and the API's own `total`/`pages` were
+  discarded. `country: "all"` for one indicator is ~17,500 rows across 265
+  entities; the tool returned 120 — roughly **two** entities, starting at
+  "Africa Eastern and Southern" — and reported `count: 120` with no other
+  signal. Now `limit`/`page` are inputs and `total`/`truncated`/`nextPage` come
+  back with every result.
+- **Rows from `country: "all"` were unlabelled.** The mapping dropped each
+  row's country, so a multi-entity pull returned the same year many times over
+  with different values and nothing saying whose. The country now rides on each
+  row whenever a response spans more than one.
+- **A one-sided date range was accepted and ignored.** `if (start && end)` meant
+  `start: 2010` alone was validated, dropped, and answered with the most recent
+  120 points as though they were the requested range. The API rejects an
+  open-ended `date=2010:`, so a missing bound is filled with a sentinel year
+  instead; a reversed range is now named rather than passed on.
+- **A transient upstream blip was reported as the caller's fault.** The API
+  intermittently serves an HTML error page under an HTTP 200 (observed live,
+  succeeding on retry); the non-JSON body fell through to "check the country and
+  indicator codes", **non-retryable** — sending callers to fix codes that were
+  correct. Unparseable JSON is now retryable, distinct from a genuine
+  `[{message:[…]}]` rejection.
+
+`search_indicators` matches client-side over one fetched page of the WDI
+catalogue (~1,500 of 2,000 today). It now compares what it fetched against the
+API's `total` and says when the page didn't hold everything, so the day the
+catalogue outgrows the fetch the search stops quietly losing its tail.
 
 📈 `fred` — **U.S. economic time-series from the St. Louis Fed**, shaped around
 the fact that every way this connector can be wrong is a *confidently wrong
