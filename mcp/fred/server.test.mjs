@@ -244,7 +244,11 @@ describe('fred MCP server', () => {
       const result = await callTool(
         server,
         'search_series',
-        { text: 'unemployment rate', frequency: 'BW' },
+        // Deliberately carries stopwords ("what is the"), so that gating the
+        // retry on scanned-vs-hits is actually exercised: gate it on hits and
+        // this query WOULD be rewritten and re-sent. A stopword-free query
+        // can't tell the two conditions apart.
+        { text: 'what is the unemployment rate', frequency: 'BW' },
         withSecret('k', (url) => {
           if (!url.includes('/internal/secret')) calls.push(url);
           return { json: { count: 500, seriess: [CPI_SA] } };
@@ -256,6 +260,7 @@ describe('fred MCP server', () => {
       expect(result.result.text).not.toMatch(/keyword-based/);
       // No stopword retry: the query was never the problem.
       expect(calls).toHaveLength(1);
+      expect(result.result.structured.retriedAs).toBeNull();
     });
 
     it('reports the retry in structured output even when it also failed', async () => {
