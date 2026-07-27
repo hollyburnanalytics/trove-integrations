@@ -60,7 +60,7 @@ in their manifest `egress`.
 ### Economy & health
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
-| `fred` | `search_series`, `get_observations` | api.stlouisfed.org (St. Louis Fed) | **`FRED_API_KEY`** |
+| `fred` | `search_series`, `get_observations` | api.stlouisfed.org (St. Louis Fed) | **`FRED_API_KEY`** 📈|
 | `openfda` | `search_drug_labels`, `search_recalls` | api.fda.gov | — |
 
 ### Business ops
@@ -87,6 +87,48 @@ in their manifest `egress`.
 | `cal-com` | `list_event_types`, `get_available_slots`, `list_bookings`, `create_booking`, `cancel_booking` | api.cal.com (Cal.com API v2) | **`CALCOM_API_KEY`** 📅|
 
 ※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted MCP servers are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
+
+📈 `fred` — **U.S. economic time-series from the St. Louis Fed**, shaped around
+the fact that every way this connector can be wrong is a *confidently wrong
+number*, not an error. Three upstream behaviours drove the design, each covered
+by a regression test:
+
+1. **`limit` clips the range with no signal.** Asking `LNS12300060` for
+   1985→2026 at `limit=100` returns 100 observations ending in April 1993, and
+   nothing in the response distinguishes that from the series ending there.
+   FRED's own top-level `count` is the size of the matching set *before*
+   `limit`/`offset`, so every result now reports `availableInRange` next to
+   `returned`, plus `truncated` and a `nextOffset` — and the prose mirror says
+   `TRUNCATED: 100 of 498 … 398 more not returned`, because some hosts render
+   only the text.
+2. **Seasonal adjustment is the only thing separating many hits.** `CPIAUCSL`
+   and `CPIAUCNS` share a title, units *and* frequency; so do `CPILFESL`/
+   `CPILFENS` and `CSUSHPISA`/`CSUSHPINSA`. Picking by ID-suffix convention is
+   tribal knowledge, and picking wrong yields month-over-month "inflation" that
+   is mostly seasonal noise. `seasonal_adjustment_short` is mapped onto every
+   hit, spelled out in the prose, and offered as a filter (where `SA` also keeps
+   `SAAR` — FRED's own `filter_variable` would drop it).
+3. **Ranking is literal.** `search_rank` answers "inflation" with four
+   frequencies of the same inflation-*indexed* Treasury yield and no CPI in the
+   top ten. `orderBy` is exposed (`popularity` is the better prior for a broad
+   concept) and `popularity` rides along on every hit so a caller can judge the
+   ranking rather than trust it.
+
+The other half is **pushing transformation upstream**. `units` (FRED's nine
+transforms) and `frequency` + `aggregation_method` (server-side downsampling)
+are free at the API and expensive here — rendering `OPHNFB` as a continuously
+compounded annual rate otherwise means ~300 logarithms computed in-context, none
+of them auditable. `frequency` only ever aggregates *down*, so an upsampling
+request (`UNRATE` → daily) is refused by name before any data call, and
+`get_observations` takes 1–5 ids per call so an overlay or a spread is one round
+trip. Each result carries the series' title, units, applied transform and
+seasonal adjustment, so a chart axis can be labelled from a single response;
+an empty range answers with the series' actual coverage rather than a bare zero.
+Sizing is explicit rather than silent: `format: "columnar"` returns parallel
+`dates[]`/`values[]` (dates are **listed, not derived** — FRED's "Daily" series
+are business-daily, so a date axis reconstructed from start+frequency would
+mislabel every point after the first weekend), and a pull over 2,000 points is
+refused with the limit to use instead of being quietly shrunk.
 
 ⊕ `our-world-in-data` — an **independent client for Our World in Data's public
 APIs**, not affiliated with or endorsed by Our World in Data or Global Change
