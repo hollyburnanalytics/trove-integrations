@@ -460,6 +460,50 @@ describe('world-bank MCP server', () => {
       expect(result.result.text).toContain('2020: n/a');
     });
 
+    it('reassembles the whole series by following nextPage', async () => {
+      const total = 66;
+      const all = Array.from({ length: total }, (_, index) => ({
+        indicator: { id: 'NY.GDP.MKTP.CD', value: 'GDP (current US$)' },
+        country: { id: 'CA', value: 'Canada' },
+        date: String(2025 - index),
+        value: index,
+      }));
+      const years = [];
+      let page = 1;
+      let declaredTotal;
+      let pages = 0;
+      for (;;) {
+        const result = await callTool(
+          server,
+          'get_indicator',
+          { country: 'CA', indicator: 'NY.GDP.MKTP.CD', limit: 25, page },
+          (url) => {
+            const parameters = new URL(url).searchParams;
+            const p = Number(parameters.get('page'));
+            const per = Number(parameters.get('per_page'));
+            return {
+              json: [
+                { page: p, pages: Math.ceil(total / per), per_page: per, total },
+                all.slice((p - 1) * per, p * per),
+              ],
+            };
+          },
+        );
+        expect(result.ok).toBe(true);
+        const structured = result.result.structured;
+        declaredTotal ??= structured.total;
+        years.push(...structured.observations.map((o) => o.year));
+        pages += 1;
+        if (!structured.truncated || !Number.isInteger(structured.nextPage)) break;
+        page = structured.nextPage;
+        expect(pages).toBeLessThan(10);
+      }
+      expect(declaredTotal).toBe(total);
+      expect(years).toHaveLength(total);
+      expect(new Set(years).size).toBe(total);
+      expect(pages).toBe(3);
+    });
+
     it('returns a clean empty result when there are no observations', async () => {
       const result = await callTool(
         server,

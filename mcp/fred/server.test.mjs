@@ -93,6 +93,35 @@ function pageOf(returned, total, startYear = 1985) {
   };
 }
 
+/**
+ * Serve a synthetic `total`-point monthly series in pages, honouring the
+ * `offset`/`limit` the server actually sends.
+ *
+ * When `aggregated`, it reproduces FRED's measured misbehaviour: `count` is the
+ * true total only if the whole set fit strictly inside the requested limit, and
+ * otherwise reports a bogus pre-aggregation number. Following the cursor must
+ * still reassemble the series exactly.
+ */
+function pagedSeries(total, { aggregated = false, preAggregationCount = 99_999 } = {}) {
+  const all = Array.from({ length: total }, (_, index) => ({
+    date: `${2000 + Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}-01`,
+    value: String(index),
+  }));
+  return (url) => {
+    const parameters = new URL(url).searchParams;
+    const offset = Number(parameters.get('offset') ?? 0);
+    const limit = Number(parameters.get('limit') ?? 24);
+    const slice = all.slice(offset, offset + limit);
+    const fits = slice.length < limit;
+    return {
+      json: {
+        count: aggregated && !fits ? preAggregationCount : total,
+        observations: slice,
+      },
+    };
+  };
+}
+
 describe('fred MCP server', () => {
   it('lists the two tools', () => {
     expect(server.tools.map((tool) => tool.name).toSorted()).toEqual([
@@ -700,6 +729,62 @@ describe('fred MCP server', () => {
       const [block] = result.result.structured.series;
       expect(block.frequency).toBe('a (avg)');
       expect(block.nativeFrequency).toBe('Daily');
+    });
+
+    // The truncation metadata makes a promise: follow nextOffset and you get
+    // the whole series. These assert the promise end to end, since a cursor
+    // that overlaps, gaps, or never terminates is its own silent-wrong answer.
+    it('reassembles the whole series by following nextOffset', async () => {
+      const dates = [];
+      let offset = 0;
+      let declaredTotal;
+      let pages = 0;
+      for (;;) {
+        const result = await callTool(
+          server,
+          'get_observations',
+          { series_ids: ['UNRATE'], limit: 100, offset, sort: 'asc' },
+          fredRoutes({ observations: pagedSeries(498) }),
+        );
+        expect(result.ok).toBe(true);
+        const block = result.result.structured.series[0];
+        declaredTotal ??= block.availableInRange;
+        dates.push(...block.observations.map((o) => o.date));
+        pages += 1;
+        if (!block.truncated || !Number.isInteger(block.nextOffset)) break;
+        offset = block.nextOffset;
+        expect(pages).toBeLessThan(20);
+      }
+      expect(declaredTotal).toBe(498);
+      expect(dates).toHaveLength(498);
+      expect(new Set(dates).size).toBe(498);
+      expect(dates.every((d, index) => index === 0 || d > dates[index - 1])).toBe(true);
+      expect(pages).toBe(5);
+    });
+
+    it('reassembles an aggregated series despite FRED misreporting count', async () => {
+      const dates = [];
+      let offset = 0;
+      let pages = 0;
+      for (;;) {
+        const result = await callTool(
+          server,
+          'get_observations',
+          { series_ids: ['UNRATE'], frequency: 'q', limit: 25, offset, sort: 'asc' },
+          fredRoutes({ observations: pagedSeries(60, { aggregated: true }) }),
+        );
+        const block = result.result.structured.series[0];
+        // The bogus pre-aggregation count must never reach the caller.
+        expect(block.availableInRange).not.toBe(99_999);
+        dates.push(...block.observations.map((o) => o.date));
+        pages += 1;
+        if (!block.truncated || !Number.isInteger(block.nextOffset)) break;
+        offset = block.nextOffset;
+        expect(pages).toBeLessThan(10);
+      }
+      expect(dates).toHaveLength(60);
+      expect(new Set(dates).size).toBe(60);
+      expect(pages).toBe(3);
     });
 
     it('rejects a malformed start date before fetching', async () => {
