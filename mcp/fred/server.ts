@@ -87,7 +87,11 @@ export default defineMcpServer({
         orderBy: z.string(),
         retriedAs: z.string().nullable(),
         count: z.number(),
-        totalMatches: z.number(),
+        /** Null when a filter is active — the filtered total isn't knowable. */
+        totalMatches: z.number().nullable(),
+        textMatches: z.number(),
+        scanned: z.number(),
+        filtered: z.boolean(),
         series: z.array(seriesSchema),
       }),
       async handler(args, ctx) {
@@ -179,6 +183,7 @@ export default defineMcpServer({
             unitsTransform: z.string(),
             unitsTransformLabel: z.string(),
             frequency: z.string().nullable(),
+            nativeFrequency: z.string().nullable(),
             seasonalAdjustment: z.string().nullable(),
             lastUpdated: z.string().nullable(),
             coverageStart: z.string().nullable(),
@@ -193,6 +198,7 @@ export default defineMcpServer({
             dates: z.array(z.string()).optional(),
             values: z.array(z.number().nullable()).optional(),
             note: z.string().nullable(),
+            error: z.string().nullable(),
           }),
         ),
       }),

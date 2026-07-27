@@ -55,6 +55,8 @@ export interface SeriesBlock {
   unitsTransform: string;
   unitsTransformLabel: string;
   frequency: string | null;
+  /** The series' own frequency, kept visible when `frequency` aggregates it. */
+  nativeFrequency: string | null;
   seasonalAdjustment: string | null;
   lastUpdated: string | null;
   coverageStart: string | null;
@@ -68,6 +70,8 @@ export interface SeriesBlock {
   dates?: string[];
   values?: (number | null)[];
   note: string | null;
+  /** Why this one series failed, when the others in the same call succeeded. */
+  error: string | null;
 }
 
 /** Build the `/series/observations` query for one series id. */
@@ -128,6 +132,10 @@ function describe(seriesId: string, meta: SeriesMeta | null, args: ObservationAr
     frequency: args.frequency
       ? `${args.frequency} (${args.aggregationMethod})`
       : (meta?.frequency ?? null),
+    // Aggregation replaces `frequency`, so the series' own cadence is kept
+    // separately — otherwise a daily series resampled annually is
+    // indistinguishable from one that was annual to begin with.
+    nativeFrequency: meta?.frequency ?? null,
     seasonalAdjustment: meta?.seasonalAdjustment ?? null,
     lastUpdated: meta?.lastUpdated ?? null,
     coverageStart: meta?.observationStart ?? null,
@@ -207,6 +215,26 @@ async function fetchOne(
     ...size,
     ...data,
     note: size.returned === 0 ? emptyNote(seriesId, meta, args) : null,
+    error: null,
+  };
+}
+
+/** A placeholder block for a series that failed while its siblings succeeded. */
+function failedBlock(
+  seriesId: string,
+  meta: SeriesMeta | null,
+  args: ObservationArgs,
+  message: string,
+): SeriesBlock {
+  return {
+    ...describe(seriesId, meta, args),
+    returned: 0,
+    availableInRange: null,
+    truncated: false,
+    nextOffset: null,
+    ...(args.format === 'columnar' ? { dates: [], values: [] } : { observations: [] }),
+    note: null,
+    error: message,
   };
 }
 
@@ -226,6 +254,10 @@ function renderHeader(block: SeriesBlock): string[] {
 /** Render one series block: header, sizing/truncation state, then a preview. */
 function renderBlock(block: SeriesBlock, args: ObservationArgs, previewRows: number): string {
   const lines = renderHeader(block);
+  if (block.error) {
+    lines.push(`  FAILED: ${block.error}`);
+    return lines.join('\n');
+  }
   if (block.note) {
     lines.push(`  ${block.note}`);
     return lines.join('\n');
@@ -273,9 +305,25 @@ export async function runObservations(
     const conflicts = metas.map((m) => frequencyConflict(m, args.frequency ?? '')).filter(Boolean);
     if (conflicts.length > 0) throw new ToolError(conflicts.join(' '), { retryable: false });
   }
+  // One bad id must not discard four good series. Each series is isolated; a
+  // failure becomes a block carrying its reason. Only a call where EVERY series
+  // failed throws, so a single-id call still errors exactly as it used to.
+  const thrown: unknown[] = Array.from({ length: args.seriesIds.length });
   const blocks = await Promise.all(
-    args.seriesIds.map((id, i) => fetchOne(id, metas[i] ?? null, args, ctx)),
+    args.seriesIds.map(async (id, i) => {
+      try {
+        return await fetchOne(id, metas[i] ?? null, args, ctx);
+      } catch (error) {
+        thrown[i] = error;
+        const message = error instanceof ToolError ? error.message : `${id} could not be fetched.`;
+        ctx.log('series failed', { id, message });
+        return failedBlock(id, metas[i] ?? null, args, message);
+      }
+    }),
   );
+  // Rethrow the original rather than a summary, so the SDK's retryability and
+  // error code survive — a 500 on the only requested series is still retryable.
+  if (blocks.every((b) => b.error)) throw thrown.find((e) => e !== undefined);
   const previewRows = blocks.length > 1 ? 6 : 12;
   const text = blocks.map((b) => renderBlock(b, args, previewRows)).join('\n\n');
   return {

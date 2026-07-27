@@ -188,6 +188,58 @@ describe('fred MCP server', () => {
       expect(result.result.structured.series.map((hit) => hit.id)).toEqual(['GDP']);
     });
 
+    it('never passes off the unfiltered total as the filtered one', async () => {
+      const mixed = Array.from({ length: 40 }, (_, index) => ({
+        ...CPI_SA,
+        id: `S${index}`,
+        seasonal_adjustment_short: index < 3 ? 'NSA' : 'SA',
+      }));
+      const result = await callTool(
+        server,
+        'search_series',
+        { text: 'cpi', seasonalAdjustment: 'NSA', limit: 10 },
+        withSecret('k', { json: { count: 1959, seriess: mixed } }),
+      );
+      const structured = result.result.structured;
+      expect(structured.count).toBe(3);
+      // 1959 is FRED's count for the TEXT; it says nothing about the NSA subset.
+      expect(structured.totalMatches).toBeNull();
+      expect(structured.textMatches).toBe(1959);
+      expect(structured.scanned).toBe(40);
+      expect(result.result.text).toContain('filtered from 40 scanned of 1959 text matches');
+      expect(result.result.text).not.toContain('3 of 1959');
+    });
+
+    it('blames the filter, not the query, when filters empty a real match', async () => {
+      const calls = [];
+      const result = await callTool(
+        server,
+        'search_series',
+        { text: 'unemployment rate', frequency: 'BW' },
+        withSecret('k', (url) => {
+          if (!url.includes('/internal/secret')) calls.push(url);
+          return { json: { count: 500, seriess: [CPI_SA] } };
+        }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.count).toBe(0);
+      expect(result.result.text).toContain('frequency=BW');
+      expect(result.result.text).not.toMatch(/keyword-based/);
+      // No stopword retry: the query was never the problem.
+      expect(calls).toHaveLength(1);
+    });
+
+    it('reports the retry in structured output even when it also failed', async () => {
+      const result = await callTool(
+        server,
+        'search_series',
+        { text: 'how much do zzz cost' },
+        withSecret('k', { json: { count: 0, seriess: [] } }),
+      );
+      expect(result.result.structured.retriedAs).toBe('zzz cost');
+      expect(result.result.text).toContain('also tried "zzz cost"');
+    });
+
     it('retries a natural-language question with the stopwords stripped', async () => {
       const seen = [];
       const result = await callTool(
@@ -595,6 +647,59 @@ describe('fred MCP server', () => {
       expect(result.ok).toBe(false);
       expect(result.retryable).toBe(false);
       expect(result.error).toContain('Bad series id.');
+    });
+
+    it('keeps the good series when one id in the batch fails', async () => {
+      const result = await callTool(
+        server,
+        'get_observations',
+        { series_ids: ['UNRATE', 'BOGUSID'], limit: 3 },
+        fredRoutes({
+          observations: (url) =>
+            url.includes('BOGUSID')
+              ? { status: 400, json: { error_message: 'The series does not exist.' } }
+              : { json: OBSERVATIONS_BODY },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      const [good, bad] = result.result.structured.series;
+      expect(good.returned).toBe(3);
+      expect(good.error).toBeNull();
+      expect(bad.id).toBe('BOGUSID');
+      expect(bad.error).toContain('does not exist');
+      expect(result.result.text).toContain('FAILED');
+    });
+
+    it('still throws when every series in the batch fails', async () => {
+      const result = await callTool(
+        server,
+        'get_observations',
+        { series_ids: ['NOPE1', 'NOPE2'] },
+        fredRoutes({
+          meta: { seriess: [] },
+          observations: () => ({ status: 400, json: { error_message: 'No such series.' } }),
+        }),
+      );
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(false);
+    });
+
+    it('keeps the native frequency visible when aggregating', async () => {
+      const result = await callTool(
+        server,
+        'get_observations',
+        { series_ids: ['DGS10'], frequency: 'a' },
+        fredRoutes({
+          meta: {
+            seriess: [
+              { ...SERIES_META.seriess[0], id: 'DGS10', frequency: 'Daily', frequency_short: 'D' },
+            ],
+          },
+        }),
+      );
+      const [block] = result.result.structured.series;
+      expect(block.frequency).toBe('a (avg)');
+      expect(block.nativeFrequency).toBe('Daily');
     });
 
     it('rejects a malformed start date before fetching', async () => {

@@ -92,28 +92,43 @@ function matchesFilters(s: SeriesMeta, args: SearchArgs): boolean {
   return true;
 }
 
-/** One page of FRED search results plus the size of the full matching set. */
+/** One page of FRED search results, with enough context to describe it honestly. */
 interface SearchPage {
   hits: SeriesMeta[];
-  totalMatches: number;
+  /** How many series this page pulled from FRED, before the local filters. */
+  scanned: number;
+  /** FRED's total for the search TEXT — not for the filtered set. */
+  textMatches: number;
 }
+
+/** Is a client-side filter in play for this call? */
+const isFiltering = (args: SearchArgs) => Boolean(args.seasonalAdjustment || args.frequency);
 
 /** Query FRED once, then apply the client-side filters and trim to `limit`. */
 async function searchOnce(text: string, args: SearchArgs, ctx: ToolContext): Promise<SearchPage> {
-  const filtering = Boolean(args.seasonalAdjustment || args.frequency);
   // FRED's `filter_variable` accepts one filter at a time, so both are applied
   // here instead; over-fetch so filtering still fills the requested page.
-  const fetchLimit = filtering ? Math.min(args.limit * 8, 1000) : args.limit;
+  const fetchLimit = isFiltering(args) ? Math.min(args.limit * 8, 1000) : args.limit;
   const params = new URLSearchParams({ search_text: text, limit: String(fetchLimit) });
   if (args.orderBy !== 'search_rank') params.set('order_by', args.orderBy);
   const body = await getJson('/series/search', params, ctx);
   const raw = Array.isArray(body.seriess) ? body.seriess : [];
   const all = raw.map((s) => mapSeries(s));
-  const hits = all.filter((s) => matchesFilters(s, args)).slice(0, args.limit);
   return {
-    hits,
-    totalMatches: typeof body.count === 'number' ? body.count : all.length,
+    hits: all.filter((s) => matchesFilters(s, args)).slice(0, args.limit),
+    scanned: all.length,
+    textMatches: typeof body.count === 'number' ? body.count : all.length,
   };
+}
+
+/** Name the filters in play, for messages that need to explain a shortfall. */
+function filterPhrase(args: SearchArgs): string {
+  return [
+    args.seasonalAdjustment ? `seasonalAdjustment=${args.seasonalAdjustment}` : '',
+    args.frequency ? `frequency=${args.frequency}` : '',
+  ]
+    .filter(Boolean)
+    .join(' + ');
 }
 
 /** Render one hit, with the seasonal adjustment that distinguishes it. */
@@ -124,13 +139,26 @@ function renderHit(s: SeriesMeta): string {
   return `  ${s.id} — ${s.title ?? ''}${facts.length > 0 ? ` (${facts.join(', ')})` : ''}${coverage}`;
 }
 
-/** The advice attached to a search that matched nothing. */
+/** The advice attached to a search that matched nothing on the TEXT. */
 function noMatchText(original: string, retried: string | null): string {
   const tried = retried ? ` (also tried "${retried}")` : '';
   return (
     `No FRED series matching "${original}"${tried}. FRED's index is keyword-based, not ` +
     'natural language — search the name of the measure ("house price index", ' +
     '"unemployment rate", "10-year treasury"), or a known series id.'
+  );
+}
+
+/**
+ * The advice when the TEXT matched but the filters removed everything. A
+ * different failure with a different fix — telling a caller whose query was
+ * fine to rewrite it sends them to repair the one part that worked.
+ */
+function filteredOutText(args: SearchArgs, page: SearchPage): string {
+  return (
+    `"${args.text}" matched ${page.textMatches} FRED series, but none of the ` +
+    `${page.scanned} highest-ranked survived ${filterPhrase(args)}. Drop or widen the ` +
+    'filter, or raise limit to scan deeper.'
   );
 }
 
@@ -148,33 +176,52 @@ export async function runSearch(
 ): Promise<{ text: string; structured: unknown }> {
   let page = await searchOnce(args.text, args, ctx);
   let retried: string | null = null;
-  if (page.hits.length === 0) {
+  // Retry only when the TEXT found nothing. A page that matched and was then
+  // emptied by the filters is a filter problem; rewriting the query can't fix
+  // it, and doing so would report the wrong cause.
+  if (page.scanned === 0) {
     const stripped = keywordsOnly(args.text);
     if (stripped && stripped !== args.text.toLowerCase().trim()) {
       retried = stripped;
       page = await searchOnce(stripped, args, ctx);
     }
   }
+  const filtering = isFiltering(args);
   const base = {
     text: args.text,
     orderBy: args.orderBy,
-    retriedAs: page.hits.length > 0 ? retried : null,
+    // Reported whenever a retry happened, not only when it worked — otherwise
+    // the structured result contradicts the prose, which says "also tried …".
+    retriedAs: retried,
+    textMatches: page.textMatches,
+    scanned: page.scanned,
+    filtered: filtering,
   };
   if (page.hits.length === 0) {
+    const emptied = filtering && page.scanned > 0;
     return {
-      text: noMatchText(args.text, retried),
-      structured: { ...base, count: 0, totalMatches: 0, series: [] },
+      text: emptied ? filteredOutText(args, page) : noMatchText(args.text, retried),
+      structured: { ...base, count: 0, totalMatches: filtering ? null : 0, series: [] },
     };
   }
   const via = retried ? ` (matched on "${retried}")` : '';
-  const more = page.totalMatches > page.hits.length ? ` of ${page.totalMatches} matches` : '';
-  const header = `${page.hits.length}${more} FRED series for "${args.text}"${via}, by ${args.orderBy}:`;
+  // With a filter active, FRED's text-match total is NOT the size of the
+  // filtered set — that number is unknown, so it is never used as a
+  // denominator. Say what was actually scanned instead.
+  const scope = filtering
+    ? ` (filtered from ${page.scanned} scanned of ${page.textMatches} text matches)`
+    : page.textMatches > page.hits.length
+      ? ` of ${page.textMatches} matches`
+      : '';
+  const header = `${page.hits.length}${scope} FRED series for "${args.text}"${via}, by ${args.orderBy}:`;
   return {
     text: `${header}\n${page.hits.map((s) => renderHit(s)).join('\n')}`,
     structured: {
       ...base,
       count: page.hits.length,
-      totalMatches: page.totalMatches,
+      // Null when filtering: the filtered total genuinely isn't knowable from
+      // one page, and guessing it is what `count` does wrong upstream.
+      totalMatches: filtering ? null : page.textMatches,
       series: page.hits,
     },
   };

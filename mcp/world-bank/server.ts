@@ -315,7 +315,10 @@ export default defineMcpServer({
         // `country: "all"` answer with ~2 of 265 entities and call it complete.
         const total = metaNumber(meta, 'total', observations.length);
         const pages = metaNumber(meta, 'pages', 1);
-        const truncated = page < pages;
+        // Derived from rows consumed rather than `page < pages`, so a missing or
+        // stale `pages` can't make a partial result claim to be complete.
+        const consumed = (page - 1) * limit + observations.length;
+        const truncated = consumed < total;
         const sizing = {
           total,
           truncated,
@@ -343,7 +346,12 @@ export default defineMcpServer({
           .slice(0, 12)
           .map((o) => `  ${o.country ? `${o.country}, ` : ''}${o.year}: ${o.value ?? 'n/a'}`)
           .join('\n');
-        const scope = countries.length > 1 ? ` across ${countries.length} entities` : '';
+        // `countries` is what this PAGE contained, not what the indicator covers —
+        // say "on this page" when there is more, so it can't read as the total.
+        const scope =
+          countries.length > 1
+            ? ` across ${countries.length} entities${truncated ? ' on this page' : ''}`
+            : '';
         const header = `${indicatorName ?? indicator} — ${country}: ${observations.length} of ${total} point(s)${scope}`;
         const more = truncated
           ? `\n  TRUNCATED: page ${page} of ${pages}. Re-call with page=${page + 1}, ` +

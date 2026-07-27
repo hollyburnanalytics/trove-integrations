@@ -338,6 +338,36 @@ describe('world-bank MCP server', () => {
       expect(result.result.text).toContain('TRUNCATED');
     });
 
+    it('derives truncation from rows consumed, not a trusted `pages` field', async () => {
+      // `pages` absent/stale must not let a partial result claim completeness.
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'all', indicator: 'NY.GDP.MKTP.CD' },
+        { json: [{ page: 1, total: 17_490 }, JSON.parse(SERIES)[1]] },
+      );
+      expect(result.result.structured.truncated).toBe(true);
+      expect(result.result.structured.nextPage).toBe(2);
+    });
+
+    it('marks a multi-entity count as page-scoped when more remains', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'all', indicator: 'NY.GDP.MKTP.CD' },
+        {
+          json: [
+            { page: 1, pages: 146, total: 17_490 },
+            [
+              { country: { id: 'CA', value: 'Canada' }, date: '2022', value: 1 },
+              { country: { id: 'US', value: 'United States' }, date: '2022', value: 2 },
+            ],
+          ],
+        },
+      );
+      expect(result.result.text).toContain('across 2 entities on this page');
+    });
+
     it('does not flag a complete result as truncated', async () => {
       const result = await callTool(
         server,
