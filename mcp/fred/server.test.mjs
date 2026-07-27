@@ -377,7 +377,8 @@ describe('fred MCP server', () => {
       expect(requested).toContain('aggregation_method=eop');
       expect(requested).toContain('offset=10');
       expect(requested).toContain('sort_order=asc');
-      expect(requested).toContain('limit=50');
+      // limit+1 because this call aggregates — see the `count` tests above.
+      expect(requested).toContain('limit=51');
       expect(requested).toContain('observation_start=2020-01-01');
       expect(requested).toContain('observation_end=2021-01-01');
     });
@@ -416,6 +417,67 @@ describe('fred MCP server', () => {
       expect(result.error).toContain('monthly');
       expect(result.error).toContain('daily');
       expect(fetchedObservations).toBe(false);
+    });
+
+    // Measured against the live API: with `frequency` set, FRED reports the
+    // UN-aggregated row count unless the whole aggregated set fits strictly
+    // inside `limit`. 5y of daily DGS10 asked for monthly answers count=1305
+    // (not 60) at limit=10 AND at limit=60, and only answers 60 at limit=61.
+    // So `count` is wrong exactly when the answer is truncated. These three
+    // tests pin that we never repeat it back as `availableInRange`.
+    it('ignores FRED count when aggregating and the page is full', async () => {
+      const result = await callTool(
+        server,
+        'get_observations',
+        { series_ids: ['DGS10'], frequency: 'm', limit: 10, sort: 'asc' },
+        fredRoutes({
+          meta: { seriess: [{ ...SERIES_META.seriess[0], id: 'DGS10', frequency_short: 'D' }] },
+          // 11 rows come back because the server asked for limit+1.
+          observations: pageOf(11, 1305),
+        }),
+      );
+      const [block] = result.result.structured.series;
+      expect(block.returned).toBe(10);
+      expect(block.availableInRange).toBeNull();
+      expect(block.truncated).toBe(true);
+      expect(block.nextOffset).toBe(10);
+      expect(result.result.text).not.toContain('1305');
+      expect(result.result.text).toContain('not reported by FRED');
+    });
+
+    it('requests one extra row so a full aggregated page is detectable', async () => {
+      let requested = '';
+      await callTool(
+        server,
+        'get_observations',
+        { series_ids: ['DGS10'], frequency: 'm', limit: 60 },
+        fredRoutes({
+          meta: { seriess: [{ ...SERIES_META.seriess[0], id: 'DGS10', frequency_short: 'D' }] },
+          onUrl: (url) => {
+            if (url.includes('/series/observations')) requested = url;
+          },
+        }),
+      );
+      expect(requested).toContain('limit=61');
+    });
+
+    it('calls an aggregated page complete when the extra row does not come back', async () => {
+      const result = await callTool(
+        server,
+        'get_observations',
+        { series_ids: ['DGS10'], frequency: 'm', limit: 60, sort: 'asc' },
+        fredRoutes({
+          meta: { seriess: [{ ...SERIES_META.seriess[0], id: 'DGS10', frequency_short: 'D' }] },
+          // Exactly the aggregated size — the boundary where FRED still says 1305.
+          observations: pageOf(60, 1305),
+        }),
+      );
+      const [block] = result.result.structured.series;
+      expect(block.returned).toBe(60);
+      expect(block.availableInRange).toBe(60);
+      expect(block.truncated).toBe(false);
+      expect(block.nextOffset).toBeNull();
+      expect(result.result.text).toContain('complete');
     });
 
     it('allows downsampling to a coarser frequency', async () => {

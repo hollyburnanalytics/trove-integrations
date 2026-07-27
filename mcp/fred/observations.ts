@@ -60,7 +60,8 @@ export interface SeriesBlock {
   coverageStart: string | null;
   coverageEnd: string | null;
   returned: number;
-  availableInRange: number;
+  /** Total in range, or null when aggregation makes it genuinely unknowable. */
+  availableInRange: number | null;
   truncated: boolean;
   nextOffset: number | null;
   observations?: { date: string; value: number | null }[];
@@ -73,7 +74,9 @@ export interface SeriesBlock {
 function observationParams(seriesId: string, args: ObservationArgs): URLSearchParams {
   const params = new URLSearchParams({
     series_id: seriesId,
-    limit: String(args.limit),
+    // Under aggregation one extra row is requested: its presence is what tells
+    // us more exists, because FRED's `count` can't (see `sizing`).
+    limit: String(args.frequency ? args.limit + 1 : args.limit),
     offset: String(args.offset),
     sort_order: args.sort,
     units: args.units,
@@ -132,6 +135,57 @@ function describe(seriesId: string, meta: SeriesMeta | null, args: ObservationAr
   };
 }
 
+/** How much of the range this page covers, and whether more of it exists. */
+interface Sizing {
+  rows: Row[];
+  returned: number;
+  availableInRange: number | null;
+  truncated: boolean;
+  nextOffset: number | null;
+}
+
+/**
+ * Decide the sizing fields — the ones a caller trusts to know whether it has
+ * the whole answer, so they must never be confidently wrong.
+ *
+ * Without `frequency`, FRED's top-level `count` is the true size of the
+ * matching set before limit/offset, and is used directly.
+ *
+ * With `frequency` it is NOT. FRED reports the **un-aggregated** row count
+ * unless the whole aggregated set fit strictly inside `limit`: five years of
+ * daily DGS10 asked for monthly at `limit=10` answers `count: 1305`, not 60 —
+ * and at `limit=60` (exactly the aggregated size) it still answers 1305. So it
+ * is wrong precisely when the result is truncated, which is the only case the
+ * field exists for. Under aggregation it is therefore ignored: one extra row is
+ * requested, its presence is what says more exists, and the total is reported
+ * as unknown rather than guessed at.
+ */
+function sizing(all: Row[], body: Record<string, unknown>, args: ObservationArgs): Sizing {
+  if (args.frequency) {
+    const more = all.length > args.limit;
+    const rows = more ? all.slice(0, args.limit) : all;
+    return {
+      rows,
+      returned: rows.length,
+      availableInRange: more ? null : args.offset + rows.length,
+      truncated: more,
+      nextOffset: more ? args.offset + rows.length : null,
+    };
+  }
+  const returned = all.length;
+  const available = typeof body.count === 'number' ? body.count : args.offset + returned;
+  const truncated = args.offset + returned < available;
+  return {
+    rows: all,
+    returned,
+    availableInRange: available,
+    truncated,
+    // Only advertise a next page when this one actually moved forward, so a
+    // caller looping on `nextOffset` cannot spin on an out-of-range offset.
+    nextOffset: truncated && returned > 0 ? args.offset + returned : null,
+  };
+}
+
 /** Fetch and shape one series. `meta` is pre-fetched so frequency can be vetted. */
 async function fetchOne(
   seriesId: string,
@@ -140,12 +194,7 @@ async function fetchOne(
   ctx: ToolContext,
 ): Promise<SeriesBlock> {
   const body = await getJson('/series/observations', observationParams(seriesId, args), ctx);
-  const rows = parseRows(body);
-  const returned = rows.length;
-  // FRED's `count` is the size of the matching set BEFORE limit/offset — the
-  // only signal that distinguishes a clipped range from a complete one.
-  const available = typeof body.count === 'number' ? body.count : args.offset + returned;
-  const truncated = args.offset + returned < available;
+  const { rows, ...size } = sizing(parseRows(body), body, args);
   // Columnar lists dates rather than deriving them from start+frequency: FRED's
   // "Daily" series are business-daily (no weekend rows), so a derived axis would
   // silently mislabel every point after the first weekend.
@@ -155,14 +204,9 @@ async function fetchOne(
       : { observations: rows };
   return {
     ...describe(seriesId, meta, args),
-    returned,
-    availableInRange: available,
-    truncated,
-    // Only advertise a next page when this one actually moved forward, so a
-    // caller looping on `nextOffset` cannot spin on an out-of-range offset.
-    nextOffset: truncated && returned > 0 ? args.offset + returned : null,
+    ...size,
     ...data,
-    note: returned === 0 ? emptyNote(seriesId, meta, args) : null,
+    note: size.returned === 0 ? emptyNote(seriesId, meta, args) : null,
   };
 }
 
@@ -189,14 +233,23 @@ function renderBlock(block: SeriesBlock, args: ObservationArgs, previewRows: num
   const dates = block.dates ?? block.observations?.map((o) => o.date) ?? [];
   const values = block.values ?? block.observations?.map((o) => o.value) ?? [];
   const span = dates.length > 0 ? ` (${dates[0]} → ${dates.at(-1)})` : '';
-  const missing = block.availableInRange - args.offset - block.returned;
-  lines.push(
-    block.truncated
-      ? `  TRUNCATED: ${block.returned} of ${block.availableInRange} observations in range${span}. ` +
-          `${missing} more not returned — re-call with offset=${block.nextOffset}, ` +
-          'or set frequency to aggregate instead of paginating.'
-      : `  ${block.returned} of ${block.availableInRange} observations in range${span} — complete.`,
-  );
+  const total = block.availableInRange;
+  if (!block.truncated) {
+    lines.push(`  ${block.returned} observation(s) in range${span} — complete.`);
+  } else if (total === null) {
+    // Aggregated: FRED can't tell us the aggregated total, so don't invent one.
+    lines.push(
+      `  TRUNCATED: ${block.returned} observation(s)${span}, and more exist — the aggregated ` +
+        `total in range is not reported by FRED. Re-call with offset=${block.nextOffset}, ` +
+        'or raise limit to pull the rest in one page.',
+    );
+  } else {
+    lines.push(
+      `  TRUNCATED: ${block.returned} of ${total} observations in range${span}. ` +
+        `${total - args.offset - block.returned} more not returned — re-call with ` +
+        `offset=${block.nextOffset}, or set frequency to aggregate instead of paginating.`,
+    );
+  }
   for (const [i, date] of dates.slice(0, previewRows).entries()) {
     lines.push(`  ${date}: ${values[i] ?? 'n/a'}`);
   }

@@ -184,7 +184,7 @@ export default defineMcpServer({
             coverageStart: z.string().nullable(),
             coverageEnd: z.string().nullable(),
             returned: z.number(),
-            availableInRange: z.number(),
+            availableInRange: z.number().nullable(),
             truncated: z.boolean(),
             nextOffset: z.number().nullable(),
             observations: z

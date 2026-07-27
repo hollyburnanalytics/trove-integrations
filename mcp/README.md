@@ -143,9 +143,26 @@ by a regression test:
    `SAAR` — FRED's own `filter_variable` would drop it).
 3. **Ranking is literal.** `search_rank` answers "inflation" with four
    frequencies of the same inflation-*indexed* Treasury yield and no CPI in the
-   top ten. `orderBy` is exposed (`popularity` is the better prior for a broad
-   concept) and `popularity` rides along on every hit so a caller can judge the
-   ranking rather than trust it.
+   top ten. `orderBy` is exposed and `popularity` rides along on every hit so a
+   caller can judge the ranking rather than trust it. The default stays
+   `search_rank` on measured evidence, not taste: across seven queries run both
+   ways, `popularity` fixes exactly one ("inflation" — it lifts `CPIAUCSL` to
+   #2) and materially degrades two — "unemployment rate" returns `UNRATE` then
+   `CPIAUCSL`/`PAYEMS`/`ICSA`, and the exact-title CPI query displaces
+   `CPIAUCNS` with the average retail price of milk and eggs. It is a good
+   escape hatch for a broad one-word concept and a bad default.
+4. **`count` lies under aggregation — and only when it matters.** Without
+   `frequency`, the top-level `count` is the true pre-limit total. With
+   `frequency` it reports the **un-aggregated** row count unless the whole
+   aggregated set fit *strictly* inside `limit`: five years of daily `DGS10`
+   asked for monthly answers `count: 1305` (not 60) at `limit=10`, still 1305
+   at `limit=60` — the exact aggregated size — and only 60 at `limit=61`. So it
+   is wrong precisely when the result is truncated, which is the one case the
+   field exists for. Repeating it back would have reported "10 of 1305, 1295
+   more not returned" for a 60-point series. Under aggregation it is therefore
+   ignored: one extra row is requested and its presence is what says more
+   exists, `availableInRange` comes back **null**, and the prose says the
+   aggregated total is not reported by FRED rather than inventing one.
 
 The other half is **pushing transformation upstream**. `units` (FRED's nine
 transforms) and `frequency` + `aggregation_method` (server-side downsampling)
