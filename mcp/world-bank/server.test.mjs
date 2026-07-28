@@ -63,6 +63,43 @@ describe('world-bank MCP server', () => {
   });
 
   describe('search_indicators', () => {
+    it('reports how many matched, not just how many were returned', async () => {
+      const many = [
+        { page: 1, pages: 1, per_page: 2000, total: 5 },
+        Array.from({ length: 5 }, (_, index) => ({
+          id: `SP.POP.${index}`,
+          name: `Population measure ${index}`,
+          sourceNote: '',
+        })),
+      ];
+      const result = await callTool(
+        server,
+        'search_indicators',
+        { query: 'population', limit: 2 },
+        { json: many },
+      );
+      expect(result.result.structured.count).toBe(2);
+      expect(result.result.structured.totalMatches).toBe(5);
+      expect(result.result.structured.truncated).toBe(true);
+      expect(result.result.text).toContain('2 of 5 indicator(s)');
+    });
+
+    it('says so when the catalogue page did not hold the whole catalogue', async () => {
+      // Matching is client-side over one fetched page. If the WDI catalogue
+      // ever outgrows it, the search quietly loses its tail — so say it.
+      const oversized = [
+        { page: 1, pages: 2, per_page: 2000, total: 2500 },
+        [{ id: 'SP.POP.TOTL', name: 'Population, total', sourceNote: '' }],
+      ];
+      const result = await callTool(
+        server,
+        'search_indicators',
+        { query: 'population' },
+        { json: oversized },
+      );
+      expect(result.result.text).toContain('searched 1 of 2500 WDI indicators');
+    });
+
     it('finds matching indicators by keyword', async () => {
       const result = await callTool(
         server,
@@ -225,7 +262,10 @@ describe('world-bank MCP server', () => {
       expect(requested).toContain('date=2010%3A2020');
     });
 
-    it('omits the date range when only one bound is given', async () => {
+    // The API rejects an open-ended `date=2010:`, so a one-sided range is
+    // filled with a sentinel. It must never be dropped: silently ignoring a
+    // bound the caller supplied returns the wrong years under the right label.
+    it('honours a start-only range', async () => {
       let requested = '';
       await callTool(
         server,
@@ -236,7 +276,232 @@ describe('world-bank MCP server', () => {
           return { text: SERIES };
         },
       );
+      expect(requested).toContain('date=2010%3A2100');
+    });
+
+    it('honours an end-only range', async () => {
+      let requested = '';
+      await callTool(
+        server,
+        'get_indicator',
+        { country: 'CA', indicator: 'SP.POP.TOTL', end: 1970 },
+        (url) => {
+          requested = url;
+          return { text: SERIES };
+        },
+      );
+      expect(requested).toContain('date=1800%3A1970');
+    });
+
+    it('sends no date filter when neither bound is given', async () => {
+      let requested = '';
+      await callTool(
+        server,
+        'get_indicator',
+        { country: 'CA', indicator: 'SP.POP.TOTL' },
+        (url) => {
+          requested = url;
+          return { text: SERIES };
+        },
+      );
       expect(requested).not.toContain('date=');
+    });
+
+    it('rejects a reversed range by name', async () => {
+      const result = await callTool(server, 'get_indicator', {
+        country: 'CA',
+        indicator: 'SP.POP.TOTL',
+        start: 2020,
+        end: 2010,
+      });
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(false);
+      expect(result.error).toContain('after end');
+    });
+
+    it('reports a clipped page against the API total, not just the page', async () => {
+      // `country: "all"` for one indicator is ~17,500 rows; a 120-row page is
+      // ~2 of 265 entities. Reporting only the page called that the answer.
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'all', indicator: 'NY.GDP.MKTP.CD' },
+        { json: [{ page: 1, pages: 146, per_page: 120, total: 17_490 }, JSON.parse(SERIES)[1]] },
+      );
+      expect(result.ok).toBe(true);
+      const { structured } = result.result;
+      expect(structured.count).toBe(3);
+      expect(structured.total).toBe(17_490);
+      expect(structured.truncated).toBe(true);
+      expect(structured.nextPage).toBe(2);
+      expect(result.result.text).toContain('of 17490');
+      expect(result.result.text).toContain('TRUNCATED');
+    });
+
+    it('derives truncation from rows consumed, not a trusted `pages` field', async () => {
+      // `pages` absent/stale must not let a partial result claim completeness.
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'all', indicator: 'NY.GDP.MKTP.CD' },
+        { json: [{ page: 1, total: 17_490 }, JSON.parse(SERIES)[1]] },
+      );
+      expect(result.result.structured.truncated).toBe(true);
+      expect(result.result.structured.nextPage).toBe(2);
+    });
+
+    it('marks a multi-entity count as page-scoped when more remains', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'all', indicator: 'NY.GDP.MKTP.CD' },
+        {
+          json: [
+            { page: 1, pages: 146, total: 17_490 },
+            [
+              { country: { id: 'CA', value: 'Canada' }, date: '2022', value: 1 },
+              { country: { id: 'US', value: 'United States' }, date: '2022', value: 2 },
+            ],
+          ],
+        },
+      );
+      expect(result.result.text).toContain('across 2 entities on this page');
+    });
+
+    it('does not flag a complete result as truncated', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'CA', indicator: 'NY.GDP.MKTP.CD' },
+        { text: SERIES },
+      );
+      expect(result.result.structured.truncated).toBe(false);
+      expect(result.result.structured.nextPage).toBeNull();
+      expect(result.result.text).not.toContain('TRUNCATED');
+    });
+
+    it('forwards limit and page', async () => {
+      let requested = '';
+      await callTool(
+        server,
+        'get_indicator',
+        { country: 'CA', indicator: 'SP.POP.TOTL', limit: 500, page: 3 },
+        (url) => {
+          requested = url;
+          return { text: SERIES };
+        },
+      );
+      expect(requested).toContain('per_page=500');
+      expect(requested).toContain('page=3');
+    });
+
+    it('labels each row with its country when the pull spans several', async () => {
+      const multi = [
+        { page: 1, pages: 1, total: 2 },
+        [
+          {
+            indicator: { id: 'NY.GDP.MKTP.CD', value: 'GDP (current US$)' },
+            country: { id: 'CA', value: 'Canada' },
+            date: '2022',
+            value: 1,
+          },
+          {
+            indicator: { id: 'NY.GDP.MKTP.CD', value: 'GDP (current US$)' },
+            country: { id: 'US', value: 'United States' },
+            date: '2022',
+            value: 2,
+          },
+        ],
+      ];
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'all', indicator: 'NY.GDP.MKTP.CD' },
+        { json: multi },
+      );
+      const [first, second] = result.result.structured.observations;
+      expect(first.country).toBe('Canada');
+      expect(second.country).toBe('United States');
+      expect(result.result.structured.countries).toEqual(['Canada', 'United States']);
+      expect(result.result.text).toContain('Canada, 2022');
+    });
+
+    it('omits the per-row country for a single-country pull', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'CA', indicator: 'NY.GDP.MKTP.CD' },
+        { text: SERIES },
+      );
+      expect(result.result.structured.observations[0].country).toBeUndefined();
+    });
+
+    it('treats a non-JSON 200 as a transient upstream failure, not a bad request', async () => {
+      // The API intermittently serves an HTML error page under a 200; reporting
+      // that as "check the codes" sent callers to fix codes that were correct.
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'CA', indicator: 'NY.GDP.MKTP.CD' },
+        { text: '<!DOCTYPE html><html><body>Runtime Error</body></html>' },
+      );
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(true);
+      expect(result.error).toMatch(/non-json/i);
+    });
+
+    it('previews missing years as n/a rather than hiding them', async () => {
+      const result = await callTool(
+        server,
+        'get_indicator',
+        { country: 'CA', indicator: 'NY.GDP.MKTP.CD' },
+        { text: SERIES },
+      );
+      expect(result.result.text).toContain('2020: n/a');
+    });
+
+    it('reassembles the whole series by following nextPage', async () => {
+      const total = 66;
+      const all = Array.from({ length: total }, (_, index) => ({
+        indicator: { id: 'NY.GDP.MKTP.CD', value: 'GDP (current US$)' },
+        country: { id: 'CA', value: 'Canada' },
+        date: String(2025 - index),
+        value: index,
+      }));
+      const years = [];
+      let page = 1;
+      let declaredTotal;
+      let pages = 0;
+      for (;;) {
+        const result = await callTool(
+          server,
+          'get_indicator',
+          { country: 'CA', indicator: 'NY.GDP.MKTP.CD', limit: 25, page },
+          (url) => {
+            const parameters = new URL(url).searchParams;
+            const p = Number(parameters.get('page'));
+            const per = Number(parameters.get('per_page'));
+            return {
+              json: [
+                { page: p, pages: Math.ceil(total / per), per_page: per, total },
+                all.slice((p - 1) * per, p * per),
+              ],
+            };
+          },
+        );
+        expect(result.ok).toBe(true);
+        const structured = result.result.structured;
+        declaredTotal ??= structured.total;
+        years.push(...structured.observations.map((o) => o.year));
+        pages += 1;
+        if (!structured.truncated || !Number.isInteger(structured.nextPage)) break;
+        page = structured.nextPage;
+        expect(pages).toBeLessThan(10);
+      }
+      expect(declaredTotal).toBe(total);
+      expect(years).toHaveLength(total);
+      expect(new Set(years).size).toBe(total);
+      expect(pages).toBe(3);
     });
 
     it('returns a clean empty result when there are no observations', async () => {

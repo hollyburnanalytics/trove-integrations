@@ -41,7 +41,7 @@ in their manifest `egress`.
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `sec-edgar` | `get_financials`, `get_xbrl_concept`, `get_filing_document`, `insider_transactions`, `get_fund_holdings`, `get_company`, `search_filings`, `company_filings` | SEC EDGAR (efts/data/www.sec.gov) | — |
-| `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — |
+| `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — 🌍|
 | `our-world-in-data` | `search_charts`, `search_indicators`, `get_chart_data`, `get_indicator_data`, `get_chart_metadata` | ourworldindata.org + api.ourworldindata.org + search.owid.io | — ⊕|
 | `canada-open-data` | `search_datasets`, `get_dataset`, `query_dataset`, `find_organizations` | open.canada.ca (CKAN — federal + provincial) | — |
 | `openparliament` | `find_mp`, `mp_speeches`, `search_bills` | api.openparliament.ca (Canada Hansard) | — |
@@ -60,7 +60,7 @@ in their manifest `egress`.
 ### Economy & health
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
-| `fred` | `search_series`, `get_observations` | api.stlouisfed.org (St. Louis Fed) | **`FRED_API_KEY`** |
+| `fred` | `search_series`, `get_observations` | api.stlouisfed.org (St. Louis Fed) | **`FRED_API_KEY`** 📈|
 | `openfda` | `search_drug_labels`, `search_recalls` | api.fda.gov | — |
 
 ### Business ops
@@ -87,6 +87,98 @@ in their manifest `egress`.
 | `cal-com` | `list_event_types`, `get_available_slots`, `list_bookings`, `create_booking`, `cancel_booking` | api.cal.com (Cal.com API v2) | **`CALCOM_API_KEY`** 📅|
 
 ※ `resend` — the fleet's first **mutating** server (`send_email` is `readOnlyHint: false`, so the host confirms before sending). It's a hosted send-email server for **automated digests/notifications to yourself** — useful where only remote/hosted MCP servers are reachable (the official Resend/Postmark MCPs are local stdio). The **recipient is fixed to the owner's `RECIPIENT_EMAIL` secret** and CC/BCC are disallowed, so the tool can only ever email that one address (it can't be steered into emailing arbitrary recipients) — a deliberate safety choice for a send-capable tool. The fixed address needs no domain setup (Resend's shared `onboarding@resend.dev` sender); to send *from* your own domain, verify it in Resend and pass `from`.
+
+🌍 `world-bank` — **global development indicators**, keyless. The same
+silent-answer failures `fred` was audited for were found here and fixed, which
+is the argument for auditing the rest of the fleet against the two rules at the
+end of this file rather than one toolkit at a time:
+
+- **The page was reported as the answer.** `per_page` was pinned at 120 with no
+  `limit` in the schema at all, and the API's own `total`/`pages` were
+  discarded. `country: "all"` for one indicator is ~17,500 rows across 265
+  entities; the tool returned 120 — roughly **two** entities, starting at
+  "Africa Eastern and Southern" — and reported `count: 120` with no other
+  signal. Now `limit`/`page` are inputs and `total`/`truncated`/`nextPage` come
+  back with every result.
+- **Rows from `country: "all"` were unlabelled.** The mapping dropped each
+  row's country, so a multi-entity pull returned the same year many times over
+  with different values and nothing saying whose. The country now rides on each
+  row whenever a response spans more than one.
+- **A one-sided date range was accepted and ignored.** `if (start && end)` meant
+  `start: 2010` alone was validated, dropped, and answered with the most recent
+  120 points as though they were the requested range. The API rejects an
+  open-ended `date=2010:`, so a missing bound is filled with a sentinel year
+  instead; a reversed range is now named rather than passed on.
+- **A transient upstream blip was reported as the caller's fault.** The API
+  intermittently serves an HTML error page under an HTTP 200 (observed live,
+  succeeding on retry); the non-JSON body fell through to "check the country and
+  indicator codes", **non-retryable** — sending callers to fix codes that were
+  correct. Unparseable JSON is now retryable, distinct from a genuine
+  `[{message:[…]}]` rejection.
+
+`search_indicators` matches client-side over one fetched page of the WDI
+catalogue (~1,500 of 2,000 today). It now compares what it fetched against the
+API's `total` and says when the page didn't hold everything, so the day the
+catalogue outgrows the fetch the search stops quietly losing its tail.
+
+📈 `fred` — **U.S. economic time-series from the St. Louis Fed**, shaped around
+the fact that every way this connector can be wrong is a *confidently wrong
+number*, not an error. Three upstream behaviours drove the design, each covered
+by a regression test:
+
+1. **`limit` clips the range with no signal.** Asking `LNS12300060` for
+   1985→2026 at `limit=100` returns 100 observations ending in April 1993, and
+   nothing in the response distinguishes that from the series ending there.
+   FRED's own top-level `count` is the size of the matching set *before*
+   `limit`/`offset`, so every result now reports `availableInRange` next to
+   `returned`, plus `truncated` and a `nextOffset` — and the prose mirror says
+   `TRUNCATED: 100 of 498 … 398 more not returned`, because some hosts render
+   only the text.
+2. **Seasonal adjustment is the only thing separating many hits.** `CPIAUCSL`
+   and `CPIAUCNS` share a title, units *and* frequency; so do `CPILFESL`/
+   `CPILFENS` and `CSUSHPISA`/`CSUSHPINSA`. Picking by ID-suffix convention is
+   tribal knowledge, and picking wrong yields month-over-month "inflation" that
+   is mostly seasonal noise. `seasonal_adjustment_short` is mapped onto every
+   hit, spelled out in the prose, and offered as a filter (where `SA` also keeps
+   `SAAR` — FRED's own `filter_variable` would drop it).
+3. **Ranking is literal.** `search_rank` answers "inflation" with four
+   frequencies of the same inflation-*indexed* Treasury yield and no CPI in the
+   top ten. `orderBy` is exposed and `popularity` rides along on every hit so a
+   caller can judge the ranking rather than trust it. The default stays
+   `search_rank` on measured evidence, not taste: across seven queries run both
+   ways, `popularity` fixes exactly one ("inflation" — it lifts `CPIAUCSL` to
+   #2) and materially degrades two — "unemployment rate" returns `UNRATE` then
+   `CPIAUCSL`/`PAYEMS`/`ICSA`, and the exact-title CPI query displaces
+   `CPIAUCNS` with the average retail price of milk and eggs. It is a good
+   escape hatch for a broad one-word concept and a bad default.
+4. **`count` lies under aggregation — and only when it matters.** Without
+   `frequency`, the top-level `count` is the true pre-limit total. With
+   `frequency` it reports the **un-aggregated** row count unless the whole
+   aggregated set fit *strictly* inside `limit`: five years of daily `DGS10`
+   asked for monthly answers `count: 1305` (not 60) at `limit=10`, still 1305
+   at `limit=60` — the exact aggregated size — and only 60 at `limit=61`. So it
+   is wrong precisely when the result is truncated, which is the one case the
+   field exists for. Repeating it back would have reported "10 of 1305, 1295
+   more not returned" for a 60-point series. Under aggregation it is therefore
+   ignored: one extra row is requested and its presence is what says more
+   exists, `availableInRange` comes back **null**, and the prose says the
+   aggregated total is not reported by FRED rather than inventing one.
+
+The other half is **pushing transformation upstream**. `units` (FRED's nine
+transforms) and `frequency` + `aggregation_method` (server-side downsampling)
+are free at the API and expensive here — rendering `OPHNFB` as a continuously
+compounded annual rate otherwise means ~300 logarithms computed in-context, none
+of them auditable. `frequency` only ever aggregates *down*, so an upsampling
+request (`UNRATE` → daily) is refused by name before any data call, and
+`get_observations` takes 1–5 ids per call so an overlay or a spread is one round
+trip. Each result carries the series' title, units, applied transform and
+seasonal adjustment, so a chart axis can be labelled from a single response;
+an empty range answers with the series' actual coverage rather than a bare zero.
+Sizing is explicit rather than silent: `format: "columnar"` returns parallel
+`dates[]`/`values[]` (dates are **listed, not derived** — FRED's "Daily" series
+are business-daily, so a date axis reconstructed from start+frequency would
+mislabel every point after the first weekend), and a pull over 2,000 points is
+refused with the limit to use instead of being quietly shrunk.
 
 ⊕ `our-world-in-data` — an **independent client for Our World in Data's public
 APIs**, not affiliated with or endorsed by Our World in Data or Global Change
