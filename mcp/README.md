@@ -79,6 +79,7 @@ in their manifest `egress`.
 |---|---|---|---|
 | `ebay` | `search_items`, `get_item` | api.ebay.com (Browse API) | **`EBAY_CLIENT_ID` + `EBAY_CLIENT_SECRET`** |
 | `shopify-catalog` | `search_products`, `lookup_products`, `get_product` | catalog.shopify.com (UCP catalog MCP) | none |
+| `seats-aero` | `list_programs`, `search_awards`, `explore_availability`, `get_trips`, `live_search` | seats.aero (partner API) | **`SEATS_AERO_API_KEY`** ✈|
 
 ### Actions (mutating)
 | Toolkit | Tools | Upstream | Auth |
@@ -356,6 +357,208 @@ fault of its own. A 429 is surfaced as a **retryable** error carrying
 `retryAfter` and — unlike a 401 — is never reported as "not authenticated", so a
 burst never looks like a bad token. The account email is masked in output.
 
+✈ `seats-aero` — **airline award availability across 26 mileage programs**, over
+the Seats.aero partner API. Four tools cover the upstream — the cached search by
+airport and date range (`search_awards`), the per-program Explore browse by
+continent (`explore_availability`), the flights behind one availability
+(`get_trips`), and `live_search` — plus a fifth, `list_programs`, that answers
+from a local table. The key is the user's own: Seats.aero grants partner API
+access to **Pro subscribers**, who generate a key on the API tab of their
+settings page, for **non-commercial use** unless Seats.aero has agreed otherwise
+in writing.
+
+**Everything below was verified against a live Pro key**, and that mattered: the
+published reference documents roughly a third of the fields these endpoints
+actually send, and two of its omissions are the difference between a right and a
+wrong answer. The availability and trip test fixtures are verbatim captures of
+real responses rather than hand-written shapes.
+
+**`live_search` needs a commercial agreement and a Pro key cannot use it.** The
+reference presents it as part of the partner API and never says otherwise; live,
+it answers `401 {"error":"Your API key is not enabled for the live search API.
+Live search requires a commercial agreement with seats.aero."}`. Two consequences
+are built in: the tool's description says so up front, and a 401 whose body
+mentions live search is mapped to an entitlement message rather than the generic
+"check your API key" — which would have sent a Pro user to replace a key that
+works perfectly on every other tool.
+
+**The cheapest price and the non-stop price are different numbers.** This is the
+single most dangerous thing in the API. Each cabin carries `JMileageCost` (the
+cheapest itinerary of *any* routing) **and** `JDirectMileageCost` (the cheapest
+non-stop), and the reference documents only the first, alongside a `JDirect`
+boolean that invites pairing the two. United SFO→LHR on 2026-09-01 is **40,000
+miles in economy via Denver and 65,400 non-stop** — so the obvious reading
+reports a connecting price as the price of a non-stop, understating a non-stop
+award by 63%. The two shapes are decoded as separate offers, and every price
+states its routing outright.
+
+**`include_filtered` unlocks fields the reference never defines.** Alongside
+every cabin field is a `…Raw` twin carrying the same figure *before* Seats.aero's
+dynamic-pricing filter — `WMileageCost: "0"` with `WMileageCostRaw: 135900`. A
+cabin can be entirely invisible in the documented fields while a real, very
+expensive dynamically-priced award sits in the raw ones, so reading only the
+documented half made the flag look like a no-op. Those land in a `dynamic` block,
+spelled out in the prose **only when the filtered view has nothing for that
+cabin** — the case where silence would read as "no space in this class". (The raw
+fields ride along on every row, not only with `include_filtered`; that flag
+controls which *rows* come back, not which fields they carry.)
+
+Three more undocumented surfaces are now read rather than dropped: **per-cabin
+taxes** on the summary (`JTotalTaxes` + `TaxesCurrency`), which otherwise cost a
+whole extra `get_trips` call per result on a 1,000-a-day budget; **co-brand card
+rates** (`OptionalPricing`/`OptionalPrices` — a United cardholder pays 36,000
+where the standard award is 40,000); and the trip-level `Connections`, full
+`Aircraft` names, `FareClasses` and `TotalSegmentDistance`.
+
+**Four documented conventions are corrected rather than relayed**, because taking
+any at face value yields a confident wrong answer rather than an error:
+
+1. **`DepartsAt`/`ArrivesAt` end in `Z` but are airport-*local* times.** Live:
+   UA2199/UA938 leaves SFO at 14:05 and reaches LHR at 11:55 the next day —
+   21h50m of wall clock read as UTC, against a reported `TotalDuration` of 830
+   minutes (13h50m), which reconciles only as local clocks. Times render local
+   and labelled; no `Z` survives into the output.
+2. **`*MileageCost` is a string, and `"0"` means "not priced", not "free".**
+3. **`*RemainingSeats: 0` on a bookable cabin means "not reported".** Eight
+   programs are documented as never publishing seat counts and three as never
+   publishing taxes, so the program table names the gap instead of printing
+   `0 seats` or `$0.00`. That table is treated as *softening an explanation*,
+   never as overriding data — Qantas is listed as publishing no seat counts and
+   returned four, which the output reports as four.
+4. **`count` is the page size, not a total.** `take=10` answers `count: 10` with
+   `hasMore: true` on both paged endpoints, so it can never say how much matched.
+   It is reported under its own name; summaries are built from `returned` +
+   `hasMore`, and a truncated page says which `skip`/`cursor` to resume from —
+   plus the API's own `moreURL`, another undocumented field.
+
+Trip segments carry an explicit `Order` and array position is not documented to
+match it, so legs are **sorted before** the first one's origin and the last one's
+destination become the trip's endpoints; live-search segments have no `Order` at
+all, so their arrival order stands (the sort is stable). One availability really
+can return **59 trips**, so `get_trips` sorts cheapest-first, spells out 25, and
+says how many it held back — all of them stay in the structured result.
+
+Requests that would come back as an empty HTTP 200 are refused before a call is
+spent: an **unknown mileage-program slug** (named, with near-miss suggestions), a
+**cabin no requested program supports**, and a **reversed date range**. A window
+more than a day in the past is flagged rather than answered with a bare zero —
+with a full day of slack rather than a time zone, because a departure date is
+local to the origin airport and there is no single "today" to compare against.
+
+Responses are parsed against **lenient Zod schemas** via `ctx.fetchJson`, as
+`openlibrary`/`usgs-quakes`/`holidays` do — every field `nullish` or defaulted,
+numbers accepted as either JSON numbers or strings (mileage costs really do
+arrive as strings on availabilities and numbers on trips, sometimes in the same
+record). One drifted field degrades that field instead of failing a page of good
+results, and the availability schema keeps unknown keys so a new prefixed field
+survives parsing. The `cursor` is documented as opaque — "currently a Unix
+timestamp" — so it is echoed verbatim and both the input and the output accept a
+number *or* a string, rather than pinning a type the reference declines to
+promise.
+
+**The quota is readable, so it is read.** Every response — success or refusal —
+carries `x-ratelimit-limit`/`-remaining`/`-reset`, which the reference never
+mentions. That number is in every structured result, the prose warns once the
+remaining count drops under 50, and a 429 says *when* the budget returns
+("resets in 5h 57m") instead of inviting a retry that cannot succeed. It is the
+one thing worth reaching past `ctx.fetchJson` for: the quota lives only in the
+headers, and on a key allowing 1,000 calls a day *shared across every app using
+it*, budgeting beats discovering the ceiling by hitting it.
+
+Three more things live testing settled, each of which had produced a wrong
+behaviour built on the documentation:
+
+- **`take`'s documented bounds are not enforced.** The reference says ">= 10 and
+  <= 1000"; `take=3` returns three records and `take=1001` returns 1001, both
+  HTTP 200. The floor was being reproduced as a Zod `.min(10)`, so the tool was
+  *refusing requests the API serves*. It now accepts 1–1000, with the ceiling
+  described as this toolkit's response-size guard rather than as the API's rule.
+- **`minify_trips` is not a light trim.** It keeps nine fields — ids, cabin,
+  carriers, miles, taxes, seats, stops, duration — and drops everything else,
+  including the per-leg `AvailabilitySegments`, `Source` and `TaxesCurrency`.
+  The last two are what make the rest intelligible, and both sit on the parent
+  availability, so embedded trips now inherit them; without that a minified trip
+  decodes to "unknown program" with an unlabelled sum of money. Its description
+  says what it costs, so it is chosen for pricing sweeps rather than itineraries.
+- **Airport codes are not case-sensitive** — `origin_airport=sfo` returns the
+  same results as `SFO`. The code had claimed otherwise to justify upper-casing;
+  the normalisation stays (it keeps the echoed route consistent) but the
+  justification was corrected rather than left as a plausible-sounding falsehood.
+
+**Almost nothing is an error.** A city name in place of an airport code, an
+unknown mileage program, an unknown region, a route to itself, a reversed date
+range and a wholly past window are all `{"data":[]}` with an HTTP 200 — only a
+malformed date and an unknown cabin actually 400. Each is named client-side
+before a call is spent, including the newest: an airport listed as both origin
+and destination.
+
+A systematic sweep settled the field question rather than leaving it to
+inspection — the union of every key across a 1.7 MB multi-program response was
+diffed against the parse schemas, and the only two the toolkit does not read are
+a trip's `CreatedAt`/`UpdatedAt` (an availability's `UpdatedAt`, the one that
+says how stale a price is, *is* surfaced).
+
+**`skip` does not enumerate the result set, so the tools stop recommending it.**
+This is the most consequential measurement here, because the obvious advice —
+"call again with the next `skip`" — silently loses data. With the result set
+proven static (the same query returns the same twenty ids in the same order,
+cursor or no cursor), paging that query as 10 + 10 **recovered 10 of the 20**,
+repeated 3, and returned 7 the single call never contained. Carrying the cursor
+exactly as the reference instructs changed nothing, and `order_by=lowest_mileage`
+was worse: **1 of 20**. The behaviour fits a sort applied to the *fetched window*
+rather than to the whole match set, which makes `skip` an offset into an ordering
+that does not exist. The footer therefore leads with **raise `take` and re-run**
+— the same single API call, bounded only by response size — and names paging as
+lossy in both directions rather than repeating the reference's duplicates-only
+warning. `skip`/`cursor` remain available, described honestly.
+
+**The reference table is wrong about eight of the twenty-six programs, so it
+no longer refuses anything.** Sampling 300 live records per program: five listed
+as publishing no seat counts do publish them (emirates, qantas, qatar, turkish,
+singapore — leaving only azul and frontier genuinely silent), two listed as
+publishing taxes never did (eurobonus, ethiopian), and **Lufthansa sells a
+premium-economy cabin the table omits**. That last one mattered: an earlier
+version *threw* when no requested program listed the requested cabin, so
+`sources:[lufthansa] cabins:[premium]` was refused outright — a search that
+returns real availability, blocked by a stale transcription. Cabin coverage is
+now a note, never a refusal, and two rules keep the table safe regardless of
+further drift: observed data always wins over the flag, and the flag may only
+soften the explanation of a *missing* value.
+
+**`take` is clamped when trips are embedded, because the ceiling is a timeout.**
+Measured: `take=1000` alone is 2.1 MB in 1.6 s, but the same page with
+`include_trips` is **11.5 MB in 8.4 s** — at or past the hosted gateway's wall
+clock before this server has parsed a byte. Nothing had stopped that
+combination. `include_trips` now caps the page at 200 (500 with `minify_trips`,
+which halves the payload), clamped with a note rather than refused, since the
+request is legitimate and the limit is ours.
+
+**`include_filtered` matters far more on `get_trips` than on a search.** One
+availability returns 59 trips without it and **178 with** — and the extra 119
+hold the only premium-cabin itineraries it has, every one dearer than every
+economy award. That broke the prose summary: ranked purely cheapest-first, all
+25 spelled-out slots went to economy and the flag appeared to do nothing. The
+summariser now guarantees **the cheapest line in each cabin** before filling the
+rest by price, so a newly revealed cabin costs at most three slots to surface.
+
+The four request filters were each verified against 200 live records rather than
+assumed: `only_direct_flights`, `cabins`, `carriers` and the documented
+interaction between the first two (`only_direct_flights` "respects the cabin
+parameter") all filtered exactly, zero violations. The transport's hand-rolled
+guards — unreachable host, a 200 carrying HTML, a 200 of the wrong shape — are
+asserted rather than claimed, since replacing `ctx.fetchJson` made them this
+toolkit's responsibility.
+
+Two smaller checks came back clean, and are recorded so nobody re-runs them: the
+**six documented regions are all of them** (2,000 records across two global
+programs produced no seventh), and `origin_region`/`destination_region` filter
+exactly (200/200 matched `Europe → Asia`, zero violations). The **cursor has been
+an integer in every observation**; the input and output still accept a string
+because the reference calls it opaque, not because one was seen. A program asked
+for a region or cabin it does not serve answers with an empty 200 — the cabin
+case is refused client-side from the program table, and an empty result now names
+the filters that silently produce one instead of just saying "no matches".
+
 ‡ `hathitrust` — covers the **public Bibliographic API** only: given an ISBN/OCLC/LCCN/HathiTrust id it reports holdings + per-copy access rights (Full view = readable public domain, vs Limited = search-only). Its distinctive value over Open Library / Google Books is that **rights signal** — "can I actually read this, or only search it?" — plus a deep-link to the reader for full-view scans. It's an *exact-identifier* lookup against HathiTrust's catalog records, not a fuzzy search: an `htid` is the most reliable key and ISBN works well for modern books, but an arbitrary edition's OCLC can miss even when the work is held. HathiTrust gates corpus-wide *full-text search* (it 403s automated clients and requires partner credentials), so that surface is intentionally not exposed. For full-text search *inside* a book, use `gutenberg`.
 
 § `gutenberg` — beyond discovery, the high-value tool is `search_inside`: legal full-text search within any public-domain book, good for **locating/verifying a quotation** (exact wording + citation offset), **detecting misquotes** (e.g. "Elementary, my dear Watson" returns zero matches in the Sherlock canon), and **term-frequency** checks (e.g. "Napoleon" × 588 in *War and Peace*). `get_excerpt` then pages through the text from any offset. Book text is fetched from the fast University of Waterloo PG mirror (gutenberg.org's own origin serves a 1 MB book in ~10 s — past the gateway wall-clock; the mirror returns *War and Peace*'s 3.4 MB in ~1 s), with gutenberg.org as fallback. Matching is case-insensitive substring (not regex/semantic), and non-English title searches need exact accents.
@@ -382,7 +585,7 @@ trove secret set <slug> <NAME> <value>          # for servers that declare secre
 trove mcp ls                                    # list your deployed servers
 ```
 
-Servers declaring secrets (`mapbox`, `fred`, `ebay`, `x`, `jonas-premier`) return a clear "not set" /
+Servers declaring secrets (`mapbox`, `fred`, `ebay`, `x`, `jonas-premier`, `seats-aero`) return a clear "not set" /
 "not declared" error until their secret is set (a secret is registered to a
 server the first time you `trove secret set` it). Auth'd APIs redeem the key at
 call time from the encrypted vault via `ctx.secret(...)` — it is never bundled or
