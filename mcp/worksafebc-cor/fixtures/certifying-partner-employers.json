@@ -1,0 +1,34 @@
+{
+ "Data": [
+  {
+   "EmployerId": 37591,
+   "AccountNumber": "000037591",
+   "LegalName": "MAPLE RIDGE SCHOOL DISTRICT #42</br/><i>SCHOOL DISTRICT 42</i>",
+   "CORTypeCode": "OHS",
+   "CertificateNumber": "0000375910820241218HL",
+   "ExpiryDate": "2027/10/10",
+   "CUCode": "765008"
+  },
+  {
+   "EmployerId": 37599,
+   "AccountNumber": "000037599",
+   "LegalName": "THE BOARD OF EDUCATION OF SCHOOL DISTRICT NO. 61</br/><i>SCHOOL DISTRICT 61</i>",
+   "CORTypeCode": "OHS",
+   "CertificateNumber": "0000375990820250613HL",
+   "ExpiryDate": "2028/05/27",
+   "CUCode": "765008"
+  },
+  {
+   "EmployerId": 1214,
+   "AccountNumber": "000001214",
+   "LegalName": "CITY OF MISSION",
+   "CORTypeCode": "OHS",
+   "CertificateNumber": "0000012140820250818HS",
+   "ExpiryDate": "2028/06/10",
+   "CUCode": "753004"
+  }
+ ],
+ "Total": 76,
+ "AggregateResults": null,
+ "Errors": null
+}

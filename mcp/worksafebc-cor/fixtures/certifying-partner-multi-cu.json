@@ -1,0 +1,25 @@
+{
+ "Data": [
+  {
+   "EmployerId": 2680,
+   "AccountNumber": "000002680",
+   "LegalName": "DISTRICT OF WEST VANCOUVER",
+   "CORTypeCode": "OHS",
+   "CertificateNumber": "0000026800820250206HL",
+   "ExpiryDate": "2027/12/19",
+   "CUCode": "732046<br/>753004"
+  },
+  {
+   "EmployerId": 98783,
+   "AccountNumber": "000098783",
+   "LegalName": "INCLUSION CHILLIWACK SOCIETY",
+   "CORTypeCode": "OHS",
+   "CertificateNumber": "0000987830820240724HL",
+   "ExpiryDate": "2027/05/30",
+   "CUCode": "766010<br/>766011<br/>766017"
+  }
+ ],
+ "Total": 2,
+ "AggregateResults": null,
+ "Errors": null
+}

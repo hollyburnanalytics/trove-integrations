@@ -1,0 +1,19 @@
+{
+ "Data": [
+  {
+   "EmployerId": 37591,
+   "LegalName": "MAPLE RIDGE SCHOOL DISTRICT #42",
+   "TradeName": "SCHOOL DISTRICT 42",
+   "Certificates": null
+  },
+  {
+   "EmployerId": 37599,
+   "LegalName": "THE BOARD OF EDUCATION OF SCHOOL DISTRICT NO. 61",
+   "TradeName": "SCHOOL DISTRICT 61",
+   "Certificates": null
+  }
+ ],
+ "Total": 2,
+ "AggregateResults": null,
+ "Errors": null
+}
