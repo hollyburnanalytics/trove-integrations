@@ -81,10 +81,24 @@ export const listCertifiedEmployers: ToolDefinition = {
     // This grid's antiforgery pair must come from `/`; a token minted on the
     // employer-search page is rejected here with a 302 to /Error/Index.
     const session = await getSession(PARTNER_PAGE, ctx);
-    const { rows, total } = await fetchGrid(
+    // An unknown partner id is answered with the *same* 302 to /Error/Index as a stale
+    // token — one is the caller's fault and permanent, the other is transient, and the
+    // response cannot tell them apart. The landing page just fetched for the token also
+    // carries the full partner list, so the id is checked here, for free, before the
+    // call is spent. What remains after this check really is likely transient.
+    const wanted = args.certifyingPartnerId.trim();
+    const partners = parsePartners(session.html);
+    if (partners.length > 0 && !partners.some((partner) => partner.id === wanted)) {
+      throw new ToolError(
+        `"${wanted}" is not a WorkSafeBC certifying partner id. Valid ids: ` +
+          `${partners.map((partner) => `${partner.id} (${partner.name})`).join(', ')}.`,
+        { retryable: false },
+      );
+    }
+    const result = await fetchGrid(
       '/Home/GetCertifyingPartnerEmployers',
       {
-        certifyingPartnerEmployerId: args.certifyingPartnerId.trim(),
+        certifyingPartnerEmployerId: wanted,
         page: String(args.page),
         pageSize: String(args.pageSize),
         skip: String((args.page - 1) * args.pageSize),
@@ -93,13 +107,23 @@ export const listCertifiedEmployers: ToolDefinition = {
       session,
       ctx,
     );
+    // The single-match redirect is a search-only behaviour; this grid always returns rows.
+    if (result.kind !== 'rows') {
+      throw new ToolError('The WorkSafeBC COR registry returned an unexpected response.', {
+        retryable: true,
+      });
+    }
+    const { rows, total } = result;
     const employers = rows.map(toPartnerCertifiedEmployer);
     const structured = { total, count: employers.length, page: args.page, employers };
     if (employers.length === 0) {
+      // The id was checked against the landing page above, so reaching here means a valid
+      // partner with nothing listed — which is what the two partners marked (HISTORICAL)
+      // return. Telling the caller to re-check the id would send them after a non-problem.
       return {
         text:
-          `No certified employers for partner ${args.certifyingPartnerId}. ` +
-          'Check the id against list_certifying_partners.',
+          `${wanted} is a valid certifying partner but has no employers listed on this page. ` +
+          'Partners marked (HISTORICAL) no longer certify and return nothing.',
         structured,
       };
     }

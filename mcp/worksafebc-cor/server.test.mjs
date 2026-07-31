@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { callTool } from '../lib/test-harness.mjs';
 import server from './server.ts';
+
+/** Verbatim captures of live responses — see `fixtures/`. */
+const fixture = (name) => readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8');
+const FIXTURE_TWO_CERTIFICATES = fixture('employer-details-two-certificates.html');
+const FIXTURE_PARTNER_EMPLOYERS = fixture('certifying-partner-employers.json');
+const FIXTURE_PARTNER_MULTI_CU = fixture('certifying-partner-multi-cu.json');
 
 /** A landing page carrying the antiforgery hidden field, paired with its cookie. */
 const landing = (token, extra = '') => ({
@@ -62,6 +69,14 @@ const detailsPage = (legalName, tradeName, certificates) => ({
     </tbody></table>
   </div>`,
 });
+
+/**
+ * The certifying-partner grid always answers from `/`, whose landing page carries the
+ * partner `<select>` the id is validated against. Verbatim captures throughout: this
+ * grid packs two values into each of two columns, which a hand-written fixture would
+ * not reproduce.
+ */
+const partnerResponder = (grid, seen = []) => gridResponder(grid, seen, 'TOK1', PARTNER_OPTIONS);
 
 const ok = (result) => {
   expect(result.ok).toBe(true);
@@ -174,9 +189,63 @@ describe('worksafebc-cor MCP server', () => {
       expect(result.text).toMatch(/hold no Certificate of Recognition/i);
     });
 
-    it('rejects a name below the site minimum without a round trip', async () => {
+    // Measured live: a search matching exactly ONE employer does not return a one-row
+    // grid — it 302s to that employer's details page. Failing that redirect broke the
+    // single most likely query this tool gets ("is *this* firm certified?").
+    it('resolves a single-match redirect into a one-row result', async () => {
+      const seen = [];
+      const result = ok(
+        await callTool(server, 'search_employers', { name: 'al stober' }, (url, init) => {
+          seen.push(url);
+          if (init?.method === 'POST') {
+            return {
+              status: 302,
+              headers: { location: '/Home/EmployerDetails?employerId=1214' },
+            };
+          }
+          return url.includes('EmployerDetails')
+            ? { text: FIXTURE_TWO_CERTIFICATES }
+            : landing('TOK1');
+        }),
+      );
+      expect(result.structured.total).toBe(1);
+      expect(result.structured.count).toBe(1);
+      const [only] = result.structured.employers;
+      expect(only.employerId).toBe(1214);
+      expect(only.accountNumber).toBe('000001214');
+      expect(only.legalName).toBe('CITY OF MISSION');
+      expect(seen.some((u) => u.includes('EmployerDetails?employerId=1214'))).toBe(true);
+    });
+
+    // WorkSafeBC's form declares a 5-character minimum; the endpoint behind it serves 4.
+    it('accepts a four-character name, which the site form would refuse', async () => {
+      const result = ok(
+        await callTool(
+          server,
+          'search_employers',
+          { name: 'wood' },
+          gridResponder('{"Data":[],"Total":0,"Errors":null}'),
+        ),
+      );
+      expect(result.structured.count).toBe(0);
+    });
+
+    it('still refuses three characters, which the endpoint rejects', async () => {
       const result = await callTool(server, 'search_employers', { name: 'abc' });
       expect(result.ok).toBe(false);
+    });
+
+    // Errors has been null on every observed success; if it ever arrives populated
+    // alongside an empty Data, that must not be reported as "no matches".
+    it('raises when the payload carries an Errors value', async () => {
+      const result = await callTool(
+        server,
+        'search_employers',
+        { name: 'construction' },
+        gridResponder('{"Data":null,"Total":0,"Errors":"search failed"}'),
+      );
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('search failed');
     });
 
     // A stale antiforgery pair 302s to /Error/Index instead of erroring, so following the
@@ -291,7 +360,8 @@ describe('worksafebc-cor MCP server', () => {
       expect(result.text).toContain('trading as TRAYLOR - AECON GP');
     });
 
-    // Expiry is the point of the lookup: a lapsed certificate must not read as current.
+    // Synthetic date: no expired certificate was found in 739 sampled live rows, so this
+    // exercises the guard rather than a case the registry is known to serve.
     it('flags an expired certificate', async () => {
       const result = ok(
         await callTool(server, 'get_employer_certificates', { employerId: '758078' }, () =>
@@ -302,35 +372,27 @@ describe('worksafebc-cor MCP server', () => {
       expect(result.text).toContain('EXPIRED');
     });
 
-    // Two certificates on one employer: units must not migrate to the wrong one.
+    // A real two-certificate employer: City of Mission holds one COR from BCFSC and one
+    // from BCMSA, each covering a different classification unit. Verbatim capture, so the
+    // nesting the parser has to survive is the app's, not one invented to suit it.
     it('attributes classification units to the certificate they sit under', async () => {
       const result = ok(
-        await callTool(server, 'get_employer_certificates', { employerId: '758078' }, () =>
-          detailsPage('TWO CERT CO', '', [
-            {
-              partner: 'BCCSA',
-              type: 'OHS',
-              number: 'A1',
-              expiry: '2099/01/01',
-              units: [{ code: '721028', description: 'Construction' }],
-            },
-            {
-              partner: 'BCMSA',
-              type: 'RTW',
-              number: 'B2',
-              expiry: '2099/02/02',
-              units: [
-                { code: '753004', description: 'Municipal' },
-                { code: '753011', description: 'Utilities' },
-              ],
-            },
-          ]),
-        ),
+        await callTool(server, 'get_employer_certificates', { employerId: '1214' }, () => ({
+          text: FIXTURE_TWO_CERTIFICATES,
+        })),
       );
+      expect(result.structured.legalName).toBe('CITY OF MISSION');
       const [first, second] = result.structured.certificates;
-      expect(first.classificationUnits.map((u) => u.code)).toEqual(['721028']);
-      expect(second.corType).toBe('Return to Work');
-      expect(second.classificationUnits.map((u) => u.code)).toEqual(['753004', '753011']);
+      expect(result.structured.count).toBe(2);
+      expect(first.certifyingPartner).toBe('BCFSC');
+      expect(first.certificateNumber).toBe('0000012140420250204HS');
+      expect(first.classificationUnits).toEqual([
+        { code: '703008', description: 'Integrated Forest Management' },
+      ]);
+      expect(second.certifyingPartner).toBe('BCMSA');
+      expect(second.classificationUnits).toEqual([
+        { code: '753004', description: 'Local Government and Related Operations' },
+      ]);
     });
 
     it('accepts a zero-padded account number', async () => {
@@ -420,29 +482,28 @@ describe('worksafebc-cor MCP server', () => {
   });
 
   describe('list_certified_employers', () => {
-    const PARTNER_GRID = `{"Data":[
-      {"EmployerId":256,"AccountNumber":"000000256","LegalName":"CITY OF COURTENAY","CORTypeCode":"OHS","CertificateNumber":"0000002560820240917HL","ExpiryDate":"2099/07/11","CUCode":"753004"},
-      {"EmployerId":405,"AccountNumber":"000000405","LegalName":"CITY OF BURNABY","CORTypeCode":"OHS","CertificateNumber":"0000004050820250108HL","ExpiryDate":"2019/11/03","CUCode":"753004 753011"}
-    ],"Total":76}`;
-
-    it('returns certificates inline and flags the expired one', async () => {
+    it('returns certificates inline and splits the packed legal/trade names', async () => {
       const seen = [];
       const result = ok(
         await callTool(
           server,
           'list_certified_employers',
-          { certifyingPartnerId: '000810731', pageSize: 2 },
-          gridResponder(PARTNER_GRID, seen),
+          { certifyingPartnerId: '000810731', pageSize: 3 },
+          partnerResponder(FIXTURE_PARTNER_EMPLOYERS, seen),
         ),
       );
       expect(result.structured.total).toBe(76);
-      const [first, second] = result.structured.employers;
-      expect(first.expiryDate).toBe('2099-07-11');
-      expect(first.expired).toBe(false);
-      expect(second.expired).toBe(true);
-      expect(second.classificationUnits).toEqual(['753004', '753011']);
-      expect(result.text).toContain('EXPIRED');
-      expect(result.text).toContain('74 more not shown');
+      const [first, , third] = result.structured.employers;
+
+      // `LegalName` arrives as `LEGAL</br/><i>TRADE</i>` — stripping the tags without
+      // splitting merged both into the legal name and left tradeName null.
+      expect(first.legalName).toBe('MAPLE RIDGE SCHOOL DISTRICT #42');
+      expect(first.tradeName).toBe('SCHOOL DISTRICT 42');
+      expect(first.accountNumber).toBe('000037591');
+      // A row with no packed trade name still reports none.
+      expect(third.legalName).toBe('CITY OF MISSION');
+      expect(third.tradeName).toBeNull();
+      expect(result.text).toContain('73 more not shown');
 
       // This grid's antiforgery pair comes from `/`, not the employer-search page —
       // a token minted on the other page is rejected with a 302 by the live app.
@@ -450,17 +511,64 @@ describe('worksafebc-cor MCP server', () => {
       expect(seen[1].body).toContain('certifyingPartnerEmployerId=000810731');
     });
 
-    it('reports an unknown partner id as an empty list, not a crash', async () => {
+    // `CUCode` packs multiple units the same way. Left unsplit, a two-unit employer
+    // reported one unit whose "code" was the literal string `721028<br/>761033`.
+    it('splits a multi-unit CUCode into separate classification units', async () => {
       const result = ok(
         await callTool(
           server,
           'list_certified_employers',
-          { certifyingPartnerId: '000000000' },
-          gridResponder('{"Data":[],"Total":0}'),
+          { certifyingPartnerId: '000850381' },
+          partnerResponder(FIXTURE_PARTNER_MULTI_CU),
+        ),
+      );
+      const [first] = result.structured.employers;
+      expect(first.classificationUnits.length).toBeGreaterThan(1);
+      for (const code of first.classificationUnits) expect(code).toMatch(/^\d+$/);
+    });
+
+    // An unknown id and a stale antiforgery token produce the identical 302, so the id is
+    // checked against the landing page's own list first — otherwise a permanent caller
+    // error is reported as "try again".
+    it('names an unknown partner id instead of telling the caller to retry', async () => {
+      const result = await callTool(
+        server,
+        'list_certified_employers',
+        { certifyingPartnerId: '000000000' },
+        partnerResponder(FIXTURE_PARTNER_EMPLOYERS),
+      );
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(false);
+      expect(result.error).toContain('not a WorkSafeBC certifying partner id');
+      expect(result.error).toContain('000810731');
+    });
+
+    // The two partners marked (HISTORICAL) are valid ids that list nobody. Since the id
+    // is validated first, an empty page means "nothing listed", not "wrong id".
+    it('does not blame the id when a valid partner lists no employers', async () => {
+      const result = ok(
+        await callTool(
+          server,
+          'list_certified_employers',
+          { certifyingPartnerId: '000672839' },
+          partnerResponder('{"Data":[],"Total":0,"Errors":null}'),
         ),
       );
       expect(result.structured.count).toBe(0);
-      expect(result.text).toMatch(/list_certifying_partners/);
+      expect(result.text).toContain('valid certifying partner');
+      expect(result.text).toContain('HISTORICAL');
+    });
+
+    it('accepts a partner id that is on the landing page', async () => {
+      const result = ok(
+        await callTool(
+          server,
+          'list_certified_employers',
+          { certifyingPartnerId: '000810731' },
+          partnerResponder(FIXTURE_PARTNER_EMPLOYERS),
+        ),
+      );
+      expect(result.structured.count).toBe(3);
     });
   });
 });

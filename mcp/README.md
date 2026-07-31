@@ -302,29 +302,65 @@ trade name, read one employer's certificates (certifying partner, COR type,
 certificate number, expiry, and the classification units each covers), list the
 eleven certifying partners, and list every employer one partner has certified.
 
-**Expiry is computed, not just reported.** A COR that lapsed in 2019 renders
-identically to one good until 2028, and "does this sub hold a current COR?" is
-the only question the tool is asked — so each certificate carries an `expired`
-flag against today's date and the prose says `EXPIRED` rather than leaving a
-date to be read.
+The app has no documented API — its Kendo grids are server-paged against two
+JSON endpoints, so pages come back as data rather than scraped rows. With no
+reference to check against, everything below was **measured**, and five of the
+findings were behaviours no amount of reading would have revealed:
 
-The app has no documented API, but its Kendo grids are **server-paged against
-two JSON endpoints**, so pages come back as data rather than scraped rows.
-Three upstream behaviours drove the design:
+1. **A search matching exactly one employer does not return a one-row grid — it
+   302s to that employer's details page.** Confirmed on four separate queries
+   (`al stober`, `van belle nursery`, `leddy firewood`, `teck`). An earlier
+   version treated every 3xx as a failure, so the single most likely question
+   this tool is asked — *is __this__ firm certified?* — came back "rejected the
+   request; try again". The redirect is now resolved into the one-row answer;
+   a redirect to `/Error/Index` is still a failure.
+2. **Two grid columns pack two values into one field, as raw HTML.**
+   `LegalName` arrives as `LEGAL</br/><i>TRADE</i>` in **131 of 739** sampled
+   rows, and `CUCode` as `721028<br/>761033`. Stripping tags without splitting
+   first merged a legal and a trade name into one string
+   (`MAPLE RIDGE SCHOOL DISTRICT #42 SCHOOL DISTRICT 42`, with `tradeName: null`)
+   and turned a two-unit employer into one unit whose code was the literal
+   `721028<br/>761033`. Both were confident-looking wrong values.
+3. **The five-character minimum belongs to the form, not the endpoint.** Four
+   characters return real results (`bell` → 8 matches, `wood` → 45, `ltd.` →
+   1781); three 302 to `/Error/Index`. Copying the form's rule made the tool
+   refuse queries the service answers, so the floor is 4.
+4. **An unknown certifying-partner id gets the identical 302 as a stale
+   antiforgery token** — one permanent, one transient, indistinguishable from
+   the response. The landing page fetched for the token also carries the partner
+   list, so the id is now checked there for free; what still 302s really is
+   likely transient. The two partners marked `(HISTORICAL)` are valid ids that
+   list nobody, which is reported as such rather than as a bad id.
+5. **`RTW` and `IDM` were invented.** An earlier COR-type map expanded them to
+   English labels; neither appears in WorkSafeBC's data. Only `OHS` was
+   observed, and unrecognized codes now pass through verbatim.
 
-1. **The antiforgery pair is per landing page, not per app.** A token minted on
-   `/Home/EmployerSearch` and sent to `GetCertifyingPartnerEmployers` is
-   rejected — so each tool GETs *its own* landing page, and the two never share
-   a session.
-2. **Rejection is a 302, not a status code.** A stale token, and an unknown
-   employer number on `/Home/EmployerDetails`, both redirect to `/Error/Index`
-   with a 200 at the end of it. Following that redirect yields a page with no
-   result rows — which parses as "no matches" for a search and, far worse, as
-   "this employer holds no COR" for a lookup. Redirects are therefore treated as
-   failures at both surfaces rather than followed.
-3. **Only COR holders are in this registry.** A firm absent from it may still be
-   registered with WorkSafeBC and simply hold no COR, so an empty result says so
-   instead of letting "not found" read as "not registered".
+**Checks that came back clean** — recorded so nobody re-runs them:
+
+- `Total` is a true total, not a page size: 214 at `take=10`, `25` and `50` alike.
+- **Paging is lossless.** Identical queries return identical ids and order
+  (static data), and `take=10 skip=0` + `take=10 skip=10` reproduces the
+  `take=20` baseline exactly — same set, same order, no duplicates, nothing
+  dropped.
+- Both name filters filter: 0 violations over `LN` and `TN` result sets.
+- `AccountNumber` is always the employer id zero-padded to nine digits — 739
+  rows, 0 violations — which is what lets the search grid (which omits the
+  field) report one anyway.
+- `ExpiryDate` is `YYYY/MM/DD` in all 739 rows; the field sweep leaves nothing
+  unread; `Errors` was null on every success (it is read anyway, so a populated
+  one can never be reported as "no matches").
+- Multi-certificate employers are real and parse correctly: City of Mission
+  holds one COR from BCFSC and one from BCMSA, each with its own classification
+  unit, and each unit is attributed to the certificate it sits under.
+
+**One assumption did not survive, and the claim was rewritten rather than the
+code.** `expired` was introduced on the reasoning that "a COR that lapsed in 2019
+renders identically to one good until 2028". In 739 live rows **no expired
+certificate appeared at all** — the earliest expiry was two days out — so the
+registry evidently lists only current certificates. The flag stays as a guard
+(the sample cannot see the details pages, and a certificate that lapses between
+publication and reading is free to catch), but it is no longer described as the
+common case.
 
 WorkSafeBC's **clearance letter** service is deliberately *not* exposed: it
 reveals a firm's clearance status only after the requester supplies a name and
@@ -348,12 +384,39 @@ one that matters:
   test.
 - `unconfirmed` — "Insufficient information entered", which the registry returns
   **both** for a number that was never issued **and** for a live, valid number
-  whose name doesn't match CRA records. Verified live: `830951471` +
-  "WARLINE PAINTING LTD." confirms, and the same number + "Warline Painting"
-  does not. Reporting that as *unregistered* would be a confidently wrong answer
-  about a real registrant, so it is named as unconfirmed and the remedy — the
-  exact legal name, which `orgbook-bc` supplies alongside the business number —
-  travels with it.
+  whose name doesn't match. Both halves were confirmed live: `830951471` +
+  `WARLINE PAINTING LTD.` registers, the same number + `Warline Painting` does
+  not, and a checksum-valid but unissued number (`100000009`) returns the *same
+  sentence* under two different names. Reporting that as *unregistered* would be
+  a confidently wrong answer about a real registrant, so it is named as
+  unconfirmed and the remedy — the exact legal name, which `orgbook-bc` supplies
+  alongside the business number — travels with it.
+
+**The name match was measured, because the advice given to callers depends on
+it.** An earlier version told callers the match was "strict", implying they
+needed the CRA's exact capitalization. It is not: lower case
+(`warline painting ltd.`), a missing final period (`… LTD`) and padded or
+collapsed whitespace all confirm. What fails is an *incomplete* name
+(`WARLINE PAINTING`, `Warline`), a spelled-out suffix (`… LIMITED` for `… LTD.`),
+an extra token (`… LTD. INC`) and a typo (`Pointing`). So it normalizes case,
+spacing and trailing punctuation but requires the whole registered name — which
+is a different instruction, and the one now given.
+
+Two transport claims were asserted before they were tested, and one was wrong.
+Dropping the session cookie does **not** re-render the empty form as originally
+commented — it serves a bilingual *"Invalid Form Submission — for your
+protection, the form submission was ignored"* page with no Screen ID and no
+verdict. It is correctly treated as retryable, and the cookie is now required up
+front rather than treated as optional. The Struts token *is* single-use as
+claimed: replaying one redirects to `srvmsgNvldTkn.jsp`. The result screen also
+echoes the submitted number back, and that echo is now compared against what was
+sent, so a crossed session cannot deliver an answer about a different business.
+
+**Checks that came back clean**: the transaction date must be exactly
+`yyyy-mm-dd` (`2026/07/01`, `01-07-2026` and `2026-7-1` are all rejected by the
+CRA, which the Zod pattern already matched); validation short-circuits to one
+message at a time rather than aggregating; and the service advertises **no**
+rate-limit or quota headers, so there is nothing to surface as a budget.
 
 Input rejections (a bad check digit, a future transaction date) come back in the
 CRA's own words rather than a generic failure. Terms of use: the CRA asks that

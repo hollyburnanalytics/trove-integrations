@@ -2,11 +2,18 @@ import { z } from '@ontrove/mcp';
 
 /** Shared wire shapes for the WorkSafeBC COR server modules. */
 
-/** COR type codes WorkSafeBC issues (fallback: the raw code). */
+/**
+ * COR type codes, expanded to labels.
+ *
+ * `OHS` is the only code observed: 739 certificate rows sampled across five
+ * certifying partners (BCCSA, BCMSA, BCFSC, Energy Safety Canada, AgSafe) were
+ * `OHS` without exception. An earlier version of this map also expanded `RTW`
+ * and `IDM` — neither appears in WorkSafeBC's data or its documentation, and
+ * inventing a label risks putting a confident English name on a future code
+ * that means something else. Anything unrecognized now passes through verbatim.
+ */
 export const COR_TYPE_LABEL: Record<string, string> = {
   OHS: 'Occupational Health & Safety',
-  RTW: 'Return to Work',
-  IDM: 'Injury Management',
 };
 
 /** Expand a COR type code to its label, keeping an unknown code verbatim. */

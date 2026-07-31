@@ -18,9 +18,13 @@ import { defineMcpServer, type ToolContext, ToolError, z } from '@ontrove/mcp';
  *     Struts token (`struts.token.name` + `token`) and the session cookie.
  *  2. `POST /ebci/brom/registry/pub/reg_01_Sbmt.action` — 302s to
  *     `reg_02_Ld.action`, where the answer is rendered (Post-Redirect-Get).
- * The redirect is followed by hand carrying the session cookie: `fetch` does not
- * persist a `Set-Cookie` across a redirect, and the followed GET without it
- * renders the empty form instead of the result.
+ * The redirect is followed by hand carrying the session cookie, because `fetch`
+ * does not persist a `Set-Cookie` across a redirect. That cookie is not optional:
+ * dropping it was tested, and the followed GET then serves a bilingual
+ * "Invalid Form Submission — for your protection, the form submission was
+ * ignored" page with no Screen ID and no result. The Struts token is likewise
+ * single-use — replaying one redirects to `srvmsgNvldTkn.jsp` — so every call
+ * mints its own.
  *
  * Terms of use: the CRA asks that the registry be used only to validate a
  * business's GST/HST number, and prohibits commercial reproduction of results;
@@ -41,6 +45,9 @@ const TOKEN_RE = /name="token"\s+value="([^"]*)"/;
 /** `<strong>Result</strong>` … the next value cell holds the CRA's verdict. */
 const RESULT_RE =
   /<strong>Result\s*<\/strong>[\s\S]{0,200}?<div class="col-md-10">([\s\S]*?)<\/div>/;
+/** The result screen echoes the submitted number back above the verdict. */
+const ECHOED_NUMBER_RE =
+  /<strong>GST\/HST number\s*<\/strong>[\s\S]{0,200}?<div class="col-md-10">([\s\S]*?)<\/div>/;
 /** A per-field validation message on the input screen. */
 const FIELD_ERROR_RE = /<span class="strong error[^"]*">([\s\S]*?)<\/span>/g;
 /** Screen ID: `B-BN-REG-02` is the result screen, `B-BN-REG-01` the input form. */
@@ -74,10 +81,18 @@ function plainText(html: string): string {
  * records the registry answers "Insufficient information entered" — the *same*
  * answer it gives for a number that was never issued, because the CRA will not
  * reveal whose number it is. Reporting that as "not registered" would be a
- * confidently wrong answer: a live, valid number with the legal name spelled
- * "Warline Painting" instead of "WARLINE PAINTING LTD." lands here (verified
- * live). So it is named as unconfirmed, and the remedy — an exact legal name —
- * travels with it.
+ * confidently wrong answer about a live registrant, so it is named as
+ * unconfirmed, with the remedy attached.
+ *
+ * What the name match actually tolerates was measured against one live number
+ * rather than assumed, because the guidance to callers depends on it. Accepted:
+ * lower case (`warline painting ltd.`), a missing final period (`… LTD`), and
+ * collapsed/padded whitespace. Rejected: any *incomplete* name
+ * (`WARLINE PAINTING`, `Warline`), a spelled-out synonym for the suffix
+ * (`… LIMITED` for `… LTD.`), an extra token (`… LTD. INC`), and a typo
+ * (`Pointing`). So it normalizes case, spacing and trailing punctuation, but
+ * needs the whole registered name — which is why the advice is "get the exact
+ * legal name", not "match the CRA's capitalization".
  */
 function classifyResult(sentence: string): Verdict {
   const text = sentence.toLowerCase();
@@ -93,9 +108,11 @@ const VERDICT_SUMMARY: Record<Verdict, string> = {
   unconfirmed:
     'NOT CONFIRMED. The CRA could not match this number, name and date together — and it does ' +
     'not say which of the three is wrong, because it never discloses whose number it is. The ' +
-    'usual cause is the business name: it must match CRA records (try the exact legal name, ' +
-    'e.g. from OrgBook BC, including the "LTD."/"INC." suffix). This is not proof the number ' +
-    'is unregistered.',
+    'usual cause is an incomplete business name: case, spacing and a missing final period are ' +
+    'all tolerated, but the whole registered name is required, so "Acme Paving" fails where ' +
+    '"Acme Paving Ltd." succeeds, and "Limited" does not stand in for "Ltd.". Retry with the ' +
+    'exact legal name (orgbook-bc has it for BC companies). This is NOT proof the number is ' +
+    'unregistered.',
 };
 
 /** Merge `name=value` pairs from a Cookie header with Set-Cookie values (new wins). */
@@ -127,7 +144,9 @@ async function getSession(ctx: ToolContext): Promise<{ token: string; cookie: st
     .map((value) => value.split(';')[0])
     .filter((pair): pair is string => Boolean(pair))
     .join('; ');
-  if (!token) {
+  // Both halves are required — the submit is answered with "Invalid Form Submission"
+  // if the cookie is missing, and with the invalid-token screen if the token is.
+  if (!token || cookie === '') {
     throw new ToolError('The CRA GST/HST Registry did not return a usable session.', {
       retryable: true,
     });
@@ -191,8 +210,10 @@ export default defineMcpServer({
           .min(1)
           .max(175)
           .describe(
-            'The business name as it appears on the invoice or as CRA records it. The match is ' +
-              'strict — "WARLINE PAINTING LTD." matches where "Warline Painting" does not.',
+            'The business name as CRA records it. Case, extra spacing and a missing final ' +
+              'period are tolerated, but the name must be COMPLETE: "Acme Paving Ltd." ' +
+              'matches where "Acme Paving" does not, and "Limited" will not stand in for ' +
+              '"Ltd.".',
           ),
         transactionDate: z
           .string()
@@ -232,7 +253,7 @@ export default defineMcpServer({
           headers: {
             ...HTML_HEADERS,
             'content-type': 'application/x-www-form-urlencoded',
-            ...(cookie === '' ? {} : { cookie }),
+            cookie,
           },
           body: new URLSearchParams({
             'struts.token.name': 'token',
@@ -259,6 +280,16 @@ export default defineMcpServer({
               : 'The CRA GST/HST Registry did not return a result; try again.',
             { retryable: errors.length === 0 },
           );
+        }
+
+        // The result screen echoes the three inputs back above the verdict. They are
+        // compared against what was sent: the verdict is only meaningful for the question
+        // that was asked, and a session mix-up would otherwise be reported as an answer.
+        const echoed = plainText(ECHOED_NUMBER_RE.exec(html)?.[1] ?? '');
+        if (echoed !== '' && echoed !== digits) {
+          throw new ToolError(`The CRA answered for GST/HST ${echoed}, not ${digits}; try again.`, {
+            retryable: true,
+          });
         }
 
         const sentence = plainText(RESULT_RE.exec(html)?.[1] ?? '');

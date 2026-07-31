@@ -36,8 +36,15 @@ export function isoDate(raw: string | null): string | null {
 
 /**
  * True when `date` is strictly before today (UTC), false when it is not, and
- * null when there is no parseable date. Expiry is the whole point of a COR
- * lookup, so the comparison is made here rather than left to the caller.
+ * null when there is no parseable date.
+ *
+ * This is a guard, not a common case: across 739 certificate rows sampled from
+ * five certifying partners, **no** already-expired certificate appeared — the
+ * earliest expiry in the sample was two days out — so WorkSafeBC appears to
+ * list only current certificates. The flag stays because "appears to" is not
+ * "guarantees", the sample cannot see the details pages, and a certificate that
+ * lapses between publication and reading costs nothing to catch. It should not
+ * be read as evidence that the registry serves stale certificates.
  */
 export function isExpired(date: string | null): boolean | null {
   if (!date) return null;

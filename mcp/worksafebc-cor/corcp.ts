@@ -107,21 +107,32 @@ interface GridRow {
 const asString = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
 
-/** Turn a non-2xx grid response into the right ToolError, or pass it through. */
-function assertGridOk(res: Response): void {
-  // A stale/mismatched antiforgery pair 302s to /Error/Index rather than returning a
-  // status code, so a redirect must fail here — following it would hand back an HTML
-  // error page that parses as "no results".
-  if (res.status >= 300 && res.status < 400) {
-    throw new ToolError('The WorkSafeBC COR registry rejected the request; try again.', {
-      retryable: true,
-    });
-  }
-  if (!res.ok) {
-    throw new ToolError(`The WorkSafeBC COR registry returned HTTP ${res.status}.`, {
-      retryable: res.status >= 500 || res.status === 429,
-    });
-  }
+/** `/Home/EmployerDetails?employerId=200213040` in a redirect Location. */
+const DETAILS_REDIRECT_RE = /\/Home\/EmployerDetails\?employerId=(\d+)/;
+
+/** What a grid POST came back as: rows, or a redirect to one employer's page. */
+export type GridResponse =
+  | { kind: 'rows'; rows: GridRow[]; total: number }
+  | { kind: 'singleMatch'; employerId: number };
+
+/**
+ * Classify a grid POST's redirect.
+ *
+ * Measured, not assumed: a search matching **exactly one** employer does not
+ * return a one-row grid — it 302s to that employer's details page
+ * (`"al stober"`, `"van belle nursery"`, `"leddy firewood"` and `"teck"` all
+ * do). Treating every 3xx as a failure therefore broke the single most likely
+ * query this tool receives: "is *this* firm certified?". A redirect to
+ * `/Error/Index` is still a failure; one to `/Home/EmployerDetails` is the
+ * answer.
+ */
+function classifyRedirect(res: Response): GridResponse {
+  const location = res.headers.get('location') ?? '';
+  const employerId = DETAILS_REDIRECT_RE.exec(location)?.[1];
+  if (employerId !== undefined) return { kind: 'singleMatch', employerId: Number(employerId) };
+  throw new ToolError('The WorkSafeBC COR registry rejected the request; try again.', {
+    retryable: true,
+  });
 }
 
 /** POST one page of a Kendo grid and return its rows plus the reported total. */
@@ -130,7 +141,7 @@ export async function fetchGrid(
   parameters: Record<string, string>,
   session: Session,
   ctx: ToolContext,
-): Promise<{ rows: GridRow[]; total: number }> {
+): Promise<GridResponse> {
   const res = await ctx.fetch(`${BASE_URL}${endpoint}`, {
     method: 'POST',
     redirect: 'manual',
@@ -145,7 +156,12 @@ export async function fetchGrid(
       ...parameters,
     }).toString(),
   });
-  assertGridOk(res);
+  if (res.status >= 300 && res.status < 400) return classifyRedirect(res);
+  if (!res.ok) {
+    throw new ToolError(`The WorkSafeBC COR registry returned HTTP ${res.status}.`, {
+      retryable: res.status >= 500 || res.status === 429,
+    });
+  }
   let body: unknown;
   try {
     body = await res.json();
@@ -154,21 +170,56 @@ export async function fetchGrid(
       retryable: true,
     });
   }
-  const parsed = (body ?? {}) as { Data?: unknown; Total?: unknown };
+  const parsed = (body ?? {}) as { Data?: unknown; Total?: unknown; Errors?: unknown };
+  // `Errors` has been null on every observed success. It is read anyway rather than
+  // ignored: a payload that carried an error alongside a null `Data` would otherwise
+  // be reported as "no matches".
+  if (parsed.Errors !== null && parsed.Errors !== undefined) {
+    throw new ToolError(
+      `The WorkSafeBC COR registry reported an error: ${String(parsed.Errors).slice(0, 200)}`,
+      { retryable: false },
+    );
+  }
   const rows = (Array.isArray(parsed.Data) ? parsed.Data : []).map((row) =>
     typeof row === 'object' && row !== null ? (row as GridRow) : {},
   );
-  return { rows, total: typeof parsed.Total === 'number' ? parsed.Total : rows.length };
+  return {
+    kind: 'rows',
+    rows,
+    total: typeof parsed.Total === 'number' ? parsed.Total : rows.length,
+  };
 }
+
+/** A `<br/>` in any of the forms this app emits, including its malformed `</br/>`. */
+const BR_RE = /<\/?br\s*\/?>/i;
+
+/**
+ * Split a certifying-partner grid cell on its `<br/>` separator.
+ *
+ * The partner grid declares two of its columns `encoded: false` and packs two
+ * values into each: `LegalName` carries `LEGAL</br/><i>TRADE</i>` (131 of 739
+ * sampled rows) and `CUCode` carries `721028<br/>761033`. Stripping the tags
+ * without splitting first merged a legal and a trade name into one string and
+ * turned a two-unit code into the single literal `"721028<br/>761033"` — both
+ * confidently wrong values under a correct-looking label.
+ */
+const splitCell = (value: string | null): string[] =>
+  (value ?? '')
+    .split(BR_RE)
+    .map((part) => cellText(part))
+    .filter((part): part is string => part !== null);
 
 /** Project a grid row onto the employer identity fields. */
 export function toEmployerHit(row: GridRow): EmployerHit {
   const id = typeof row.EmployerId === 'number' ? row.EmployerId : null;
+  // The search grid keeps the two names in separate fields; the partner grid packs
+  // both into `LegalName`. Prefer an explicit `TradeName`, fall back to the packed one.
+  const [legalName, packedTradeName] = splitCell(asString(row.LegalName));
   return {
     employerId: id,
     accountNumber: asString(row.AccountNumber) ?? (id === null ? null : accountNumber(id)),
-    legalName: cellText(asString(row.LegalName) ?? ''),
-    tradeName: cellText(asString(row.TradeName) ?? ''),
+    legalName: legalName ?? null,
+    tradeName: cellText(asString(row.TradeName) ?? '') ?? packedTradeName ?? null,
     url: id === null ? null : `${BASE_URL}/Home/EmployerDetails?employerId=${id}`,
   };
 }
@@ -182,10 +233,9 @@ export function toPartnerCertifiedEmployer(row: GridRow): PartnerCertifiedEmploy
     certificateNumber: asString(row.CertificateNumber),
     expiryDate,
     expired: isExpired(expiryDate),
-    classificationUnits: (asString(row.CUCode) ?? '')
-      .split(/[\s,]+/)
-      .map((unit) => unit.trim())
-      .filter((unit) => unit !== ''),
+    classificationUnits: splitCell(asString(row.CUCode)).flatMap((unit) =>
+      unit.split(/[\s,]+/).filter((code) => code !== ''),
+    ),
   };
 }
 

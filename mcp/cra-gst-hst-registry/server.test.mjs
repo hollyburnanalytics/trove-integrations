@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { callTool } from '../lib/test-harness.mjs';
 import server from './server.ts';
 
@@ -55,6 +56,16 @@ const registryResponder = (final, seen = []) => {
     gets += 1;
     return gets === 1 ? ENTRY : final;
   };
+};
+
+/** Verbatim captures of live CRA screens — see `fixtures/`. */
+const fixture = (name) => readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8');
+const LIVE = {
+  registered: fixture('result-registered.html'),
+  unconfirmed: fixture('result-unconfirmed.html'),
+  notOnDate: fixture('result-not-registered-on-date.html'),
+  badNumber: fixture('input-invalid-business-number.html'),
+  invalidSubmission: fixture('invalid-form-submission.html'),
 };
 
 const ok = (result) => {
@@ -133,7 +144,7 @@ describe('cra-gst-hst-registry MCP server', () => {
     expect(structured.verdict).toBe('unconfirmed');
     expect(structured.registered).toBe(false);
     expect(result.text).toContain('NOT CONFIRMED');
-    expect(result.text).toContain('not proof the number is unregistered');
+    expect(result.text).toContain('NOT proof the number is unregistered');
   });
 
   it("surfaces the CRA's own validation message for a rejected input", async () => {
@@ -249,5 +260,69 @@ describe('cra-gst-hst-registry MCP server', () => {
     );
     expect(result.ok).toBe(false);
     expect(result.error).toContain('no verdict');
+  });
+
+  // The five screens below are verbatim captures. The hand-built pages above keep the
+  // transport assertions readable; these prove the parsing against the real markup.
+  describe('against captured live screens', () => {
+    const REDIRECT = {
+      status: 302,
+      headers: {
+        location:
+          'https://www.businessregistration-inscriptionentreprise.gc.ca/ebci/brom/registry/pub/reg_02_Ld.action',
+      },
+    };
+
+    const callLive = (page, arguments_ = ARGS) => {
+      let gets = 0;
+      return callTool(server, 'confirm_gst_hst_number', arguments_, (_url, init) => {
+        if (init?.method === 'POST') return REDIRECT;
+        gets += 1;
+        return gets === 1 ? ENTRY : { text: page };
+      });
+    };
+
+    it('reads the registered verdict off the real screen', async () => {
+      const result = ok(await callLive(LIVE.registered));
+      expect(result.structured.verdict).toBe('registered');
+      expect(result.structured.craMessage).toBe(
+        'GST/HST number registered on this transaction date.',
+      );
+    });
+
+    it('reads the not-registered-on-date verdict off the real screen', async () => {
+      const result = ok(await callLive(LIVE.notOnDate));
+      expect(result.structured.verdict).toBe('notRegisteredOnDate');
+      expect(result.structured.registered).toBe(false);
+    });
+
+    it('reads the unconfirmed verdict off the real screen', async () => {
+      const result = ok(await callLive(LIVE.unconfirmed));
+      expect(result.structured.verdict).toBe('unconfirmed');
+      expect(result.text).toContain('NOT CONFIRMED');
+    });
+
+    it("surfaces the real screen's validation message", async () => {
+      const result = await callLive(LIVE.badNumber);
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('GST/HST number is not valid.');
+    });
+
+    // Dropping the session cookie produces this bilingual page — no Screen ID, no
+    // verdict, no field errors. It must be retryable, never parsed as an answer.
+    it('treats the Invalid Form Submission page as retryable, not as a verdict', async () => {
+      const result = await callLive(LIVE.invalidSubmission);
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(true);
+      expect(result.error).toMatch(/did not return a result/i);
+    });
+
+    // The verdict is only meaningful for the number that was asked about.
+    it('refuses a result screen that answers about a different number', async () => {
+      const result = await callLive(LIVE.registered, { ...ARGS, businessNumber: '000000000' });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('830951471');
+      expect(result.retryable).toBe(true);
+    });
   });
 });
