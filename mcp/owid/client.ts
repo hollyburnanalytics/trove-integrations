@@ -56,7 +56,7 @@ const MAX_CSV_BYTES = 4 * 1024 * 1024;
  */
 const owid = createEgressClient({
   service: 'Our World in Data',
-  headers: { 'user-agent': 'Trove MCP (our-world-in-data@ontrove.sh)' },
+  headers: { 'user-agent': 'Trove MCP (owid@ontrove.sh)' },
   throttleMs: 250,
   bodyStatuses: [403],
   // `maxTotalBytes` matters more than `maxEntries` here: chart CSVs run to

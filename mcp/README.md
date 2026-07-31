@@ -42,7 +42,7 @@ in their manifest `egress`.
 |---|---|---|---|
 | `sec-edgar` | `get_financials`, `get_xbrl_concept`, `get_filing_document`, `insider_transactions`, `get_fund_holdings`, `get_company`, `search_filings`, `company_filings` | SEC EDGAR (efts/data/www.sec.gov) | — |
 | `world-bank` | `search_indicators`, `get_indicator` | api.worldbank.org | — 🌍|
-| `our-world-in-data` | `search_charts`, `search_indicators`, `get_chart_data`, `get_indicator_data`, `get_chart_metadata` | ourworldindata.org + api.ourworldindata.org + search.owid.io | — ⊕|
+| `owid` | `search_charts`, `search_indicators`, `get_chart_data`, `get_indicator_data`, `get_chart_metadata` | ourworldindata.org + api.ourworldindata.org + search.owid.io | — ⊕|
 | `canada-open-data` | `search_datasets`, `get_dataset`, `query_dataset`, `find_organizations` | open.canada.ca (CKAN — federal + provincial) | — |
 | `openparliament` | `find_mp`, `mp_speeches`, `search_bills` | api.openparliament.ca (Canada Hansard) | — |
 | `dnv-permits` | `search_permits`, `suggest_addresses`, `recent_permits` | app.dnv.org (District of North Vancouver) | — |
@@ -181,7 +181,7 @@ are business-daily, so a date axis reconstructed from start+frequency would
 mislabel every point after the first weekend), and a pull over 2,000 points is
 refused with the limit to use instead of being quietly shrunk.
 
-⊕ `our-world-in-data` — an **independent client for Our World in Data's public
+⊕ `owid` — an **independent client for Our World in Data's public
 APIs**, not affiliated with or endorsed by Our World in Data or Global Change
 Data Lab. The name is used descriptively, to say which API this talks to; no
 OWID logo or branding is used, and nothing here reproduces their Grapher

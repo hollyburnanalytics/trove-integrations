@@ -189,7 +189,7 @@ function chartResponder(overrides = {}) {
   };
 }
 
-describe('our-world-in-data MCP server', () => {
+describe('owid MCP server', () => {
   it('lists the five read-only tools', () => {
     expect(server.tools.map((t) => t.name).toSorted()).toEqual([
       'get_chart_data',
