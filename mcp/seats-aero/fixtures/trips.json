@@ -1,0 +1,201 @@
+{
+ "data": [
+  {
+   "ID": "3GxET35DfjU84pY3VugaEXzquYG",
+   "RouteID": "2IX73fEjItFfONAScLDVOok4gWI",
+   "AvailabilityID": "33W4G6Wo8wmz9eUVgkryXpL9uQa",
+   "AvailabilitySegments": [
+    {
+     "ID": "3GxESx6MFlEhgcXeKGhVS7nw7xO",
+     "RouteID": "2IX73fEjItFfONAScLDVOok4gWI",
+     "AvailabilityID": "33W4G6Wo8wmz9eUVgkryXpL9uQa",
+     "AvailabilityTripID": "3GxET35DfjU84pY3VugaEXzquYG",
+     "FlightNumber": "UA540",
+     "Distance": 966,
+     "Duration": 169,
+     "FareClass": "X",
+     "AircraftName": "Boeing 737 MAX 9",
+     "AircraftCode": "7M9",
+     "OriginAirport": "SFO",
+     "DestinationAirport": "DEN",
+     "DepartsAt": "2026-09-01T12:05:00Z",
+     "ArrivesAt": "2026-09-01T15:54:00Z",
+     "CreatedAt": "2026-07-24T14:53:43.062261Z",
+     "UpdatedAt": "2026-07-30T21:45:35.46625Z",
+     "Source": "united",
+     "Cabin": "economy",
+     "Order": 0
+    },
+    {
+     "ID": "3GxET3097xdO4OAPKUrpKY3SMAW",
+     "RouteID": "2IX73fEjItFfONAScLDVOok4gWI",
+     "AvailabilityID": "33W4G6Wo8wmz9eUVgkryXpL9uQa",
+     "AvailabilityTripID": "3GxET35DfjU84pY3VugaEXzquYG",
+     "FlightNumber": "UA27",
+     "Distance": 4664,
+     "Duration": 545,
+     "FareClass": "X",
+     "AircraftName": "Boeing 787-9",
+     "AircraftCode": "789",
+     "OriginAirport": "DEN",
+     "DestinationAirport": "LHR",
+     "DepartsAt": "2026-09-01T17:35:00Z",
+     "ArrivesAt": "2026-09-02T09:40:00Z",
+     "CreatedAt": "2026-07-24T14:53:43.062261Z",
+     "UpdatedAt": "2026-07-30T21:45:35.46625Z",
+     "Source": "united",
+     "Cabin": "economy",
+     "Order": 1
+    }
+   ],
+   "TotalDuration": 815,
+   "Stops": 1,
+   "Carriers": "UA, UA",
+   "RemainingSeats": 9,
+   "MileageCost": 40000,
+   "OptionalPrices": {
+    "UACARD": {
+     "MileageCost": 36000,
+     "Filtered": false
+    },
+    "UAELITECARD": {
+     "MileageCost": 34000,
+     "Filtered": false
+    }
+   },
+   "TotalTaxes": 560,
+   "TaxesCurrency": "USD",
+   "TaxesCurrencySymbol": "$",
+   "TotalSegmentDistance": 5630,
+   "OriginAirport": "SFO",
+   "DestinationAirport": "LHR",
+   "Connections": [
+    "DEN"
+   ],
+   "Aircraft": [
+    "Boeing 737 MAX 9",
+    "Boeing 787-9"
+   ],
+   "FareClasses": [
+    "X",
+    "X"
+   ],
+   "FlightNumbers": "UA540, UA27",
+   "DepartsAt": "2026-09-01T12:05:00Z",
+   "Cabin": "economy",
+   "ArrivesAt": "2026-09-02T09:40:00Z",
+   "CreatedAt": "2026-07-24T14:53:43.062261Z",
+   "UpdatedAt": "2026-07-30T21:45:35.46625Z",
+   "Source": "united"
+  },
+  {
+   "ID": "3GxET2H2CCW1v3HG8c4k5Pznz0Z",
+   "RouteID": "2IX73fEjItFfONAScLDVOok4gWI",
+   "AvailabilityID": "33W4G6Wo8wmz9eUVgkryXpL9uQa",
+   "AvailabilitySegments": [
+    {
+     "ID": "3GxET0QnYjTQauk4Hzp85MzNtaZ",
+     "RouteID": "2IX73fEjItFfONAScLDVOok4gWI",
+     "AvailabilityID": "33W4G6Wo8wmz9eUVgkryXpL9uQa",
+     "AvailabilityTripID": "3GxET2H2CCW1v3HG8c4k5Pznz0Z",
+     "FlightNumber": "UA2199",
+     "Distance": 1844,
+     "Duration": 275,
+     "FareClass": "YN",
+     "AircraftName": "Boeing 737 MAX 9",
+     "AircraftCode": "7M9",
+     "OriginAirport": "SFO",
+     "DestinationAirport": "ORD",
+     "DepartsAt": "2026-09-01T14:05:00Z",
+     "ArrivesAt": "2026-09-01T20:40:00Z",
+     "CreatedAt": "2026-07-24T14:53:43.062261Z",
+     "UpdatedAt": "2026-07-30T21:45:35.46625Z",
+     "Source": "united",
+     "Cabin": "economy",
+     "Order": 0
+    },
+    {
+     "ID": "3GxET3SyoRttb6LIngT4YPH9U7U",
+     "RouteID": "2IX73fEjItFfONAScLDVOok4gWI",
+     "AvailabilityID": "33W4G6Wo8wmz9eUVgkryXpL9uQa",
+     "AvailabilityTripID": "3GxET2H2CCW1v3HG8c4k5Pznz0Z",
+     "FlightNumber": "UA938",
+     "Distance": 3946,
+     "Duration": 495,
+     "FareClass": "YN",
+     "AircraftName": "Boeing 767-300",
+     "AircraftCode": "763",
+     "OriginAirport": "ORD",
+     "DestinationAirport": "LHR",
+     "DepartsAt": "2026-09-01T21:40:00Z",
+     "ArrivesAt": "2026-09-02T11:55:00Z",
+     "CreatedAt": "2026-07-24T14:53:43.062261Z",
+     "UpdatedAt": "2026-07-30T21:45:35.46625Z",
+     "Source": "united",
+     "Cabin": "economy",
+     "Order": 1
+    }
+   ],
+   "TotalDuration": 830,
+   "Stops": 1,
+   "Carriers": "UA, UA",
+   "RemainingSeats": 9,
+   "MileageCost": 67600,
+   "OptionalPrices": {
+    "UACARD": {
+     "MileageCost": 60800,
+     "Filtered": false
+    },
+    "UAELITECARD": {
+     "MileageCost": 57400,
+     "Filtered": false
+    }
+   },
+   "TotalTaxes": 560,
+   "TaxesCurrency": "USD",
+   "TaxesCurrencySymbol": "$",
+   "TotalSegmentDistance": 5790,
+   "OriginAirport": "SFO",
+   "DestinationAirport": "LHR",
+   "Connections": [
+    "ORD"
+   ],
+   "Aircraft": [
+    "Boeing 737 MAX 9",
+    "Boeing 767-300"
+   ],
+   "FareClasses": [
+    "YN",
+    "YN"
+   ],
+   "FlightNumbers": "UA2199, UA938",
+   "DepartsAt": "2026-09-01T14:05:00Z",
+   "Cabin": "economy",
+   "ArrivesAt": "2026-09-02T11:55:00Z",
+   "CreatedAt": "2026-07-24T14:53:43.062261Z",
+   "UpdatedAt": "2026-07-30T21:45:35.46625Z",
+   "Source": "united"
+  }
+ ],
+ "booking_links": [
+  {
+   "label": "Book via United MileagePlus",
+   "link": "https://www.united.com/en/us/fsr/choose-flights?f=SFO&t=LHR&d=2026-09-01&sc=7&st=bestmatches&cbm=-1&cbm2=-1&ft=0&cp=0&tt=1&at=1&rm=1&act=0&px=1&taxng=1&clm=7&tqp=A&utm_source=seatsaero",
+   "primary": true
+  },
+  {
+   "label": "Book via Air Canada Aeroplan",
+   "link": "https://www.aircanada.com/aeroplan/redeem/availability/outbound?org0=SFO&dest0=LHR&departureDate0=2026-09-01&lang=en-CA&tripType=O&ADT=1&YTH=0&CHD=0&INF=0&INS=0&marketCode=INT",
+   "primary": false
+  },
+  {
+   "label": "Book via Copa ConnectMiles",
+   "link": "https://shopping.copaair.com/miles?roundtrip=false&area1=SFO&area2=LHR&date1=2026-09-01&date2=&flexible_dates_v2=false&adults=1&children=0&infants=0&isMiles=true&advanced_air_search=false&stopover=false&sf=gs&langid=en&promocode=",
+   "primary": false
+  }
+ ],
+ "carriers": {
+  "B6": "jetBlue",
+  "UA": "United Airlines"
+ }
+}
