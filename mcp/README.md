@@ -48,6 +48,8 @@ in their manifest `egress`.
 | `dnv-permits` | `search_permits`, `suggest_addresses`, `recent_permits` | app.dnv.org (District of North Vancouver) | — |
 | `orgbook-bc` | `search_entities`, `get_entity`, `get_entity_history` | orgbook.gov.bc.ca (BC Corporate Registry mirror) | — ◊|
 | `bc-workers-comp-decisions` | `search_wcat_decisions`, `get_wcat_decision`, `search_review_decisions` | www.wcat.bc.ca + rdpubsearch.online.worksafebc.com | — †|
+| `worksafebc-cor` | `search_employers`, `get_employer_certificates`, `list_certifying_partners`, `list_certified_employers` | corcp.online.worksafebc.com (Certificate of Recognition registry) | — 🦺|
+| `cra-gst-hst-registry` | `confirm_gst_hst_number` | www.businessregistration-inscriptionentreprise.gc.ca (CRA GST/HST Registry) | — 🧾|
 
 ### Geo, weather & time
 | Toolkit | Tools | Upstream | Auth |
@@ -291,6 +293,74 @@ lookup-by-registration-number endpoint, so `get_entity` searches the number and
 then insists on an exact `source_id` match — a fuzzy near-miss is treated as
 not-found, never returned as the answer. Pairs naturally with `jonas-premier`:
 confirm a vendor's exact legal name and status before money moves.
+
+🦺 `worksafebc-cor` — **the safety-certification half of the same
+counterparty check**: OrgBook says a BC firm is *registered*; this says whether
+its safety program is **certified**, by whom, and until when. Keyless, over
+WorkSafeBC's public Certificate of Recognition app: search employers by legal or
+trade name, read one employer's certificates (certifying partner, COR type,
+certificate number, expiry, and the classification units each covers), list the
+eleven certifying partners, and list every employer one partner has certified.
+
+**Expiry is computed, not just reported.** A COR that lapsed in 2019 renders
+identically to one good until 2028, and "does this sub hold a current COR?" is
+the only question the tool is asked — so each certificate carries an `expired`
+flag against today's date and the prose says `EXPIRED` rather than leaving a
+date to be read.
+
+The app has no documented API, but its Kendo grids are **server-paged against
+two JSON endpoints**, so pages come back as data rather than scraped rows.
+Three upstream behaviours drove the design:
+
+1. **The antiforgery pair is per landing page, not per app.** A token minted on
+   `/Home/EmployerSearch` and sent to `GetCertifyingPartnerEmployers` is
+   rejected — so each tool GETs *its own* landing page, and the two never share
+   a session.
+2. **Rejection is a 302, not a status code.** A stale token, and an unknown
+   employer number on `/Home/EmployerDetails`, both redirect to `/Error/Index`
+   with a 200 at the end of it. Following that redirect yields a page with no
+   result rows — which parses as "no matches" for a search and, far worse, as
+   "this employer holds no COR" for a lookup. Redirects are therefore treated as
+   failures at both surfaces rather than followed.
+3. **Only COR holders are in this registry.** A firm absent from it may still be
+   registered with WorkSafeBC and simply hold no COR, so an empty result says so
+   instead of letting "not found" read as "not registered".
+
+WorkSafeBC's **clearance letter** service is deliberately *not* exposed: it
+reveals a firm's clearance status only after the requester supplies a name and
+mailing address, and issues an addressed letter naming them. That is a
+form-filling act on someone's behalf, not a public lookup.
+
+🧾 `cra-gst-hst-registry` — **confirm a supplier's GST/HST number** against the
+CRA's public registry, for a given transaction date: the check that supports an
+input tax credit on the tax that supplier charged. Keyless, no CAPTCHA, one tool.
+
+It is a **verification, not a directory**, and every design decision follows from
+that. There is no name search and no lookup by number alone; the CRA requires the
+9-digit number, the business name *and* the date together, and never discloses
+whose number it is. So the outcomes are not two but three, and the third is the
+one that matters:
+
+- `registered` / `notRegisteredOnDate` — the CRA's two affirmative answers. The
+  negative sentence contains the affirmative one as a substring ("number **was
+  not** registered on this transaction date"), so a naive substring test reports
+  the opposite of the truth; the negative is matched first, with a regression
+  test.
+- `unconfirmed` — "Insufficient information entered", which the registry returns
+  **both** for a number that was never issued **and** for a live, valid number
+  whose name doesn't match CRA records. Verified live: `830951471` +
+  "WARLINE PAINTING LTD." confirms, and the same number + "Warline Painting"
+  does not. Reporting that as *unregistered* would be a confidently wrong answer
+  about a real registrant, so it is named as unconfirmed and the remedy — the
+  exact legal name, which `orgbook-bc` supplies alongside the business number —
+  travels with it.
+
+Input rejections (a bad check digit, a future transaction date) come back in the
+CRA's own words rather than a generic failure. Terms of use: the CRA asks that
+the registry be used only to validate a business's GST/HST number and prohibits
+commercial reproduction of results, stating it "is not intended to be a search
+engine" — this server matches that shape on purpose: one number per call,
+nothing stored, no bulk tool.
 
 ¶ `jonas-premier` — **read-only window into a Premier Construction Software
 (Jonas Premier) tenant**: companies → jobs → job-cost transactions & original
