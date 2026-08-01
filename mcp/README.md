@@ -56,6 +56,7 @@ in their manifest `egress`.
 |---|---|---|---|
 | `mapbox` | `isochrone`, `geocode`, `directions` | api.mapbox.com | **`MAPBOX_TOKEN`** |
 | `open-meteo` | `geocode_place`, `forecast`, `historical` (back to 1940), `air_quality` | open-meteo.com | — |
+| `eccc-weather` | `find_location`, `forecast`, `air_quality`, `wildfire_smoke` | api.weather.gc.ca + geo.weather.gc.ca (MSC GeoMet) | — 🍁|
 | `usgs-quakes` | `recent_quakes` | earthquake.usgs.gov | — |
 | `holidays` | `public_holidays`, `next_holidays` | date.nager.at | — |
 
@@ -401,6 +402,49 @@ collapsed whitespace all confirm. What fails is an *incomplete* name
 an extra token (`… LTD. INC`) and a typo (`Pointing`). So it normalizes case,
 spacing and trailing punctuation but requires the whole registered name — which
 is a different instruction, and the one now given.
+
+🍁 `eccc-weather` — **Canada's official weather, air quality and wildfire
+smoke**, from Environment and Climate Change Canada's MSC GeoMet. Keyless, and
+notable for its licence: the ECCC Data Servers End-use Licence grants a
+"worldwide, royalty-free, perpetual, non-exclusive licence to use the
+Information, **including for commercial purposes**", with redistribution allowed
+on condition the source is acknowledged. Every response therefore carries the
+required `Data Source: Environment and Climate Change Canada` string. That makes
+it the unrestricted counterpart to `open-meteo`, whose free tier is
+non-commercial only.
+
+The pull is the **named forecast site**. ECCC publishes ~800 City Page sites, so
+most towns have their own forecast point instead of an interpolated grid cell —
+`find_location` resolves "West Vancouver" to `bc-99` at `-123.16, 49.33`, and a
+coordinate search ranks nearby sites by great-circle distance. `forecast` then
+returns three horizons from one payload: current conditions, 24 h of hourly
+detail (temperature, wind, precipitation probability), and the day/night period
+forecast — 12 periods, roughly six days — plus sunrise/sunset and active
+warnings.
+
+Two upstream shapes drove design decisions, both found live rather than assumed:
+
+- **AQHI keeps superseded runs.** The forecasts collection serves several days of
+  past model cycles alongside the current one, so the obvious
+  `sortby=forecast_datetime` returns a *stale* run — a query for "the next few
+  hours" came back with values published three days earlier. The server sorts by
+  `-publication_datetime` and then keeps only the newest run, re-sorting it
+  forward in time, so hours from different cycles can never interleave.
+- **A calm wind is the string `"calm"`, not `0`.** Reading it as a number yields
+  null, which a caller scoring "is it still outside?" cannot compare. It is
+  mapped to `0` km/h explicitly. Relatedly, `condition` is sometimes absent
+  entirely (the site publishes an `iconCode` with no value); the summary omits
+  the clause rather than printing a placeholder.
+
+`wildfire_smoke` is the odd one out: FireWork (RAQDPS, 10 km) is a raster model
+served over WMS rather than the Features API, so a point reading comes from
+`GetFeatureInfo` with a one-cell bounding box — and WMS 1.3.0 under `EPSG:4326`
+orders that box **latitude-first**, the reverse of the lon-first boxes used
+everywhere else here. It returns surface PM2.5 attributable to wildfire and
+vegetation plumes, which is the signal that actually decides a BC summer evening.
+
+Coverage is Canada only, and every timestamp ECCC publishes here is UTC — passed
+through unchanged rather than converted, so callers localize.
 
 Two transport claims were asserted before they were tested, and one was wrong.
 Dropping the session cookie does **not** re-render the empty form as originally
