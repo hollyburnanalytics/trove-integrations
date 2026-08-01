@@ -56,6 +56,7 @@ in their manifest `egress`.
 |---|---|---|---|
 | `mapbox` | `isochrone`, `geocode`, `directions` | api.mapbox.com | **`MAPBOX_TOKEN`** |
 | `open-meteo` | `geocode_place`, `forecast`, `historical` (back to 1940), `air_quality` | open-meteo.com | — |
+| `eccc-weather` | `find_location`, `forecast`, `observations`, `model_point`, `air_quality`, `wildfire_smoke` | api.weather.gc.ca + geo.weather.gc.ca (MSC GeoMet) | — 🍁|
 | `usgs-quakes` | `recent_quakes` | earthquake.usgs.gov | — |
 | `holidays` | `public_holidays`, `next_holidays` | date.nager.at | — |
 
@@ -401,6 +402,137 @@ collapsed whitespace all confirm. What fails is an *incomplete* name
 an extra token (`… LTD. INC`) and a typo (`Pointing`). So it normalizes case,
 spacing and trailing punctuation but requires the whole registered name — which
 is a different instruction, and the one now given.
+
+🍁 `eccc-weather` — **Canada's official weather, air quality and wildfire
+smoke**, from Environment and Climate Change Canada's MSC GeoMet. Keyless, and
+notable for its licence: the ECCC Data Servers End-use Licence grants a
+"worldwide, royalty-free, perpetual, non-exclusive licence to use the
+Information, **including for commercial purposes**", with redistribution allowed
+on condition the source is acknowledged. Every response therefore carries the
+required `Data Source: Environment and Climate Change Canada` string. That makes
+it the unrestricted counterpart to `open-meteo`, whose free tier is
+non-commercial only.
+
+The pull is the **named forecast site**. ECCC publishes ~800 City Page sites, so
+most towns have their own forecast point instead of an interpolated grid cell —
+`find_location` resolves "West Vancouver" to `bc-99` at `-123.16, 49.33`, and a
+coordinate search ranks nearby sites by great-circle distance. `forecast` then
+returns three horizons from one payload: current conditions, 24 h of hourly
+detail (temperature, wind, precipitation probability), and the day/night period
+forecast — 12 periods, roughly six days — plus sunrise/sunset and active
+warnings.
+
+Two upstream shapes drove design decisions, both found live rather than assumed:
+
+- **AQHI keeps superseded runs.** The forecasts collection serves several days of
+  past model cycles alongside the current one, so the obvious
+  `sortby=forecast_datetime` returns a *stale* run — a query for "the next few
+  hours" came back with values published three days earlier. The server sorts by
+  `-publication_datetime` and then keeps only the newest run, re-sorting it
+  forward in time, so hours from different cycles can never interleave.
+- **A calm wind is the string `"calm"`, not `0`.** Reading it as a number yields
+  null, which a caller scoring "is it still outside?" cannot compare. It is
+  mapped to `0` km/h explicitly. Relatedly, `condition` is sometimes absent
+  entirely (the site publishes an `iconCode` with no value); the summary omits
+  the clause rather than printing a placeholder.
+
+`observations` is the only tool here that reports **measurement rather than
+forecast** — the nearest SWOB surface station's latest reading. SWOB records
+carry ~200 raw MSC-coded columns, so it projects a curated subset. Wind needed
+the most care: stations drop individual averaging windows between observations
+(a record can carry `avg_wnd_spd_10m_pst1mt` and `pst2mts` while `pst10mts` is
+null), so it walks a preference list starting at the WMO-standard 10-minute mean
+and **reports which window the value came from** — a 1-minute mean and a 1-hour
+mean are not the same measurement, and a caller comparing them blind would be
+misled.
+
+`model_point` is the numeric counterpart to `forecast`: HRDPS surface fields at
+2.5 km, hourly, roughly a 48-hour horizon. It exists mainly for **total cloud
+cover**, which City Page publishes only as condition text — the earlier claim
+that ECCC had no numeric cloud cover was wrong; it is `HRDPS.CONTINENTAL_NT` on
+the WMS side. Wind is converted from the model's m/s to km/h so it matches the
+rest of the toolkit.
+
+Its constraint is fan-out. WMS has no bulk endpoint, so every (variable × hour)
+pair is one request; the tool caps the product at 48 and rejects anything larger
+up front rather than issuing it. Two failure modes are deliberately kept
+distinct, because both would otherwise arrive as indistinguishable nulls:
+
+- **Past the model horizon** — GeoMet answers an out-of-range `TIME` with an XML
+  `ServiceExceptionReport` under **HTTP 200**, so parsing every body as JSON
+  turns a routine horizon query into a thrown error. Non-JSON bodies are treated
+  as no-data and counted in `missingHours`.
+- **Rate limiting** — GeoMet returns **HTTP 429** on bursts (observed while
+  building this). Those cells are detected explicitly and raise a retryable
+  error naming the throttle, rather than being folded into `missingHours` where
+  they would read as "past the horizon." Concurrency is held at 3 for the same
+  reason.
+
+`wildfire_smoke` is the odd one out: FireWork (RAQDPS, 10 km) is a raster model
+served over WMS rather than the Features API, so a point reading comes from
+`GetFeatureInfo` with a one-cell bounding box — and WMS 1.3.0 under `EPSG:4326`
+orders that box **latitude-first**, the reverse of the lon-first boxes used
+everywhere else here. It returns surface PM2.5 attributable to wildfire and
+vegetation plumes, which is the signal that actually decides a BC summer evening.
+
+Coverage is Canada only, and every timestamp ECCC publishes here is UTC — passed
+through unchanged rather than converted, so callers localize.
+
+**Probed against the live API** (`/test-toolkit`). Eight defects, every one a
+confidently wrong answer under an HTTP 200; regression tests use verbatim
+captures under `fixtures/`:
+
+- **Pressure differed by 10× between two of its own tools.** City Page publishes
+  station pressure in **kPa** (`101.5`), SWOB in **hPa** (`1011.9`). Both were
+  surfaced unlabelled. The declared unit is now honoured and kPa converted, so
+  `forecast` and `observations` are comparable.
+- **A period precipitation probability that does not exist.** The collection's
+  queryables advertise `forecastGroup.forecasts.abbreviated_forecast.pop`, but
+  no live period contains `pop` in any spelling — `abbreviatedForecast` holds
+  only `icon` and `textSummary`. The field was removed rather than left as a
+  permanent null. The *hourly* `lop` is real (36/36 across six sites).
+- **A wind chill of −2 °C at 20.7 °C.** ECCC leaves a stale `windChill` in
+  `currentConditions` out of season, with `qaValue: 100`. It is now suppressed
+  above freezing; a test proves it still passes through at and below 0 °C.
+- **The page was reported as the answer.** `find_location` said "5 site(s)" when
+  `numberMatched` was 30. It now reports "showing N of M".
+- **Name search ranked by region text.** `q=` is full-text across the region, so
+  "West Vancouver" returned Ucluelet, Tofino and Estevan Point — all on *West
+  Vancouver Island*, 200 km away — above the actual city of Vancouver. Results
+  are re-ranked by name relevance. The first attempt at this fix was inert: it
+  re-ranked only the page already fetched, so a better match at position 6 could
+  never surface. The candidate pool is now widened before ranking.
+- **879 KB to read four fields.** Every City Page feature embeds a full
+  forecast, so a coordinate lookup downloaded ~879 KB for id/name/region/geom.
+  The OGC `properties` selector needs the *dotted* queryable paths (`name` is
+  rejected as "unknown properties specified"; `name.en` works) — the same query
+  is now ~6 KB, which is also what makes the wider ranking pool affordable.
+- **The AQHI forecast began in the past.** A run also covers hours that have
+  already elapsed by the time it is read — the 00Z publication still carried
+  00Z–03Z at 04Z — so "the next three hours" returned three hours that had
+  already happened. Elapsed hours are now dropped (falling back to the whole run
+  rather than returning nothing), and the fetch window was widened, because rows
+  arrive earliest-first within a run and the old limit never reached the future.
+
+- **"Past the model horizon" asserted for a point outside it.** `model_point` at
+  a London coordinate blamed the ~48 h HRDPS horizon for the *current* hour. The
+  first requested hour is always inside the horizon, so all-hours-empty now
+  reports an out-of-domain coordinate instead, exposed as `coverage`.
+
+**Checks that came back clean**, recorded so they need not be re-run: `bbox`,
+`location_id` and `latest` all filter correctly (0 violations); error bodies put
+the message in `description` (confirmed on a 400 and two 404s); SWOB units are
+consistent across 60 stations (°C, km/h, hPa, mm, %); the HRDPS m/s→km/h
+conversion reconciles by arithmetic; the `limit` values never truncate (938 SWOB
+stations, 844 City Page sites and 134 AQHI zones nationally, and the densest 3°
+box in Canada holds 34 and 53 against limits of 200); and the maximum permitted
+`model_point` fan-out — 48 reads — completes in **7.1 s** returning 1.6 KB, well
+inside the gateway wall clock and without tripping the 429.
+
+**Still true after probing:** ECCC publishes no visibility anywhere. SWOB's 75
+observed fields carry none, no HRDPS layer title matches it (the one "visible"
+hit is top-of-atmosphere solar flux), and City Page exposes it only as prose in
+a period summary. That gap is measured, not assumed.
 
 Two transport claims were asserted before they were tested, and one was wrong.
 Dropping the session cookie does **not** re-render the empty form as originally
