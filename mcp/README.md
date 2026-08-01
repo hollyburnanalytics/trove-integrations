@@ -478,6 +478,62 @@ vegetation plumes, which is the signal that actually decides a BC summer evening
 Coverage is Canada only, and every timestamp ECCC publishes here is UTC — passed
 through unchanged rather than converted, so callers localize.
 
+**Probed against the live API** (`/test-toolkit`). Eight defects, every one a
+confidently wrong answer under an HTTP 200; regression tests use verbatim
+captures under `fixtures/`:
+
+- **Pressure differed by 10× between two of its own tools.** City Page publishes
+  station pressure in **kPa** (`101.5`), SWOB in **hPa** (`1011.9`). Both were
+  surfaced unlabelled. The declared unit is now honoured and kPa converted, so
+  `forecast` and `observations` are comparable.
+- **A period precipitation probability that does not exist.** The collection's
+  queryables advertise `forecastGroup.forecasts.abbreviated_forecast.pop`, but
+  no live period contains `pop` in any spelling — `abbreviatedForecast` holds
+  only `icon` and `textSummary`. The field was removed rather than left as a
+  permanent null. The *hourly* `lop` is real (36/36 across six sites).
+- **A wind chill of −2 °C at 20.7 °C.** ECCC leaves a stale `windChill` in
+  `currentConditions` out of season, with `qaValue: 100`. It is now suppressed
+  above freezing; a test proves it still passes through at and below 0 °C.
+- **The page was reported as the answer.** `find_location` said "5 site(s)" when
+  `numberMatched` was 30. It now reports "showing N of M".
+- **Name search ranked by region text.** `q=` is full-text across the region, so
+  "West Vancouver" returned Ucluelet, Tofino and Estevan Point — all on *West
+  Vancouver Island*, 200 km away — above the actual city of Vancouver. Results
+  are re-ranked by name relevance. The first attempt at this fix was inert: it
+  re-ranked only the page already fetched, so a better match at position 6 could
+  never surface. The candidate pool is now widened before ranking.
+- **879 KB to read four fields.** Every City Page feature embeds a full
+  forecast, so a coordinate lookup downloaded ~879 KB for id/name/region/geom.
+  The OGC `properties` selector needs the *dotted* queryable paths (`name` is
+  rejected as "unknown properties specified"; `name.en` works) — the same query
+  is now ~6 KB, which is also what makes the wider ranking pool affordable.
+- **The AQHI forecast began in the past.** A run also covers hours that have
+  already elapsed by the time it is read — the 00Z publication still carried
+  00Z–03Z at 04Z — so "the next three hours" returned three hours that had
+  already happened. Elapsed hours are now dropped (falling back to the whole run
+  rather than returning nothing), and the fetch window was widened, because rows
+  arrive earliest-first within a run and the old limit never reached the future.
+
+- **"Past the model horizon" asserted for a point outside it.** `model_point` at
+  a London coordinate blamed the ~48 h HRDPS horizon for the *current* hour. The
+  first requested hour is always inside the horizon, so all-hours-empty now
+  reports an out-of-domain coordinate instead, exposed as `coverage`.
+
+**Checks that came back clean**, recorded so they need not be re-run: `bbox`,
+`location_id` and `latest` all filter correctly (0 violations); error bodies put
+the message in `description` (confirmed on a 400 and two 404s); SWOB units are
+consistent across 60 stations (°C, km/h, hPa, mm, %); the HRDPS m/s→km/h
+conversion reconciles by arithmetic; the `limit` values never truncate (938 SWOB
+stations, 844 City Page sites and 134 AQHI zones nationally, and the densest 3°
+box in Canada holds 34 and 53 against limits of 200); and the maximum permitted
+`model_point` fan-out — 48 reads — completes in **7.1 s** returning 1.6 KB, well
+inside the gateway wall clock and without tripping the 429.
+
+**Still true after probing:** ECCC publishes no visibility anywhere. SWOB's 75
+observed fields carry none, no HRDPS layer title matches it (the one "visible"
+hit is top-of-atmosphere solar flux), and City Page exposes it only as prose in
+a period summary. That gap is measured, not assumed.
+
 Two transport claims were asserted before they were tested, and one was wrong.
 Dropping the session cookie does **not** re-render the empty form as originally
 commented — it serves a bilingual *"Invalid Form Submission — for your

@@ -74,20 +74,45 @@ const SITE_BODY = {
               { speed: measure(15, 'km/h'), gust: measure(0, 'km/h'), direction: bi('SW') },
             ],
           },
-          abbreviatedForecast: { pop: measure(20, '%') },
+          abbreviatedForecast: { icon: { format: 'gif', value: 12 } },
         },
         {
           period: { textForecastName: bi('Saturday') },
           textSummary: bi('Sunny. High 24.'),
           temperatures: { temperature: [{ ...measure(24, 'C'), class: bi('high') }] },
           winds: { periods: [] },
-          abbreviatedForecast: { pop: measure(0, '%') },
+          abbreviatedForecast: { icon: { format: 'gif', value: 19 } },
         },
       ],
     },
     warnings: [],
   },
 };
+
+/** SITE_BODY with a chosen temperature and a sub-zero wind chill. */
+const siteAtTemperature = (degrees) => ({
+  ...SITE_BODY,
+  properties: {
+    ...SITE_BODY.properties,
+    currentConditions: {
+      ...SITE_BODY.properties.currentConditions,
+      temperature: measure(degrees, 'C'),
+      windChill: { value: bi(-14) },
+    },
+  },
+});
+
+/** SITE_BODY with a pressure leaf in the given unit. */
+const siteWithPressure = (units, value) => ({
+  ...SITE_BODY,
+  properties: {
+    ...SITE_BODY.properties,
+    currentConditions: {
+      ...SITE_BODY.properties.currentConditions,
+      pressure: { units: bi(units), value: bi(value) },
+    },
+  },
+});
 
 const AQHI_STATIONS_BODY = {
   features: [
@@ -116,28 +141,42 @@ const AQHI_OBSERVATIONS_BODY = {
   ],
 };
 
+/** The current UTC hour, and stamps relative to it. */
+const HOUR_MS = 3_600_000;
+const NOW_HOUR = (() => {
+  const at = new Date();
+  at.setUTCMinutes(0, 0, 0);
+  return at;
+})();
+const hourStamp = (offsetHours) =>
+  new Date(NOW_HOUR.getTime() + offsetHours * HOUR_MS).toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+/**
+ * Anchored to the clock, because the tool drops elapsed hours — fixed
+ * timestamps would silently start failing once they fell into the past.
+ */
 const AQHI_FORECASTS_BODY = {
   features: [
     // Newest run, deliberately out of order to exercise the re-sort.
     {
       properties: {
-        publication_datetime: '2026-08-01T00:00:00Z',
-        forecast_datetime: '2026-08-01T04:00:00Z',
+        publication_datetime: hourStamp(0),
+        forecast_datetime: hourStamp(1),
         aqhi: 8,
       },
     },
     {
       properties: {
-        publication_datetime: '2026-08-01T00:00:00Z',
-        forecast_datetime: '2026-08-01T03:00:00Z',
+        publication_datetime: hourStamp(0),
+        forecast_datetime: hourStamp(0),
         aqhi: 2,
       },
     },
     // A superseded run ECCC still serves alongside the current one.
     {
       properties: {
-        publication_datetime: '2026-07-29T00:00:00Z',
-        forecast_datetime: '2026-07-29T01:00:00Z',
+        publication_datetime: hourStamp(-72),
+        forecast_datetime: hourStamp(-71),
         aqhi: 5,
       },
     },
@@ -365,7 +404,7 @@ describe('eccc-weather MCP server', () => {
       expect(s.siteId).toBe('bc-99');
       expect(s.name).toBe('West Vancouver');
       expect(s.sunset).toBe('2026-08-02T03:53:00Z');
-      expect(s.current).toEqual({
+      expect(s.current).toMatchObject({
         temperature: 18.4,
         condition: 'Mainly Clear',
         // "calm" maps onto 0 km/h so callers can compare numerically.
@@ -385,7 +424,7 @@ describe('eccc-weather MCP server', () => {
       });
       expect(s.hourly[1].windDirection).toBe('SW');
       expect(s.periods).toHaveLength(2);
-      expect(s.periods[0]).toEqual({
+      expect(s.periods[0]).toMatchObject({
         name: 'Tonight',
         summary: 'Clear. Low 16.',
         temperature: 16,
@@ -393,8 +432,9 @@ describe('eccc-weather MCP server', () => {
         windSpeed: 15,
         windGust: 0,
         windDirection: 'SW',
-        precipProbability: 20,
       });
+      // Periods carry no precipitation-probability field upstream.
+      expect(s.periods[0]).not.toHaveProperty('precipProbability');
       expect(s.warnings).toEqual([]);
       expect(result.result.text).toContain('No active warnings');
       expect(result.result.text).toContain('Environment and Climate Change Canada');
@@ -464,6 +504,51 @@ describe('eccc-weather MCP server', () => {
       expect(result.result.text).not.toContain('now ?');
     });
 
+    it('passes wind chill through when it is physically defined', async () => {
+      // The summer suppression must not become a permanent null: at or below
+      // freezing the value is real and has to survive.
+      const below = await callTool(
+        server,
+        'forecast',
+        { siteId: 'bc-99' },
+        { json: siteAtTemperature(-8) },
+      );
+      expect(below.result.structured.current.windChill).toBe(-14);
+      // Boundary: exactly 0 °C still counts as defined.
+      const zero = await callTool(
+        server,
+        'forecast',
+        { siteId: 'bc-99' },
+        { json: siteAtTemperature(0) },
+      );
+      expect(zero.result.structured.current.windChill).toBe(-14);
+      // Just above freezing is suppressed.
+      const mild = await callTool(
+        server,
+        'forecast',
+        { siteId: 'bc-99' },
+        { json: siteAtTemperature(0.1) },
+      );
+      expect(mild.result.structured.current.windChill).toBeNull();
+    });
+
+    it('reads pressure in hPa whether the payload declares kPa or hPa', async () => {
+      const kpa = await callTool(
+        server,
+        'forecast',
+        { siteId: 'bc-99' },
+        { json: siteWithPressure('kPa', 101.5) },
+      );
+      expect(kpa.result.structured.current.pressure).toBe(1015);
+      const hpa = await callTool(
+        server,
+        'forecast',
+        { siteId: 'bc-99' },
+        { json: siteWithPressure('hPa', 1011.9) },
+      );
+      expect(hpa.result.structured.current.pressure).toBe(1011.9);
+    });
+
     it('errors clearly when the site payload has no properties', async () => {
       const result = await callTool(server, 'forecast', { siteId: 'bc-999' }, { json: {} });
       expect(result.ok).toBe(false);
@@ -517,7 +602,7 @@ describe('eccc-weather MCP server', () => {
       });
       expect(s.forecast).toHaveLength(2);
       expect(s.forecast[0]).toEqual({
-        time: '2026-08-01T03:00:00Z',
+        time: hourStamp(0),
         aqhi: 2,
         category: 'Low risk',
       });
@@ -544,8 +629,58 @@ describe('eccc-weather MCP server', () => {
       // date is what keeps a stale one from winning.
       expect(forecastUrl).toContain('sortby=-publication_datetime');
       const times = result.result.structured.forecast.map((f) => f.time);
-      expect(times).toEqual(['2026-08-01T03:00:00Z', '2026-08-01T04:00:00Z']);
-      expect(times.some((t) => t.startsWith('2026-07-29'))).toBe(false);
+      expect(times).toEqual([hourStamp(0), hourStamp(1)]);
+      expect(times).not.toContain(hourStamp(-71));
+    });
+
+    it('drops forecast hours that have already elapsed', async () => {
+      // A run covers hours before the moment it is read: the 00Z publication
+      // still carries 00Z-03Z at 04Z. Asking for "the next hours" must not
+      // return the past. Built around the real clock so it stays true.
+      const stamp = hourStamp;
+      const published = stamp(-4);
+      const run = {
+        features: [-4, -3, -2, -1, 0, 1, 2].map((offset) => ({
+          properties: {
+            publication_datetime: published,
+            forecast_datetime: stamp(offset),
+            aqhi: 3,
+          },
+        })),
+      };
+      const result = await callTool(
+        server,
+        'air_quality',
+        { latitude: 49.3277, longitude: -123.1636, hours: 3 },
+        router({ forecasts: run }),
+      );
+      expect(result.ok).toBe(true);
+      const times = result.result.structured.forecast.map((f) => f.time);
+      expect(times).toEqual([stamp(0), stamp(1), stamp(2)]);
+      expect(times.some((t) => t < stamp(0))).toBe(false);
+    });
+
+    it('falls back to a fully elapsed run rather than returning nothing', async () => {
+      const stale = {
+        features: [
+          {
+            properties: {
+              publication_datetime: '2020-01-01T00:00:00Z',
+              forecast_datetime: '2020-01-01T01:00:00Z',
+              aqhi: 5,
+            },
+          },
+        ],
+      };
+      const result = await callTool(
+        server,
+        'air_quality',
+        { latitude: 49.3277, longitude: -123.1636, hours: 3 },
+        router({ forecasts: stale }),
+      );
+      expect(result.ok).toBe(true);
+      // A stale publication is more useful than silence.
+      expect(result.result.structured.forecast).toHaveLength(1);
     });
 
     it('reports no nearby zone cleanly', async () => {

@@ -16,10 +16,7 @@ import { ToolError } from '@ontrove/mcp';
 /** MSC GeoMet OGC API — Features (GeoJSON collections). */
 export const OGC_URL = 'https://api.weather.gc.ca';
 
-/** MSC GeoMet WMS (raster model output, queried point-wise). */
-export const WMS_URL = 'https://geo.weather.gc.ca/geomet';
-
-/** City Page Weather — ~800 named Canadian forecast sites. */
+/** City Page Weather — 844 named Canadian forecast sites (measured 2026-08). */
 export const CITYPAGE_COLLECTION = 'citypageweather-realtime';
 
 /** Air Quality Health Index — zones, hourly observations, hourly forecasts. */
@@ -32,53 +29,25 @@ export const SWOB_STATIONS_COLLECTION = 'swob-stations';
 export const SWOB_OBSERVATIONS_COLLECTION = 'swob-realtime';
 
 /**
- * FireWork (RAQDPS) surface PM2.5 attributable to wildfire and vegetation
- * plumes — Canada's operational smoke model, 10 km.
+ * Property selectors for the station/site lookups.
+ *
+ * These collections embed a full forecast per feature, so an unfiltered
+ * `find_location` box query downloads ~879 KB to read four fields. The OGC
+ * `properties` selector takes the collection's dotted queryable paths (plain
+ * `name` is rejected as "unknown properties specified"; `name.en` is accepted)
+ * and cuts the same query to ~6 KB. Geometry and `id` are returned regardless.
  */
-export const SMOKE_LAYER = 'RAQDPS.Sfc_PM2.5-WildfireSmokePlume';
-
-/** One HRDPS surface field exposed by `model_point`. */
-export interface HrdpsVariable {
-  /** GeoMet WMS layer name. */
-  layer: string;
-  /** Unit of the value this server reports (after {@link HrdpsVariable.scale}). */
-  unit: string;
-  /**
-   * Factor applied to the raw model value. HRDPS publishes wind in m/s while
-   * City Page and SWOB use km/h, so wind is converted for consistency across
-   * the toolkit rather than leaving callers to notice the mismatch.
-   */
-  scale?: number;
-}
+export const CITYPAGE_FIELDS = 'name.en,region.en';
+export const SWOB_STATION_FIELDS = 'name';
+export const AQHI_STATION_FIELDS = 'location_id,location_name_en';
 
 /**
- * The HRDPS surface fields `model_point` exposes, at 2.5 km. Deliberately a
- * curated subset — GeoMet serves ~38,000 layers, most of them upper-air or
- * derived fields with no use here.
+ * How many candidates a name search pulls before re-ranking. Re-ranking can
+ * only reorder what was fetched, so requesting exactly `count` rows made the
+ * ranking cosmetic — a better match sitting at position 6 could never reach a
+ * 4-row answer. Cheap now that the field selector applies (~4 KB for 50).
  */
-export const HRDPS_VARIABLES: Record<string, HrdpsVariable> = {
-  cloudCover: { layer: 'HRDPS.CONTINENTAL_NT', unit: '%' },
-  temperature: { layer: 'HRDPS.CONTINENTAL_TT', unit: '°C' },
-  dewpoint: { layer: 'HRDPS.CONTINENTAL_TD', unit: '°C' },
-  relativeHumidity: { layer: 'HRDPS.CONTINENTAL_HR', unit: '%' },
-  windSpeed: { layer: 'HRDPS.CONTINENTAL_WSPD', unit: 'km/h', scale: 3.6 },
-  windDirection: { layer: 'HRDPS.CONTINENTAL_WD', unit: '°' },
-  windGust: { layer: 'HRDPS.CONTINENTAL_WGE', unit: 'km/h', scale: 3.6 },
-  uvIndex: { layer: 'HRDPS.CONTINENTAL_IUVA', unit: 'index' },
-};
-
-/**
- * Hard ceiling on WMS point reads per `model_point` call. Every
- * (variable × hour) pair is one HTTP request, so an unbounded range would fan
- * out badly; the tool rejects a request above this rather than issuing it.
- */
-export const MAX_POINT_QUERIES = 48;
-
-/**
- * How many WMS reads to have in flight at once. Deliberately low: GeoMet
- * answers bursts with HTTP 429, which was observed while building this.
- */
-export const WMS_CONCURRENCY = 3;
+export const NAME_CANDIDATE_POOL = 50;
 
 /**
  * SWOB wind averaging windows, most-preferred first. WMO treats the 10-minute
@@ -175,6 +144,36 @@ export function windSpeedOf(value: unknown): number | null {
 }
 
 /**
+ * Read a City Page pressure leaf as hPa.
+ *
+ * City Page publishes station pressure in **kPa** (`units: "kPa"`, e.g. 101.5)
+ * while SWOB publishes it in **hPa** (e.g. 1011.9). Reporting both unlabelled
+ * would put the toolkit's two pressure readings a factor of ten apart, so the
+ * declared unit is honoured and kPa is converted.
+ */
+export function pressureHpa(value: unknown): number | null {
+  const raw = numberOf(value);
+  if (raw === null) return null;
+  const unit = textOf(prop(value, 'units'))?.toLowerCase();
+  const hpa = unit === 'kpa' ? raw * 10 : raw;
+  return Math.round(hpa * 10) / 10;
+}
+
+/**
+ * Wind chill, but only where it is defined.
+ *
+ * ECCC leaves a stale `windChill` in `currentConditions` outside the cold
+ * season — bc-99 reported `-2` while the temperature was 20.7 °C, with
+ * `qaValue: 100`. Wind chill is only meaningful at or below freezing, so it is
+ * suppressed above that rather than published as a fact.
+ */
+export function windChillAt(windChill: unknown, temperature: number | null): number | null {
+  const value = numberOf(windChill);
+  if (value === null || temperature === null || temperature > 0) return null;
+  return value;
+}
+
+/**
  * AQHI risk band, per ECCC's published scale: 1–3 low, 4–6 moderate, 7–10 high,
  * above 10 very high.
  */
@@ -229,6 +228,42 @@ export function featuresOf(body: unknown): unknown[] {
 }
 
 /**
+ * Total records matching a query, from the OGC `numberMatched` field — which is
+ * a genuine total, not the page size (verified: `q=Vancouver&limit=5` reports
+ * `numberMatched: 17`, `numberReturned: 5`). Null when the service omits it.
+ */
+export function matchedCount(body: unknown): number | null {
+  return numberOf(prop(body, 'numberMatched'));
+}
+
+/**
+ * Rank a City Page site against a name query, lower is better.
+ *
+ * The collection's `q=` is full-text across the region string as well as the
+ * name, so "West Vancouver" matches Tofino, Ucluelet and Estevan Point — all on
+ * *Vancouver Island*, whose region reads "West Vancouver Island". Those are
+ * real matches for the search engine and useless as answers to "where is West
+ * Vancouver", so name matches are pulled ahead of region-only ones rather than
+ * dropped (the API's own ordering is kept as the tiebreak).
+ */
+export function nameRelevance(name: string | null, query: string): number {
+  const candidate = (name ?? '').trim().toLowerCase();
+  const wanted = query.trim().toLowerCase();
+  if (candidate === '' || wanted === '') return 4;
+  if (candidate === wanted) return 0;
+  if (candidate.startsWith(wanted)) return 1;
+  if (candidate.includes(wanted)) return 2;
+  // Whole-string containment alone is not enough: against "West Vancouver",
+  // both "Vancouver" and "Ucluelet" fail every test above, yet one is a far
+  // better answer. Falling back to the share of query words present in the name
+  // separates them (1/2 vs 0/2) and leaves region-only hits last.
+  const words = wanted.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 4;
+  const hits = words.filter((word) => candidate.includes(word)).length;
+  return 3 + (1 - hits / words.length);
+}
+
+/**
  * Pick the feature closest to a coordinate, ignoring any without usable
  * geometry. Returns the feature and its distance so callers can report how far
  * away the nearest station actually is.
@@ -274,99 +309,6 @@ export function toLocation(feature: unknown): EcccLocation {
     latitude: point?.latitude ?? null,
     longitude: point?.longitude ?? null,
   };
-}
-
-/** One value read out of a WMS raster layer at a point. */
-export interface WmsPoint {
-  value: number | null;
-  /** The model's own class label for the value, e.g. `"< 1 [ug/m3]"`. */
-  band: string | null;
-  /** Valid time of the field. */
-  time: string | null;
-  /** Model run the field came from. */
-  referenceTime: string | null;
-}
-
-/**
- * Build a `GetFeatureInfo` URL reading one layer at a point.
- *
- * WMS 1.3.0 under `CRS=EPSG:4326` orders the bbox **latitude-first** — the
- * reverse of the lon-first {@link boxAround} used against the Features API — so
- * the box is assembled here rather than shared.
- */
-export function wmsPointUrl(layer: string, latitude: number, longitude: number, time?: string) {
-  const half = 0.03;
-  const params = new URLSearchParams({
-    SERVICE: 'WMS',
-    VERSION: '1.3.0',
-    REQUEST: 'GetFeatureInfo',
-    LAYERS: layer,
-    QUERY_LAYERS: layer,
-    CRS: 'EPSG:4326',
-    BBOX: [latitude - half, longitude - half, latitude + half, longitude + half].join(','),
-    WIDTH: '100',
-    HEIGHT: '100',
-    I: '50',
-    J: '50',
-    INFO_FORMAT: 'application/json',
-  });
-  if (time !== undefined) params.set('TIME', time);
-  return `${WMS_URL}?${params}`;
-}
-
-/**
- * Decode a `GetFeatureInfo` body, returning null when the layer has nothing at
- * this point/time.
- *
- * GeoMet answers an out-of-range `TIME` or an unavailable layer with **HTTP 200
- * carrying an XML `ServiceExceptionReport`**, not an error status — so parsing
- * the body as JSON unconditionally turns a routine "past the model horizon"
- * into a thrown exception. Anything that is not parseable JSON is treated as
- * no-data.
- */
-export function parseWmsPoint(body: string): WmsPoint | null {
-  if (body.trimStart().startsWith('<')) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return null;
-  }
-  const first = featuresOf(parsed)[0];
-  if (first === undefined) return null;
-  const properties = prop(first, 'properties');
-  const value = numberOf(prop(properties, 'value'));
-  const band = textOf(prop(properties, 'class'));
-  if (value === null && band === null) return null;
-  return {
-    value,
-    band,
-    time: textOf(prop(properties, 'time')),
-    referenceTime: textOf(prop(properties, 'dim_reference_time')),
-  };
-}
-
-/**
- * Map over `items` with at most `limit` calls in flight, preserving order.
- * Keeps a wide `model_point` request from opening dozens of sockets at once.
- */
-export async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  run: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = Array.from({ length: items.length }) as R[];
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next;
-      next += 1;
-      const item = items[index] as T;
-      results[index] = await run(item, index);
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
 
 /**

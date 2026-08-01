@@ -2,6 +2,7 @@ import { type ToolDefinition, z } from '@ontrove/mcp';
 import {
   AQHI_FORECASTS_COLLECTION,
   AQHI_OBSERVATIONS_COLLECTION,
+  AQHI_STATION_FIELDS,
   AQHI_STATIONS_COLLECTION,
   ATTRIBUTION,
   aqhiCategory,
@@ -74,6 +75,7 @@ export const airQuality: ToolDefinition = {
       itemsUrl(AQHI_STATIONS_COLLECTION, {
         bbox: boxAround(latitude, longitude, SEARCH_BOX_DEG),
         limit: '100',
+        properties: AQHI_STATION_FIELDS,
       }),
       { errorMap: ecccError },
     );
@@ -114,7 +116,10 @@ export const airQuality: ToolDefinition = {
           // sorting by forecast time alone surfaces a stale run. Sort newest
           // publication first and keep only that run (filtered below).
           sortby: '-publication_datetime',
-          limit: String(hours * 2),
+          // Wide enough to cover the elapsed head of the run as well as the
+          // hours being asked for: rows arrive earliest-first within a run, so
+          // fetching only `hours` would return the part already in the past.
+          limit: String(Math.min(hours + 48, 120)),
         }),
         { errorMap: ecccError },
       ),
@@ -145,9 +150,19 @@ export const airQuality: ToolDefinition = {
       (newest, row) => (row.publishedAt > newest ? row.publishedAt : newest),
       '',
     );
-    const forecast = rows
+    // A run also covers hours that have already elapsed by the time it is
+    // read — the 00Z publication still carries 00Z–03Z at 04Z — so a caller
+    // asking for "the next N hours" would be handed the past. Drop elapsed
+    // hours, but fall back to the whole run rather than returning nothing if
+    // every row is behind (a stale publication is better than silence).
+    const currentHour = new Date();
+    currentHour.setUTCMinutes(0, 0, 0);
+    const cutoff = currentHour.toISOString();
+    const inRun = rows
       .filter((row) => row.publishedAt === newestRun)
-      .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''))
+      .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
+    const upcoming = inRun.filter((row) => (row.time ?? '') >= cutoff);
+    const forecast = (upcoming.length > 0 ? upcoming : inRun)
       .slice(0, hours)
       .map(({ publishedAt: _publishedAt, ...rest }) => rest);
 

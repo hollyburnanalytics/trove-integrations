@@ -28,7 +28,8 @@ import { wildfireSmoke } from './tools/wildfire-smoke.ts';
  * the site, station and AQHI collections, and `geo.weather.gc.ca` (WMS, queried
  * point-wise) for the raster model output behind `model_point` and
  * `wildfire_smoke`. Shared constants and the bilingual-payload readers live in
- * `api.ts`.
+ * `api.ts`; the WMS dialect — layer names, `GetFeatureInfo`, the
+ * bounded-concurrency runner — lives in `wms.ts`.
  *
  * Coverage is Canada only. The ECCC Data Servers End-use Licence (v2.1) grants
  * commercial use and redistribution on condition the source is acknowledged, so

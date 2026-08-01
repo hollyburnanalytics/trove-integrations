@@ -3,10 +3,14 @@ import {
   ATTRIBUTION,
   boxAround,
   CITYPAGE_COLLECTION,
+  CITYPAGE_FIELDS,
   distanceKm,
   ecccError,
   featuresOf,
   itemsUrl,
+  matchedCount,
+  NAME_CANDIDATE_POOL,
+  nameRelevance,
   SEARCH_BOX_DEG,
   toLocation,
 } from '../api.ts';
@@ -15,10 +19,15 @@ import {
  * `find_location` — resolve a Canadian place name or coordinate to an ECCC
  * forecast site id.
  *
- * ECCC publishes roughly 800 named City Page sites, so most towns have their
+ * ECCC publishes 844 named City Page sites (measured), so most towns have their
  * own forecast point rather than an interpolated grid cell. A name goes through
- * the collection's ranked full-text search; a coordinate pulls every site in a
- * surrounding box and sorts by great-circle distance.
+ * the collection's full-text search and is then re-ranked by how well the site's
+ * *name* matches — see {@link nameRelevance} for why the raw order is not good
+ * enough. A coordinate pulls every site in a surrounding box and sorts by
+ * great-circle distance.
+ *
+ * The box never truncates in practice: the densest 3° box in Canada holds 53
+ * sites against a limit of 200, and 844 nationally.
  */
 export const findLocation: ToolDefinition = {
   name: 'find_location',
@@ -52,6 +61,7 @@ export const findLocation: ToolDefinition = {
   output: z.object({
     query: z.string(),
     count: z.number(),
+    totalMatched: z.number().nullable(),
     locations: z.array(
       z.object({
         siteId: z.string(),
@@ -83,10 +93,16 @@ export const findLocation: ToolDefinition = {
         ? itemsUrl(CITYPAGE_COLLECTION, {
             bbox: boxAround(latitude, longitude, SEARCH_BOX_DEG),
             limit: '200',
+            properties: CITYPAGE_FIELDS,
           })
-        : itemsUrl(CITYPAGE_COLLECTION, { q: name ?? '', limit: String(count) });
+        : itemsUrl(CITYPAGE_COLLECTION, {
+            q: name ?? '',
+            limit: String(NAME_CANDIDATE_POOL),
+            properties: CITYPAGE_FIELDS,
+          });
     ctx.log('find_location', { name, latitude, longitude, count });
     const body = await ctx.fetchJson(url, { errorMap: ecccError });
+    const totalMatched = matchedCount(body);
 
     const rows = featuresOf(body).map((feature) => {
       const location = toLocation(feature);
@@ -103,6 +119,14 @@ export const findLocation: ToolDefinition = {
     });
     if (byCoordinate) {
       rows.sort((a, b) => (a.distanceKm ?? Number.NaN) - (b.distanceKm ?? Number.NaN));
+    } else if (name !== undefined) {
+      const ranked = rows.map((row, index) => ({
+        row,
+        index,
+        rank: nameRelevance(row.name, name),
+      }));
+      ranked.sort((a, b) => a.rank - b.rank || a.index - b.index);
+      rows.splice(0, rows.length, ...ranked.map((entry) => entry.row));
     }
     const locations = rows.slice(0, count);
     const query = byCoordinate ? `${latitude},${longitude}` : (name ?? '');
@@ -110,7 +134,7 @@ export const findLocation: ToolDefinition = {
     if (locations.length === 0) {
       return {
         text: `No Environment Canada forecast site found for "${query}". Coverage is Canada only.`,
-        structured: { query, count: 0, locations: [], attribution: ATTRIBUTION },
+        structured: { query, count: 0, totalMatched, locations: [], attribution: ATTRIBUTION },
       };
     }
     const lines = locations
@@ -120,9 +144,21 @@ export const findLocation: ToolDefinition = {
           `${l.distanceKm === null ? '' : ` (${l.distanceKm} km away)`}`,
       )
       .join('\n');
+    // `numberMatched` is a true total, so say "showing N of M" rather than
+    // letting the page size read as the number of matching sites.
+    const header =
+      totalMatched !== null && totalMatched > locations.length
+        ? `Showing ${locations.length} of ${totalMatched} site(s) for "${query}"`
+        : `${locations.length} site(s) for "${query}"`;
     return {
-      text: `${locations.length} site(s) for "${query}":\n${lines}\n\n${ATTRIBUTION}`,
-      structured: { query, count: locations.length, locations, attribution: ATTRIBUTION },
+      text: `${header}:\n${lines}\n\n${ATTRIBUTION}`,
+      structured: {
+        query,
+        count: locations.length,
+        totalMatched,
+        locations,
+        attribution: ATTRIBUTION,
+      },
     };
   },
 };

@@ -7,14 +7,29 @@ import {
   en,
   numberOf,
   OGC_URL,
+  pressureHpa,
   prop,
   textOf,
   toLocation,
+  windChillAt,
   windSpeedOf,
 } from '../api.ts';
 
 /**
  * `forecast` — Environment Canada's official forecast for one City Page site.
+ *
+ * Periods carry **no** precipitation-probability field. The collection's
+ * queryables advertise `forecastGroup.forecasts.abbreviated_forecast.pop`, but
+ * no period in a live payload contains `pop` in any spelling —
+ * `abbreviatedForecast` holds only `icon` and `textSummary`. The probability
+ * appears in the prose alone ("40 percent chance of showers"), so no numeric
+ * field is offered here. The hourly rows' `lop` is real and is exposed.
+ *
+ * Field sweep note: `iconCode` (decorative weather glyphs), `cloudPrecip` (a
+ * restatement of `textSummary`), `currentConditions.station` (the reporting
+ * station's own id/coords, not the forecast site's) and `identifier` (duplicates
+ * the feature `id`) are read from the payload and deliberately not surfaced.
+ * Everything else ECCC sends here is exposed.
  *
  * Three horizons arrive in one payload and are all surfaced: current
  * conditions, 24 hours of hourly detail, and the multi-day day/night period
@@ -48,16 +63,20 @@ export const forecast: ToolDefinition = {
     region: z.string().nullable(),
     latitude: z.number().nullable(),
     longitude: z.number().nullable(),
+    url: z.string().nullable(),
     lastUpdated: z.string().nullable(),
     sunrise: z.string().nullable(),
     sunset: z.string().nullable(),
     current: z.object({
+      observedAt: z.string().nullable(),
       temperature: z.number().nullable(),
       condition: z.string().nullable(),
       windSpeed: z.number().nullable(),
       windDirection: z.string().nullable(),
+      windChill: z.number().nullable(),
       relativeHumidity: z.number().nullable(),
       dewpoint: z.number().nullable(),
+      pressure: z.number().nullable(),
     }),
     hourly: z.array(
       z.object({
@@ -78,7 +97,9 @@ export const forecast: ToolDefinition = {
         windSpeed: z.number().nullable(),
         windGust: z.number().nullable(),
         windDirection: z.string().nullable(),
-        precipProbability: z.number().nullable(),
+        relativeHumidity: z.number().nullable(),
+        uvIndex: z.number().nullable(),
+        uvCategory: z.string().nullable(),
       }),
     ),
     warnings: z.array(
@@ -110,13 +131,18 @@ export const forecast: ToolDefinition = {
     const conditions = prop(properties, 'currentConditions');
     const riseSet = prop(properties, 'riseSet');
 
+    const temperature = numberOf(prop(conditions, 'temperature'));
     const current = {
-      temperature: numberOf(prop(conditions, 'temperature')),
+      // Distinct from `lastUpdated`, which is when the document was published.
+      observedAt: textOf(prop(conditions, 'timestamp')),
+      temperature,
       condition: textOf(en(prop(conditions, 'condition'))),
       windSpeed: windSpeedOf(prop(prop(conditions, 'wind'), 'speed')),
       windDirection: textOf(prop(prop(conditions, 'wind'), 'direction')),
+      windChill: windChillAt(prop(conditions, 'windChill'), temperature),
       relativeHumidity: numberOf(prop(conditions, 'relativeHumidity')),
       dewpoint: numberOf(prop(conditions, 'dewpoint')),
+      pressure: pressureHpa(prop(conditions, 'pressure')),
     };
 
     const hourly = arrayProp(prop(properties, 'hourlyForecastGroup'), 'hourlyForecasts')
@@ -145,7 +171,9 @@ export const forecast: ToolDefinition = {
         windSpeed: windSpeedOf(prop(wind, 'speed')),
         windGust: numberOf(prop(wind, 'gust')),
         windDirection: textOf(en(prop(wind, 'direction'))),
-        precipProbability: numberOf(prop(prop(entry, 'abbreviatedForecast'), 'pop')),
+        relativeHumidity: numberOf(prop(entry, 'relativeHumidity')),
+        uvIndex: numberOf(prop(prop(entry, 'uv'), 'index')),
+        uvCategory: textOf(en(prop(prop(entry, 'uv'), 'category'))),
       };
     });
 
@@ -158,6 +186,7 @@ export const forecast: ToolDefinition = {
 
     const structured = {
       ...location,
+      url: textOf(en(prop(properties, 'url'))),
       lastUpdated: textOf(prop(properties, 'lastUpdated')),
       sunrise: textOf(en(prop(riseSet, 'sunrise'))),
       sunset: textOf(en(prop(riseSet, 'sunset'))),

@@ -1,13 +1,13 @@
 import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ATTRIBUTION } from '../api.ts';
 import {
-  ATTRIBUTION,
   HRDPS_VARIABLES,
   MAX_POINT_QUERIES,
   mapWithConcurrency,
   parseWmsPoint,
   WMS_CONCURRENCY,
   wmsPointUrl,
-} from '../api.ts';
+} from '../wms.ts';
 
 /**
  * `model_point` — hourly numeric HRDPS values at a coordinate.
@@ -84,6 +84,7 @@ export const modelPoint: ToolDefinition = {
       }),
     ),
     missingHours: z.number(),
+    coverage: z.enum(['complete', 'partial', 'outsideDomain']),
     attribution: z.string(),
   }),
   async handler(args, ctx) {
@@ -187,10 +188,19 @@ export const modelPoint: ToolDefinition = {
       );
       return `  ${row.time}: ${parts.join(', ')}`;
     });
+    // Two different causes produce identical nulls, and guessing wrong hands
+    // the caller a confident falsehood. The first requested hour is always
+    // inside the model horizon, so if even that is empty the coordinate is
+    // outside the HRDPS domain; losing only later hours is the horizon.
+    const outsideDomain = missingHours === rows.length;
     const horizonNote =
       missingHours === 0
         ? ''
-        : `\n${missingHours} hour(s) returned no data — likely past the ~48 h HRDPS horizon.`;
+        : outsideDomain
+          ? '\nNo data at this coordinate — HRDPS covers Canada and nearby waters, ' +
+            'so this point is likely outside the model domain.'
+          : `\n${missingHours} of ${rows.length} hour(s) returned no data — past the ` +
+            '~48 h HRDPS horizon.';
     return {
       text:
         `HRDPS 2.5 km at ${latitude},${longitude} (run ${referenceTime ?? 'unknown'}):\n` +
@@ -203,6 +213,7 @@ export const modelPoint: ToolDefinition = {
         units,
         hours: rows,
         missingHours,
+        coverage: outsideDomain ? 'outsideDomain' : missingHours === 0 ? 'complete' : 'partial',
         attribution: ATTRIBUTION,
       },
     };

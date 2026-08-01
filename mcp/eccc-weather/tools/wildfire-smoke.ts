@@ -1,5 +1,6 @@
 import { type ToolDefinition, z } from '@ontrove/mcp';
-import { ATTRIBUTION, ecccError, parseWmsPoint, SMOKE_LAYER, wmsPointUrl } from '../api.ts';
+import { ATTRIBUTION, ecccError } from '../api.ts';
+import { parseWmsPoint, SMOKE_LAYER, wmsPointUrl } from '../wms.ts';
 
 /**
  * `wildfire_smoke` — surface PM2.5 from wildfire plumes, from FireWork.

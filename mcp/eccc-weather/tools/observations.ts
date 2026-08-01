@@ -11,6 +11,7 @@ import {
   prop,
   SEARCH_BOX_DEG,
   SWOB_OBSERVATIONS_COLLECTION,
+  SWOB_STATION_FIELDS,
   SWOB_STATIONS_COLLECTION,
   SWOB_WIND_WINDOWS,
   textOf,
@@ -35,6 +36,38 @@ import {
 /** Read a SWOB numeric column, tolerating the absent/null columns stations emit. */
 function field(properties: unknown, key: string): number | null {
   return numberOf(prop(properties, key));
+}
+
+/** A wind reading plus the averaging window it actually came from. */
+interface ResolvedWind {
+  windSpeed: number | null;
+  windDirection: number | null;
+  windAveragingWindow: string | null;
+}
+
+/**
+ * Take wind from the first averaging window this record actually reports,
+ * preferring the WMO-standard 10-minute mean, and say which one that was.
+ */
+function resolveWind(properties: unknown): ResolvedWind {
+  for (const window of SWOB_WIND_WINDOWS) {
+    const speed = field(properties, `avg_wnd_spd_10m_${window.suffix}`);
+    if (speed === null) continue;
+    return {
+      windSpeed: speed,
+      windDirection: field(properties, `avg_wnd_dir_10m_${window.suffix}`),
+      windAveragingWindow: window.label,
+    };
+  }
+  return { windSpeed: null, windDirection: null, windAveragingWindow: null };
+}
+
+/** Render the wind clause, naming the averaging window so it cannot mislead. */
+function describeWind({ windSpeed, windDirection, windAveragingWindow }: ResolvedWind): string {
+  if (windSpeed === null) return 'wind not reported';
+  const from = windDirection === null ? '' : ` from ${windDirection}°`;
+  const window = windAveragingWindow === null ? '' : ` (${windAveragingWindow})`;
+  return `wind ${windSpeed} km/h${from}${window}`;
 }
 
 export const observations: ToolDefinition = {
@@ -82,6 +115,7 @@ export const observations: ToolDefinition = {
       itemsUrl(SWOB_STATIONS_COLLECTION, {
         bbox: boxAround(latitude, longitude, SEARCH_BOX_DEG),
         limit: '200',
+        properties: SWOB_STATION_FIELDS,
       }),
       { errorMap: ecccError },
     );
@@ -140,17 +174,7 @@ export const observations: ToolDefinition = {
       textOf(prop(properties, 'stn_nam-value')) ??
       textOf(prop(prop(nearest.feature, 'properties'), 'name'));
 
-    let windSpeed: number | null = null;
-    let windDirection: number | null = null;
-    let windAveragingWindow: string | null = null;
-    for (const window of SWOB_WIND_WINDOWS) {
-      const speed = field(properties, `avg_wnd_spd_10m_${window.suffix}`);
-      if (speed === null) continue;
-      windSpeed = speed;
-      windDirection = field(properties, `avg_wnd_dir_10m_${window.suffix}`);
-      windAveragingWindow = window.label;
-      break;
-    }
+    const wind = resolveWind(properties);
 
     const away = Math.round(nearest.distanceKm * 10) / 10;
     const structured = {
@@ -162,9 +186,7 @@ export const observations: ToolDefinition = {
       airTemperature: field(properties, 'air_temp'),
       dewpoint: field(properties, 'dwpt_temp'),
       relativeHumidity: field(properties, 'rel_hum'),
-      windSpeed,
-      windDirection,
-      windAveragingWindow,
+      ...wind,
       windGustMaxPastHour: field(properties, 'max_wnd_spd_10m_pst1hr'),
       pressure: field(properties, 'stn_pres'),
       precipitationPastHour: field(properties, 'pcpn_amt_pst1hr'),
@@ -180,11 +202,7 @@ export const observations: ToolDefinition = {
         structured,
       };
     }
-    const windText =
-      windSpeed === null
-        ? 'wind not reported'
-        : `wind ${windSpeed} km/h${windDirection === null ? '' : ` from ${windDirection}°`}` +
-          `${windAveragingWindow === null ? '' : ` (${windAveragingWindow})`}`;
+    const windText = describeWind(wind);
     const gustText =
       structured.windGustMaxPastHour === null
         ? ''
