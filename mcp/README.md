@@ -56,7 +56,7 @@ in their manifest `egress`.
 |---|---|---|---|
 | `mapbox` | `isochrone`, `geocode`, `directions` | api.mapbox.com | **`MAPBOX_TOKEN`** |
 | `open-meteo` | `geocode_place`, `forecast`, `historical` (back to 1940), `air_quality` | open-meteo.com | — |
-| `eccc-weather` | `find_location`, `forecast`, `air_quality`, `wildfire_smoke` | api.weather.gc.ca + geo.weather.gc.ca (MSC GeoMet) | — 🍁|
+| `eccc-weather` | `find_location`, `forecast`, `observations`, `model_point`, `air_quality`, `wildfire_smoke` | api.weather.gc.ca + geo.weather.gc.ca (MSC GeoMet) | — 🍁|
 | `usgs-quakes` | `recent_quakes` | earthquake.usgs.gov | — |
 | `holidays` | `public_holidays`, `next_holidays` | date.nager.at | — |
 
@@ -435,6 +435,38 @@ Two upstream shapes drove design decisions, both found live rather than assumed:
   mapped to `0` km/h explicitly. Relatedly, `condition` is sometimes absent
   entirely (the site publishes an `iconCode` with no value); the summary omits
   the clause rather than printing a placeholder.
+
+`observations` is the only tool here that reports **measurement rather than
+forecast** — the nearest SWOB surface station's latest reading. SWOB records
+carry ~200 raw MSC-coded columns, so it projects a curated subset. Wind needed
+the most care: stations drop individual averaging windows between observations
+(a record can carry `avg_wnd_spd_10m_pst1mt` and `pst2mts` while `pst10mts` is
+null), so it walks a preference list starting at the WMO-standard 10-minute mean
+and **reports which window the value came from** — a 1-minute mean and a 1-hour
+mean are not the same measurement, and a caller comparing them blind would be
+misled.
+
+`model_point` is the numeric counterpart to `forecast`: HRDPS surface fields at
+2.5 km, hourly, roughly a 48-hour horizon. It exists mainly for **total cloud
+cover**, which City Page publishes only as condition text — the earlier claim
+that ECCC had no numeric cloud cover was wrong; it is `HRDPS.CONTINENTAL_NT` on
+the WMS side. Wind is converted from the model's m/s to km/h so it matches the
+rest of the toolkit.
+
+Its constraint is fan-out. WMS has no bulk endpoint, so every (variable × hour)
+pair is one request; the tool caps the product at 48 and rejects anything larger
+up front rather than issuing it. Two failure modes are deliberately kept
+distinct, because both would otherwise arrive as indistinguishable nulls:
+
+- **Past the model horizon** — GeoMet answers an out-of-range `TIME` with an XML
+  `ServiceExceptionReport` under **HTTP 200**, so parsing every body as JSON
+  turns a routine horizon query into a thrown error. Non-JSON bodies are treated
+  as no-data and counted in `missingHours`.
+- **Rate limiting** — GeoMet returns **HTTP 429** on bursts (observed while
+  building this). Those cells are detected explicitly and raise a retryable
+  error naming the throttle, rather than being folded into `missingHours` where
+  they would read as "past the horizon." Concurrency is held at 3 for the same
+  reason.
 
 `wildfire_smoke` is the odd one out: FireWork (RAQDPS, 10 km) is a raster model
 served over WMS rather than the Features API, so a point reading comes from

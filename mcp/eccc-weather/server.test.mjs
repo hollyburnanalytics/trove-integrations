@@ -144,15 +144,74 @@ const AQHI_FORECASTS_BODY = {
   ],
 };
 
-const SMOKE_BODY = {
+const SWOB_STATIONS_BODY = {
+  features: [
+    {
+      id: 'PT-ATK',
+      geometry: { type: 'Point', coordinates: [-123.264_704, 49.330_352] },
+      properties: { name: 'POINT ATKINSON' },
+    },
+    {
+      id: 'FAR',
+      geometry: { type: 'Point', coordinates: [-122.5, 49.9] },
+      properties: { name: 'SOMEWHERE FAR' },
+    },
+  ],
+};
+
+/**
+ * A real SWOB record carries ~200 columns. This mirrors the awkward part: the
+ * preferred 10-minute wind window is null while shorter windows report.
+ */
+const SWOB_OBS_BODY = {
+  features: [
+    {
+      properties: {
+        'stn_nam-value': 'POINT ATKINSON',
+        obs_date_tm: '2026-08-01T03:38:00.000Z',
+        air_temp: 21.5,
+        dwpt_temp: 12,
+        rel_hum: 55,
+        stn_pres: 1011.9,
+        pcpn_amt_pst1hr: 0,
+        avg_wnd_spd_10m_pst10mts: undefined,
+        avg_wnd_dir_10m_pst10mts: undefined,
+        avg_wnd_spd_10m_pst2mts: 3.3,
+        avg_wnd_dir_10m_pst2mts: 313,
+        avg_wnd_spd_10m_pst1mt: 3.4,
+        avg_wnd_dir_10m_pst1mt: 301,
+        max_wnd_spd_10m_pst1hr: 12.3,
+      },
+    },
+  ],
+};
+
+/** A GeoMet WMS point reading, as returned for any raster layer. */
+const wmsPoint = (value, klass) => ({
   type: 'FeatureCollection',
   features: [
     {
       geometry: { type: 'Point', coordinates: [-123.2029, 49.3214] },
-      properties: { value: 0, class: '< 1 [ug/m3]' },
+      properties: {
+        value,
+        class: klass,
+        time: '2026-08-01T04:00:00Z',
+        dim_reference_time: '2026-07-31T18:00:00Z',
+      },
     },
   ],
-};
+});
+
+/**
+ * GeoMet answers an out-of-range TIME with an XML exception under HTTP 200,
+ * not an error status.
+ */
+const WMS_XML_EXCEPTION =
+  '<?xml version=\'1.0\' encoding="utf-8"?><ogc:ServiceExceptionReport ' +
+  'version="1.3.0"><ogc:ServiceException code="InvalidDimensionValue">' +
+  'Invalid time</ogc:ServiceException></ogc:ServiceExceptionReport>';
+
+const SMOKE_BODY = wmsPoint(0, '< 1 [ug/m3]');
 
 /** Route a mocked fetch by which ECCC surface the URL targets. */
 function router(overrides = {}) {
@@ -162,6 +221,9 @@ function router(overrides = {}) {
       return { json: overrides.observations ?? AQHI_OBSERVATIONS_BODY };
     if (url.includes('/aqhi-forecasts-realtime/'))
       return { json: overrides.forecasts ?? AQHI_FORECASTS_BODY };
+    if (url.includes('/swob-stations/'))
+      return { json: overrides.swobStations ?? SWOB_STATIONS_BODY };
+    if (url.includes('/swob-realtime/')) return { json: overrides.swobObs ?? SWOB_OBS_BODY };
     if (url.includes('/geomet')) return { json: overrides.smoke ?? SMOKE_BODY };
     if (url.includes('/citypageweather-realtime/items/'))
       return { json: overrides.site ?? SITE_BODY };
@@ -169,12 +231,25 @@ function router(overrides = {}) {
   };
 }
 
+/** True for the second of the two hour stamps a 2-hour request produces. */
+let firstHourSeen = '';
+function seenSecondHour(url) {
+  const time = new URL(url).searchParams.get('TIME');
+  if (firstHourSeen === '') {
+    firstHourSeen = time;
+    return false;
+  }
+  return time !== firstHourSeen;
+}
+
 describe('eccc-weather MCP server', () => {
-  it('lists the four tools', () => {
+  it('lists the six tools', () => {
     expect(server.tools.map((t) => t.name).toSorted()).toEqual([
       'air_quality',
       'find_location',
       'forecast',
+      'model_point',
+      'observations',
       'wildfire_smoke',
     ]);
   });
@@ -505,6 +580,202 @@ describe('eccc-weather MCP server', () => {
     });
   });
 
+  describe('observations', () => {
+    it('reports the nearest station and its latest reading', async () => {
+      const seen = [];
+      const result = await callTool(
+        server,
+        'observations',
+        { latitude: 49.3277, longitude: -123.1636 },
+        (url) => {
+          seen.push(url);
+          return router()(url);
+        },
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.stationName).toBe('POINT ATKINSON');
+      expect(s.observedAt).toBe('2026-08-01T03:38:00.000Z');
+      expect(s.airTemperature).toBe(21.5);
+      expect(s.dewpoint).toBe(12);
+      expect(s.relativeHumidity).toBe(55);
+      expect(s.pressure).toBe(1011.9);
+      expect(s.windGustMaxPastHour).toBe(12.3);
+      expect(s.units.wind).toBe('km/h');
+      // Nearest of the two stations wins, not the first listed.
+      expect(s.distanceKm).toBeLessThan(10);
+      expect(seen.some((u) => u.includes('swob-stations'))).toBe(true);
+      expect(seen.some((u) => u.includes('swob-realtime'))).toBe(true);
+    });
+
+    it('falls back past a null wind window and names the one it used', async () => {
+      const result = await callTool(
+        server,
+        'observations',
+        { latitude: 49.3277, longitude: -123.1636 },
+        router(),
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      // The preferred 10-minute window is null in this record, so the
+      // 2-minute mean is used — and the caller is told which.
+      expect(s.windSpeed).toBe(3.3);
+      expect(s.windDirection).toBe(313);
+      expect(s.windAveragingWindow).toBe('2-minute average');
+      expect(result.result.text).toContain('2-minute average');
+    });
+
+    it('reports no wind rather than guessing when every window is null', async () => {
+      const result = await callTool(
+        server,
+        'observations',
+        { latitude: 49.3277, longitude: -123.1636 },
+        router({
+          swobObs: {
+            features: [
+              { properties: { 'stn_nam-value': 'BARE', obs_date_tm: '2026-08-01T03:00:00.000Z' } },
+            ],
+          },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.windSpeed).toBeNull();
+      expect(result.result.structured.windAveragingWindow).toBeNull();
+      expect(result.result.text).toContain('wind not reported');
+    });
+
+    it('reports no nearby station cleanly', async () => {
+      const result = await callTool(
+        server,
+        'observations',
+        { latitude: 49.3, longitude: -123.1 },
+        router({ swobStations: { features: [] } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.stationName).toBeNull();
+      expect(result.result.text).toMatch(/no environment canada surface station/i);
+    });
+
+    it('handles a station with no recent observation', async () => {
+      const result = await callTool(
+        server,
+        'observations',
+        { latitude: 49.3, longitude: -123.1 },
+        router({ swobObs: { features: [] } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.observedAt).toBeNull();
+      expect(result.result.text).toMatch(/no recent observation/i);
+    });
+
+    it('rejects an out-of-range latitude before fetching', async () => {
+      const result = await callTool(server, 'observations', { latitude: 91, longitude: 0 });
+      expect(result.ok).toBe(false);
+      expect(result.code).toBe('INVALID_PARAMS');
+    });
+  });
+
+  describe('model_point', () => {
+    it('reads an hourly grid and converts wind to km/h', async () => {
+      const seen = [];
+      const result = await callTool(
+        server,
+        'model_point',
+        {
+          latitude: 49.3277,
+          longitude: -123.1636,
+          variables: ['cloudCover', 'windSpeed'],
+          hours: 2,
+        },
+        (url) => {
+          seen.push(url);
+          // 10 m/s of wind must surface as 36 km/h.
+          if (url.includes('_WSPD')) return { json: wmsPoint(10, '15 - 20 kts') };
+          return { json: wmsPoint(42, '40% cloud coverage') };
+        },
+      );
+      expect(result.ok).toBe(true);
+      const s = result.result.structured;
+      expect(s.model).toContain('HRDPS');
+      expect(s.referenceTime).toBe('2026-07-31T18:00:00Z');
+      expect(s.units).toEqual({ cloudCover: '%', windSpeed: 'km/h' });
+      expect(s.hours).toHaveLength(2);
+      expect(s.hours[0].values.cloudCover).toBe(42);
+      expect(s.hours[0].values.windSpeed).toBe(36);
+      expect(s.missingHours).toBe(0);
+      // One request per (variable x hour): 2 x 2.
+      expect(seen).toHaveLength(4);
+      expect(seen.every((u) => u.includes('TIME='))).toBe(true);
+      expect(seen.some((u) => u.includes('HRDPS.CONTINENTAL_NT'))).toBe(true);
+    });
+
+    it('treats an XML exception as a missing hour, not a failure', async () => {
+      const result = await callTool(
+        server,
+        'model_point',
+        { latitude: 49.3277, longitude: -123.1636, variables: ['cloudCover'], hours: 2 },
+        (url) => {
+          // Second hour past the horizon: GeoMet answers 200 + XML.
+          if (url.includes('TIME=') && seenSecondHour(url)) {
+            return { text: WMS_XML_EXCEPTION, headers: { 'content-type': 'text/xml' } };
+          }
+          return { json: wmsPoint(42, '40% cloud coverage') };
+        },
+      );
+      expect(result.ok).toBe(true);
+      expect(result.result.structured.missingHours).toBe(1);
+      expect(result.result.text).toMatch(/past the ~48 h HRDPS horizon/i);
+    });
+
+    it('rejects a fan-out over the query cap before fetching', async () => {
+      const result = await callTool(server, 'model_point', {
+        latitude: 49.3277,
+        longitude: -123.1636,
+        variables: ['cloudCover', 'windSpeed', 'temperature'],
+        hours: 24,
+      });
+      expect(result.ok).toBe(false);
+      expect(result.code).toBe('TOOL_ERROR');
+      expect(result.retryable).toBe(false);
+      expect(result.error).toMatch(/72 model reads/);
+    });
+
+    it('surfaces a total upstream failure as retryable', async () => {
+      const result = await callTool(
+        server,
+        'model_point',
+        { latitude: 49.3277, longitude: -123.1636, variables: ['cloudCover'], hours: 2 },
+        { status: 500 },
+      );
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(true);
+    });
+
+    it('reports rate limiting distinctly from a missing hour', async () => {
+      const result = await callTool(
+        server,
+        'model_point',
+        { latitude: 49.3277, longitude: -123.1636, variables: ['cloudCover'], hours: 2 },
+        { status: 429, text: '<html><title>429 Too Many Requests</title></html>' },
+      );
+      expect(result.ok).toBe(false);
+      expect(result.retryable).toBe(true);
+      // Must not read as "past the horizon" — that would be a silent lie.
+      expect(result.error).toMatch(/rate-limited/i);
+      expect(result.error).not.toMatch(/horizon/i);
+    });
+
+    it('rejects more than four variables before fetching', async () => {
+      const result = await callTool(server, 'model_point', {
+        latitude: 49.3277,
+        longitude: -123.1636,
+        variables: ['cloudCover', 'windSpeed', 'temperature', 'dewpoint', 'uvIndex'],
+      });
+      expect(result.ok).toBe(false);
+      expect(result.code).toBe('INVALID_PARAMS');
+    });
+  });
+
   describe('wildfire_smoke', () => {
     it('reads FireWork PM2.5 at a point', async () => {
       let requested = '';
@@ -526,6 +797,7 @@ describe('eccc-weather MCP server', () => {
         longitude: -123.1636,
         pm25: 0,
         band: '< 1 [ug/m3]',
+        time: '2026-08-01T04:00:00Z',
         model: 'FireWork (RAQDPS) 10 km',
         attribution: 'Data Source: Environment and Climate Change Canada',
       });
