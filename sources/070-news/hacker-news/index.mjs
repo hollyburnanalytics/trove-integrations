@@ -1,4 +1,4 @@
-import { htmlToText } from '../../lib/feeds.mjs';
+import { htmlToText, safeDate, undatedStats, warnIfUndated } from '../../lib/feeds.mjs';
 
 export async function sync(context) {
   context.log.info('Fetching Hacker News front page stories...');
@@ -29,14 +29,17 @@ export async function sync(context) {
       .join('\n\n'),
     url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
     author: hit.author,
-    date: hit.created_at,
+    // The story's submission time — the closest thing HN has to a publish
+    // date (the linked article's own date is not in the Algolia payload).
+    date: safeDate(hit.created_at),
   }));
 
   context.log.info(`Fetched ${documents.length} stories`);
+  warnIfUndated(context, documents, 'Hacker News front page');
 
   return {
     documents,
     cursor: undefined,
-    stats: { fetched: documents.length },
+    stats: { fetched: documents.length, ...undatedStats(documents) },
   };
 }

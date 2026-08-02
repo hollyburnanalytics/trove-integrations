@@ -1,4 +1,4 @@
-import { deadlineReached, decodeHtmlEntities, fetchPage } from '../../lib/feeds.mjs';
+import { deadlineReached, decodeHtmlEntities, fetchPage, safeDate } from '../../lib/feeds.mjs';
 import { advanceDateWatermark, readDateWatermark } from '../../lib/watermark.mjs';
 
 /** Results per arXiv API page. */
@@ -36,7 +36,7 @@ function entryToDocument(entryXml) {
       text: `${title}\n\n${summary}`,
       url: id,
       author: authors.slice(0, 3).join(', ') + (authors.length > 3 ? ' et al.' : ''),
-      date: published ? new Date(published).toISOString() : new Date().toISOString(),
+      date: safeDate(published),
     },
   };
 }

@@ -104,7 +104,10 @@ describe('arxiv-papers source', () => {
     fetchPage.mockResolvedValue(xml);
 
     const result = await sync(makeContext({ queries: ['cat:cs.AI'] }));
-    expect(result.documents[0].date).toBeTruthy();
+    // No submission date from arXiv means no date — never the sync time, which
+    // would date a decade-old paper as brand new.
+    expect(result.documents).toHaveLength(1);
+    expect(result.documents[0].date).toBeUndefined();
   });
 
   it('handles entries with missing tags', async () => {

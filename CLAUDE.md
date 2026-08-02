@@ -31,6 +31,7 @@ bun run test:coverage # Run tests with coverage report
 bun run typecheck     # Typecheck both halves (toolkits + sources)
 bun run check         # Full check: lint + lint:sonar + test with coverage + typecheck
 bun run validate      # Validate registry.json consistency
+bun run audit:dates   # Live publish-date coverage per source (hits real upstreams)
 ```
 
 ### Toolchain matrix
@@ -147,11 +148,32 @@ The harness provides:
 
 ```javascript
 {
-  documents: [{ id, title, text, url, author, date, tags? }],
+  documents: [{ id, title, text, url, author, date?, tags? }],
   cursor: { type: 'date', value } | undefined,  // typed Watermark value — see docs/source-adapter-taxonomy.md §4.3
-  stats: { fetched, skipped? }
+  stats: { fetched, skipped?, undated? }
 }
 ```
+
+### `date` — publication date, or nothing
+
+`date` is when the *content* was published, and it is only ever set from
+something the upstream source actually told us. **Never substitute the sync
+time.** A source that can't determine a publication date leaves `date` unset:
+the server already records its own ingestion date, so a stamped-at-sync date
+adds no information and actively lies — it would sort a decade-old post as
+brand new, and it makes a feed that quietly stopped emitting dates invisible.
+
+Use `safeDate()` (returns `undefined` on missing/unparseable input) and never
+`|| new Date().toISOString()`. Undated documents are counted into
+`stats.undated` and logged via `warnIfUndated(ctx, documents, origin)`.
+
+For a **day-granular** event (a meeting, a filing) use
+`dayToLocalNoonIso(day, timeZone)` rather than passing the bare `YYYY-MM-DD`
+through: a bare day parses as midnight UTC, which renders as the *previous*
+day anywhere west of Greenwich. Anchoring to local noon keeps the calendar day
+intact — see `350-public-administration/dnv-council-minutes`.
+
+Run `bun run audit:dates` to measure live publish-date coverage per source.
 
 A document's body may take one of three forms (at least one is required):
 inline `text`; an `audio_url` enclosure the server transcribes; or a

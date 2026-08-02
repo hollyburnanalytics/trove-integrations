@@ -286,8 +286,9 @@ describe('sec-filings source', () => {
     const result = await sync(makeContext(undefined, { tickers: ['TEST'] }));
     // Filing should still be processed (invalid dates don't get filtered by cursor)
     expect(result.documents).toHaveLength(1);
-    // Date should fall back to current date since safeDate returns undefined for invalid
-    expect(result.documents[0].date).toBeTruthy();
+    // An unparseable filing date leaves `date` unset rather than substituting
+    // the sync time — the server still records its own ingestion date.
+    expect(result.documents[0].date).toBeUndefined();
   });
 
   it('normalizes ticker to uppercase', async () => {

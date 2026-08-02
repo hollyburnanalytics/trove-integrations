@@ -56,7 +56,9 @@ describe('dnv-council-minutes source', () => {
     expect(document.mime_type).toBe('application/pdf');
     expect(document.url).toBe('https://app.dnv.org/OpenDocument/Default.aspx?docNum=101');
     expect(document.author).toBe('District of North Vancouver');
-    expect(document.date).toBe('2025-12-08');
+    // Noon in the District's own timezone (PST in December), so the meeting
+    // renders on 2025-12-08 locally rather than rolling back to the 7th.
+    expect(document.date).toBe('2025-12-08T20:00:00.000Z');
     expect(document.tags).toEqual(['Minutes', 'Regular Meeting']);
     expect(result.cursor).toEqual({ type: 'idSet', values: ['101'], max: 10_000 });
     expect(result.stats).toEqual({ fetched: 1, remaining: 0 });

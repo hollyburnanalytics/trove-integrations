@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
 import {
+  dayToLocalNoonIso,
   decodeHtmlEntities,
   fetchArticleText,
   fetchPage,
@@ -80,6 +81,44 @@ describe('safeDate', () => {
 
   it('returns null for invalid date', () => {
     expect(safeDate('not-a-date')).toBeUndefined();
+  });
+});
+
+// --- dayToLocalNoonIso ---
+
+describe('dayToLocalNoonIso', () => {
+  it('anchors a summer (PDT, UTC-7) day to local noon', () => {
+    expect(dayToLocalNoonIso('2025-07-15', 'America/Vancouver')).toBe('2025-07-15T19:00:00.000Z');
+  });
+
+  it('anchors a winter (PST, UTC-8) day to local noon', () => {
+    expect(dayToLocalNoonIso('2025-12-08', 'America/Vancouver')).toBe('2025-12-08T20:00:00.000Z');
+  });
+
+  it('renders as the intended calendar day in the target zone', () => {
+    for (const day of ['2025-01-01', '2025-03-09', '2025-07-15', '2025-11-02', '2025-12-31']) {
+      const iso = dayToLocalNoonIso(day, 'America/Vancouver');
+      const local = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Vancouver',
+      }).format(new Date(iso));
+      expect(local).toBe(day);
+    }
+  });
+
+  it('handles a half-hour zone', () => {
+    const iso = dayToLocalNoonIso('2025-07-15', 'Asia/Kolkata');
+    expect(iso).toBe('2025-07-15T06:30:00.000Z');
+  });
+
+  it('falls back to safeDate for values that are not bare days', () => {
+    expect(dayToLocalNoonIso('2025-07-15T08:30:00Z', 'America/Vancouver')).toBe(
+      '2025-07-15T08:30:00.000Z',
+    );
+  });
+
+  it('returns undefined for junk', () => {
+    expect(dayToLocalNoonIso('not-a-date', 'America/Vancouver')).toBeUndefined();
+    expect(dayToLocalNoonIso('', 'America/Vancouver')).toBeUndefined();
   });
 });
 
@@ -424,6 +463,46 @@ describe('syncRSS', () => {
     expect(document.title).toBe('Watch now | \u{1F399}\uFE0F Testing Google\u2019s Gemini');
     expect(document.text).not.toMatch(/&#\d+;|&[a-z]+;|<[a-z]/);
     expect(document.text).toContain('Episode & notes');
+  });
+
+  it('leaves date unset (never sync time) when the feed gives no pubDate', async () => {
+    mockFetch(`<rss><channel>
+      <item><title>Dated</title><link>https://example.com/a</link>
+        <pubDate>Mon, 15 Jan 2024 00:00:00 GMT</pubDate></item>
+      <item><title>Undated</title><link>https://example.com/b</link></item>
+      <item><title>Junk date</title><link>https://example.com/c</link>
+        <pubDate>whenever</pubDate></item>
+    </channel></rss>`);
+    const context = makeContext();
+
+    const result = await syncRSS(context, {
+      feedUrl: 'https://example.com/feed',
+      idPrefix: 'test',
+      defaultAuthor: 'Author',
+    });
+
+    const byTitle = Object.fromEntries(result.documents.map((d) => [d.title, d]));
+    expect(byTitle.Dated.date).toBe('2024-01-15T00:00:00.000Z');
+    expect(byTitle.Undated.date).toBeUndefined();
+    expect(byTitle['Junk date'].date).toBeUndefined();
+    // Counted and logged, so a feed that stops emitting dates is visible.
+    expect(result.stats.undated).toBe(2);
+    expect(context.log.warn).toHaveBeenCalledWith(expect.stringContaining('no publish date'));
+  });
+
+  it('omits the undated stat entirely when every item is dated', async () => {
+    mockFetch(`<rss><channel><item><title>Post</title><link>https://example.com/a</link>
+      <pubDate>Mon, 15 Jan 2024 00:00:00 GMT</pubDate></item></channel></rss>`);
+    const context = makeContext();
+
+    const result = await syncRSS(context, {
+      feedUrl: 'https://example.com/feed',
+      idPrefix: 'test',
+      defaultAuthor: 'Author',
+    });
+
+    expect(result.stats.undated).toBeUndefined();
+    expect(context.log.warn).not.toHaveBeenCalled();
   });
 
   it('fetches and parses RSS feed', async () => {

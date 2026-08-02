@@ -26,6 +26,7 @@
     "typecheck:mcp": "tsc --noEmit -p mcp/tsconfig.json",
     "typecheck:sources": "tsc -p tsconfig.sources.json",
     "source": "bun bin/run-source.mjs",
+    "audit:dates": "bun scripts/audit-dates.mjs",
     "check": "bun run lint && bun run lint:sonar && bun run lint:baseline && bun run test:coverage && bun run typecheck && bun run validate",
     "validate": "bun scripts/validate-registry.mjs",
     "lint:sonar": "eslint .",

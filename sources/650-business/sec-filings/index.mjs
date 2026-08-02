@@ -186,7 +186,7 @@ async function processFiling(context, filing, cik, companyName, upperTicker) {
     text: `${header}\n\n${text}`,
     url: documentUrl,
     author: companyName,
-    date: safeDate(filing.filingDate) || new Date().toISOString(),
+    date: safeDate(filing.filingDate),
     tags: [filing.form, upperTicker],
   };
 }

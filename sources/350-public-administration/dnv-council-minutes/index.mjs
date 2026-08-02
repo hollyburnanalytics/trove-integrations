@@ -13,11 +13,14 @@
  */
 
 import { fetchPage } from '../../lib/http.mjs';
+import { dayToLocalNoonIso } from '../../lib/text.mjs';
 import { idSetWatermark, readIdSet } from '../../lib/watermark.mjs';
 
 const SEARCH_URL = 'https://app.dnv.org/dnv_search/api/v1/councilsearch/search?pageSize=5000';
 const DOCUMENT_URL = 'https://app.dnv.org/OpenDocument/Default.aspx?docNum=';
 const AUTHOR = 'District of North Vancouver';
+/** The District's own timezone — meeting days are local calendar days. */
+const MEETING_TIME_ZONE = 'America/Vancouver';
 
 // Documents offered per sync round. Each becomes one server-side download, so
 // this bounds how hard a round hits the District's document endpoint; the
@@ -79,7 +82,10 @@ function toDocument({ meeting, document }) {
     mime_type: 'application/pdf',
     url: `${DOCUMENT_URL}${document.docNumber}`,
     author: AUTHOR,
-    date: meeting.date,
+    // The API gives a bare meeting day (`YYYY-MM-DD`). Anchor it to noon in
+    // the District's own timezone: left bare it parses as midnight UTC, which
+    // renders as the *previous* day here on the coast.
+    date: dayToLocalNoonIso(meeting.date, MEETING_TIME_ZONE),
     tags: [document.docType, meeting.type],
   };
 }
