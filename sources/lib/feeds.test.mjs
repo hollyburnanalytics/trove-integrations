@@ -490,6 +490,45 @@ describe('syncRSS', () => {
     expect(context.log.warn).toHaveBeenCalledWith(expect.stringContaining('no publish date'));
   });
 
+  it('drops identity-less items instead of collapsing them onto one ID', async () => {
+    // No guid, no link, no title: every such item would hash the empty string,
+    // so the second would silently overwrite the first.
+    mockFetch(`<rss><channel>
+      <item><description>First story</description></item>
+      <item><description>Second story</description></item>
+      <item><title>Keeper</title><description>Third</description></item>
+    </channel></rss>`);
+    const context = makeContext();
+
+    const result = await syncRSS(context, {
+      feedUrl: 'https://example.com/feed',
+      idPrefix: 'test',
+      defaultAuthor: 'Author',
+    });
+
+    expect(result.documents.map((d) => d.title)).toEqual(['Keeper']);
+    expect(context.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('no guid, link or title'),
+    );
+  });
+
+  it('keeps items addressable by title alone distinct', async () => {
+    mockFetch(`<rss><channel>
+      <item><title>Alpha</title></item>
+      <item><title>Beta</title></item>
+    </channel></rss>`);
+
+    const result = await syncRSS(makeContext(), {
+      feedUrl: 'https://example.com/feed',
+      idPrefix: 'test',
+      defaultAuthor: 'Author',
+    });
+
+    const ids = new Set(result.documents.map((d) => d.id));
+    expect(result.documents).toHaveLength(2);
+    expect(ids.size).toBe(2);
+  });
+
   it('omits the undated stat entirely when every item is dated', async () => {
     mockFetch(`<rss><channel><item><title>Post</title><link>https://example.com/a</link>
       <pubDate>Mon, 15 Jan 2024 00:00:00 GMT</pubDate></item></channel></rss>`);

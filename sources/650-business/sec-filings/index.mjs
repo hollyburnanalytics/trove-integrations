@@ -16,7 +16,7 @@
  */
 
 import { parse } from 'node-html-parser';
-import { safeDate, stableId } from '../../lib/feeds.mjs';
+import { dayToLocalNoonIso, stableId } from '../../lib/feeds.mjs';
 import { advanceDateWatermark, readDateWatermark } from '../../lib/watermark.mjs';
 
 const FILING_TYPES = new Set([
@@ -37,6 +37,8 @@ const SEC_HEADERS = {
   Accept: 'application/json, text/html, */*',
 };
 
+/** EDGAR timestamps filings on Eastern time — filing days are local days. */
+const FILING_TIME_ZONE = 'America/New_York';
 const DELAY_MS = 200;
 const MAX_TEXT_LENGTH = 100_000;
 const MIN_TEXT_LENGTH = 100;
@@ -186,7 +188,10 @@ async function processFiling(context, filing, cik, companyName, upperTicker) {
     text: `${header}\n\n${text}`,
     url: documentUrl,
     author: companyName,
-    date: safeDate(filing.filingDate),
+    // EDGAR reports a bare filing day (`YYYY-MM-DD`) on Eastern time. Anchor it
+    // to noon there: left bare it parses as midnight UTC, which renders as the
+    // *previous* day across North America.
+    date: dayToLocalNoonIso(filing.filingDate, FILING_TIME_ZONE),
     tags: [filing.form, upperTicker],
   };
 }

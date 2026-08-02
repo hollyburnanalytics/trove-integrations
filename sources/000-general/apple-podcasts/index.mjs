@@ -39,11 +39,20 @@ const MAX_EPISODES_PER_RUN = 25;
 /**
  * Convert a Core Data timestamp to an ISO-8601 string.
  *
+ * The query filters on `ZPUBDATE > ?`, which already excludes NULLs, so this
+ * should always receive a real number — but a corrupt or schema-changed value
+ * would otherwise make `toISOString()` throw and take down the whole sync.
+ * Returning undefined instead keeps it consistent with `safeDate()`: an
+ * undeterminable date leaves `date` unset rather than failing or inventing one.
+ *
  * @param {number} coreDataSeconds - seconds since the Apple epoch
- * @returns {string}
+ * @returns {string | undefined}
  */
 function appleDateToIso(coreDataSeconds) {
-  return new Date((coreDataSeconds + APPLE_EPOCH_OFFSET_SECONDS) * 1000).toISOString();
+  if (typeof coreDataSeconds !== 'number' || !Number.isFinite(coreDataSeconds)) return;
+  const ms = (coreDataSeconds + APPLE_EPOCH_OFFSET_SECONDS) * 1000;
+  const date = new Date(ms);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 /**

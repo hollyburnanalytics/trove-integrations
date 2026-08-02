@@ -267,6 +267,28 @@ describe('sec-filings source', () => {
     expect(result.documents[0].author).toBe('TEST CORP');
   });
 
+  it('anchors the bare filing day to noon Eastern, not midnight UTC', async () => {
+    mockFetchForSync({
+      submissions: {
+        name: 'Test Corp',
+        filings: {
+          recent: {
+            accessionNumber: ['0001234567-25-000001'],
+            filingDate: ['2025-11-15'],
+            reportDate: [''],
+            form: ['10-K'],
+            primaryDocument: ['test-20241231.htm'],
+          },
+        },
+      },
+    });
+
+    const result = await sync(makeContext(undefined, { tickers: ['TEST'] }));
+
+    // Midnight UTC would render as 2025-11-14 anywhere in North America.
+    expect(result.documents[0].date).toBe('2025-11-15T17:00:00.000Z');
+  });
+
   it('handles filing with invalid date gracefully', async () => {
     mockFetchForSync({
       submissions: {

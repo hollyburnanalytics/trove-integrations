@@ -67,6 +67,39 @@ export function warnIfUndated(context, documents, origin) {
 }
 
 /**
+ * The string a feed item's stable ID is derived from, or `''` when the item
+ * carries no identity at all.
+ *
+ * `parseRSS()` normalizes every absent field to `''`, so an item with no guid,
+ * no link and no title would hash the empty string — and *every* such item in
+ * the feed would collapse onto that one document ID, silently overwriting each
+ * other. Callers drop these instead (see {@link identifiedItems}).
+ */
+function itemIdentity(item) {
+  return item.guid || item.link || item.title || '';
+}
+
+/**
+ * Drop feed items that carry no stable identity, warning once with the count.
+ * An item with no guid, link *or* title is unaddressable — we cannot give it an
+ * ID that survives the next sync, and keeping it would collide with every other
+ * identity-less item in the feed.
+ *
+ * @param {object} context - Harness context (for `log.warn`).
+ * @param {object[]} items - Parsed feed items.
+ * @param {string} origin - Feed URL or label, for the warning.
+ * @returns {object[]} The items that can be given a stable ID.
+ */
+function identifiedItems(context, items, origin) {
+  const identified = items.filter((item) => itemIdentity(item) !== '');
+  const dropped = items.length - identified.length;
+  if (dropped > 0) {
+    context.log.warn(`Skipped ${dropped} items from ${origin} with no guid, link or title`);
+  }
+  return identified;
+}
+
+/**
  * Fetch and parse an RSS/Atom feed, returning TroveDocuments.
  * Supports incremental sync via a `date` watermark — only returns items
  * published after the cursor date. Cursor advances to max date of returned items.
@@ -90,8 +123,8 @@ export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
   context.log.info(`Found ${items.length} items${skippedSuffix}`);
   context.progress(0, `Processing ${filtered.length} items...`);
 
-  const documents = filtered.map((item) => ({
-    id: stableId(idPrefix, item.guid || item.link || item.title),
+  const documents = identifiedItems(context, filtered, feedUrl).map((item) => ({
+    id: stableId(idPrefix, itemIdentity(item)),
     title: decodeHtmlEntities(item.title || 'Untitled'),
     // Store the fullest body the feed provides (content:encoded / Atom
     // <content>, falling back to the raw description markup) as plain text.
@@ -168,7 +201,7 @@ async function articleToDocument(context, item, { idPrefix, defaultAuthor, artic
     body = item.description || ''; // fall back to the feed excerpt
   }
   return {
-    id: stableId(idPrefix, item.guid || item.link),
+    id: stableId(idPrefix, itemIdentity(item)),
     title: decodeHtmlEntities(item.title || 'Untitled'),
     text: [decodeHtmlEntities(item.title || ''), body].filter(Boolean).join('\n\n'),
     url: item.link,
@@ -185,7 +218,7 @@ export async function syncFeedArticles(
   const items = parseRSS(await fetchPage(feedUrl));
   const lastDate = readDateWatermark(context.cursor);
 
-  const fresh = items
+  const fresh = identifiedItems(context, items, feedUrl)
     .filter((item) => {
       if (!lastDate || !item.pubDate) return true;
       const d = new Date(item.pubDate);
