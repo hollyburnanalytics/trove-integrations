@@ -713,6 +713,14 @@ describe('htmlToText', () => {
     ).toBe('> Outer.\n>\n> > Inner.');
   });
 
+  it('drops an EMPTY heading rather than emitting a bare marker', () => {
+    // Bits About Money ships `<h2 id></h2>` between sections. A bare `##` is
+    // rejected by the ingest gate, and a rejected document holds the whole
+    // feed's cursor — so one publisher's stray tag stops the feed, not just the
+    // post. Found by running this converter over eight live feeds.
+    expect(htmlToText('<p>Before.</p><h2 id=""></h2><p>After.</p>')).toBe('Before.\n\nAfter.');
+  });
+
   it('does not emit bare markers for empty emphasis', () => {
     // `**` alone renders as literal asterisks rather than as markup.
     expect(htmlToText('<p>a<strong> </strong>b</p>')).toBe('a b');
