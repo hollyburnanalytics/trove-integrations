@@ -18,7 +18,7 @@ import { dateWatermark, readDateWatermark } from './watermark.mjs';
 // for adapters, even though the implementations live in focused sibling modules.
 export { fetchPage } from './http.mjs';
 export { parseRSS, xmlText } from './rss-parse.mjs';
-export { decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
+export { dayToLocalNoonIso, decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
 
 /** Pause between paced requests. Exported so source tests can stub the pacing. */
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,6 +32,71 @@ export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 export function deadlineReached(context) {
   return typeof context.deadline === 'number' && Date.now() >= context.deadline;
+}
+
+/**
+ * A document's `date` is the *publication* date, and we only ever set it from
+ * something the upstream source actually told us. When a source gives us no
+ * usable date we leave `date` off entirely rather than substituting the sync
+ * time: the server already records its own ingestion date, so a stamped-at-sync
+ * date adds no information and actively lies about when the item was published
+ * (it would sort a decade-old post as brand new). Undated documents are counted
+ * and logged instead, so a feed that silently stops emitting dates is visible.
+ *
+ * @param {object[]} documents - The documents a source is about to return.
+ * @returns {{ undated?: number }} `stats` fragment; empty when all are dated.
+ */
+export function undatedStats(documents) {
+  const undated = documents.filter((document) => !document.date).length;
+  return undated > 0 ? { undated } : {};
+}
+
+/**
+ * Warn when any of `documents` carries no publication date, naming the origin
+ * so the operator can tell *which* feed regressed. No-op when all are dated.
+ *
+ * @param {object} context - Harness context (for `log.warn`).
+ * @param {object[]} documents - The documents a source is about to return.
+ * @param {string} origin - Feed/endpoint URL or label the documents came from.
+ */
+export function warnIfUndated(context, documents, origin) {
+  const { undated } = undatedStats(documents);
+  if (undated) {
+    context.log.warn(`${undated}/${documents.length} items from ${origin} have no publish date`);
+  }
+}
+
+/**
+ * The string a feed item's stable ID is derived from, or `''` when the item
+ * carries no identity at all.
+ *
+ * `parseRSS()` normalizes every absent field to `''`, so an item with no guid,
+ * no link and no title would hash the empty string — and *every* such item in
+ * the feed would collapse onto that one document ID, silently overwriting each
+ * other. Callers drop these instead (see {@link identifiedItems}).
+ */
+function itemIdentity(item) {
+  return item.guid || item.link || item.title || '';
+}
+
+/**
+ * Drop feed items that carry no stable identity, warning once with the count.
+ * An item with no guid, link *or* title is unaddressable — we cannot give it an
+ * ID that survives the next sync, and keeping it would collide with every other
+ * identity-less item in the feed.
+ *
+ * @param {object} context - Harness context (for `log.warn`).
+ * @param {object[]} items - Parsed feed items.
+ * @param {string} origin - Feed URL or label, for the warning.
+ * @returns {object[]} The items that can be given a stable ID.
+ */
+function identifiedItems(context, items, origin) {
+  const identified = items.filter((item) => itemIdentity(item) !== '');
+  const dropped = items.length - identified.length;
+  if (dropped > 0) {
+    context.log.warn(`Skipped ${dropped} items from ${origin} with no guid, link or title`);
+  }
+  return identified;
 }
 
 /**
@@ -58,8 +123,8 @@ export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
   context.log.info(`Found ${items.length} items${skippedSuffix}`);
   context.progress(0, `Processing ${filtered.length} items...`);
 
-  const documents = filtered.map((item) => ({
-    id: stableId(idPrefix, item.guid || item.link || item.title),
+  const documents = identifiedItems(context, filtered, feedUrl).map((item) => ({
+    id: stableId(idPrefix, itemIdentity(item)),
     title: decodeHtmlEntities(item.title || 'Untitled'),
     // Store the fullest body the feed provides (content:encoded / Atom
     // <content>, falling back to the raw description markup) as plain text.
@@ -71,8 +136,11 @@ export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
       .join('\n\n'),
     url: item.link,
     author: item.author || defaultAuthor,
-    date: safeDate(item.pubDate) || new Date().toISOString(),
+    // Omitted when the feed gives us no usable date — see `undatedStats()`.
+    date: safeDate(item.pubDate),
   }));
+
+  warnIfUndated(context, documents, feedUrl);
 
   // Cursor = max pubDate of RETURNED items (not all items — avoids jumping past unsynced items)
   const returnedDates = filtered
@@ -82,7 +150,11 @@ export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
     returnedDates.length > 0 ? new Date(Math.max(...returnedDates)).toISOString() : undefined;
   const cursor = maxDate ? dateWatermark(maxDate) : context.cursor || undefined;
 
-  return { documents, cursor, stats: { fetched: documents.length, skipped } };
+  return {
+    documents,
+    cursor,
+    stats: { fetched: documents.length, skipped, ...undatedStats(documents) },
+  };
 }
 
 /**
@@ -129,12 +201,12 @@ async function articleToDocument(context, item, { idPrefix, defaultAuthor, artic
     body = item.description || ''; // fall back to the feed excerpt
   }
   return {
-    id: stableId(idPrefix, item.guid || item.link),
+    id: stableId(idPrefix, itemIdentity(item)),
     title: decodeHtmlEntities(item.title || 'Untitled'),
     text: [decodeHtmlEntities(item.title || ''), body].filter(Boolean).join('\n\n'),
     url: item.link,
     author: item.author || defaultAuthor,
-    date: safeDate(item.pubDate) || new Date().toISOString(),
+    date: safeDate(item.pubDate),
   };
 }
 
@@ -146,7 +218,7 @@ export async function syncFeedArticles(
   const items = parseRSS(await fetchPage(feedUrl));
   const lastDate = readDateWatermark(context.cursor);
 
-  const fresh = items
+  const fresh = identifiedItems(context, items, feedUrl)
     .filter((item) => {
       if (!lastDate || !item.pubDate) return true;
       const d = new Date(item.pubDate);
@@ -172,6 +244,8 @@ export async function syncFeedArticles(
     if (delayMs && index < fresh.length - 1) await sleep(delayMs);
   }
 
+  warnIfUndated(context, documents, feedUrl);
+
   const maxIso = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : undefined;
   const cursor = maxIso ? dateWatermark(maxIso) : context.cursor || undefined;
   return {
@@ -180,6 +254,7 @@ export async function syncFeedArticles(
     stats: {
       fetched: documents.length,
       remaining: stoppedEarly ? fresh.length - documents.length : 0,
+      ...undatedStats(documents),
     },
   };
 }

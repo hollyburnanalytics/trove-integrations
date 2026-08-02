@@ -46,6 +46,45 @@ export function safeDate(dateString) {
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
+/** Hour-of-day a `YYYY-MM-DD` instant lands on in `timeZone`. */
+function hourIn(instant, timeZone) {
+  const hour = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    hour12: false,
+  }).format(instant);
+  return Number(hour) % 24; // some locales render midnight as "24"
+}
+
+/**
+ * Convert a bare calendar day (`YYYY-MM-DD`) to the ISO instant for **noon** in
+ * `timeZone`.
+ *
+ * A day-granular event (a council meeting, a filing) has no time of day, but it
+ * still has to be stored as an instant. Storing midnight UTC is the tempting
+ * default and it is wrong for anywhere west of Greenwich: `new Date('2026-07-20')`
+ * is midnight UTC, which renders as *July 19* in Vancouver. Anchoring to local
+ * noon puts the instant far enough from both midnights that it renders as the
+ * intended calendar day across the Americas and Europe.
+ *
+ * DST is resolved by construction rather than by a hardcoded offset: we try each
+ * plausible UTC offset and keep the one that actually lands on noon locally.
+ *
+ * @param {string} day - Calendar day as `YYYY-MM-DD`.
+ * @param {string} timeZone - IANA zone, e.g. `'America/Vancouver'`.
+ * @returns {string | undefined} ISO instant, or undefined if `day` is unparseable.
+ */
+export function dayToLocalNoonIso(day, timeZone) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return safeDate(day);
+  // Offsets are whole or half hours; 0..14 either side covers every real zone.
+  for (let offset = -14; offset <= 14; offset += 0.5) {
+    const instant = new Date(`${day}T12:00:00Z`);
+    if (Number.isNaN(instant.getTime())) return;
+    instant.setUTCMinutes(instant.getUTCMinutes() + offset * 60);
+    if (hourIn(instant, timeZone) === 12) return instant.toISOString();
+  }
+}
+
 /** The named entities feed bodies actually use, beyond the XML five. */
 const NAMED_ENTITIES = {
   '&nbsp;': ' ',

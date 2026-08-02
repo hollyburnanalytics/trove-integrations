@@ -60,6 +60,12 @@ describe('feedItemDocument', () => {
     expect(document.date).toBe('2024-01-15T10:00:00.000Z');
   });
 
+  it('leaves date unset when the item carries no usable pubDate', () => {
+    const base = { title: 'A', link: 'https://x.test/a', guid: 'https://x.test/a' };
+    expect(feedItemDocument('p', base).date).toBeUndefined();
+    expect(feedItemDocument('p', { ...base, pubDate: 'whenever' }).date).toBeUndefined();
+  });
+
   it('produces the same id for the same item (stability)', () => {
     const item = { title: 'A', link: 'https://x.test/a', guid: 'https://x.test/a' };
     expect(feedItemDocument('p', item).id).toBe(feedItemDocument('p', item).id);

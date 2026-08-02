@@ -6,6 +6,8 @@ import {
   parseRSS,
   safeDate,
   stableId,
+  undatedStats,
+  warnIfUndated,
 } from './feeds.mjs';
 import { advanceDateWatermark, readDateWatermark } from './watermark.mjs';
 
@@ -54,6 +56,9 @@ export function discoverFeedUrl(html, baseUrl) {
  * back to the raw description markup) — what a subscribed-blog source like
  * `rss-feeds` wants.
  *
+ * `date` is omitted when the item carries no usable publication date — see
+ * {@link undatedStats}.
+ *
  * @param {string} idPrefix - stable-ID namespace (e.g. `'bbc'`)
  * @param {object} item - a `parseRSS()` item, plus a resolved `url`
  * @param {object} [options]
@@ -64,7 +69,6 @@ export function discoverFeedUrl(html, baseUrl) {
  * @returns {object} TroveDocument
  */
 export function feedItemDocument(idPrefix, item, { defaultAuthor, tags, fullText = false } = {}) {
-  const date = safeDate(item.pubDate);
   const body = fullText ? item.bodyHtml || item.description : item.description;
   const document = {
     id: stableId(idPrefix, item.guid || item.link),
@@ -74,7 +78,7 @@ export function feedItemDocument(idPrefix, item, { defaultAuthor, tags, fullText
       .join('\n\n'),
     url: item.url || item.link,
     author: item.author || defaultAuthor,
-    date: date || new Date().toISOString(),
+    date: safeDate(item.pubDate),
   };
   if (tags && tags.length > 0) document.tags = tags;
   return document;
@@ -170,6 +174,7 @@ export async function syncFeeds(
     try {
       const items = await fetchFeedItems(context, feed, parseFeed);
       const collected = collectFeedItems(items, { feed, seenUrls, lastDate, toDocument });
+      warnIfUndated(context, collected.documents, feed.label || feed.url);
       documents.push(...collected.documents);
       dates.push(...collected.dates);
       skipped += collected.skipped;
@@ -199,5 +204,9 @@ export async function syncFeeds(
   const seenNote = skipped > 0 ? ` (${skipped} already seen)` : '';
   context.log.info(`Collected ${documents.length} items${seenNote}`);
 
-  return { documents, cursor, stats: { fetched: documents.length, skipped } };
+  return {
+    documents,
+    cursor,
+    stats: { fetched: documents.length, skipped, ...undatedStats(documents) },
+  };
 }

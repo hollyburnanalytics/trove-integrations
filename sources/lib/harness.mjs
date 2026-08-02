@@ -206,6 +206,13 @@ export async function runSource({
   return {
     documents,
     cursor: result.cursor ?? undefined,
-    stats: { ...result.stats, fetched: documents.length, duration_ms: durationMs },
+    stats: {
+      ...result.stats,
+      fetched: documents.length,
+      // Publish-date coverage, measured here so every source reports it the
+      // same way whether or not its adapter tracks it (see `undatedStats()`).
+      undated: documents.filter((document) => !(/** @type {any} */ (document).date)).length,
+      duration_ms: durationMs,
+    },
   };
 }

@@ -267,6 +267,28 @@ describe('sec-filings source', () => {
     expect(result.documents[0].author).toBe('TEST CORP');
   });
 
+  it('anchors the bare filing day to noon Eastern, not midnight UTC', async () => {
+    mockFetchForSync({
+      submissions: {
+        name: 'Test Corp',
+        filings: {
+          recent: {
+            accessionNumber: ['0001234567-25-000001'],
+            filingDate: ['2025-11-15'],
+            reportDate: [''],
+            form: ['10-K'],
+            primaryDocument: ['test-20241231.htm'],
+          },
+        },
+      },
+    });
+
+    const result = await sync(makeContext(undefined, { tickers: ['TEST'] }));
+
+    // Midnight UTC would render as 2025-11-14 anywhere in North America.
+    expect(result.documents[0].date).toBe('2025-11-15T17:00:00.000Z');
+  });
+
   it('handles filing with invalid date gracefully', async () => {
     mockFetchForSync({
       submissions: {
@@ -286,8 +308,9 @@ describe('sec-filings source', () => {
     const result = await sync(makeContext(undefined, { tickers: ['TEST'] }));
     // Filing should still be processed (invalid dates don't get filtered by cursor)
     expect(result.documents).toHaveLength(1);
-    // Date should fall back to current date since safeDate returns undefined for invalid
-    expect(result.documents[0].date).toBeTruthy();
+    // An unparseable filing date leaves `date` unset rather than substituting
+    // the sync time — the server still records its own ingestion date.
+    expect(result.documents[0].date).toBeUndefined();
   });
 
   it('normalizes ticker to uppercase', async () => {
