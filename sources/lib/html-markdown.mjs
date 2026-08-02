@@ -6,23 +6,63 @@
  * strings — entities, ids, dates — while this walks a parsed document and
  * decides what structure survives into the stored document.
  *
- * **The output is Markdown that must PARSE.** The ingest door runs every body
- * through a Markdown gate and rejects what it cannot read, and a rejected
- * document is an error that holds the whole feed's cursor — so a malformed emit
- * here does not spoil one post, it stops the feed. Every escape and every
- * empty-element guard below exists for that reason.
+ * The walk is the only thing left here. Its three collaborators are separate
+ * because each is a different kind of decision:
+ *
+ * - `html-prepare.mjs` — what the walker is handed, and the final tidy
+ * - `markdown-sink.mjs` — where fragments go, and what "start of a line" means
+ * - `markdown-emit.mjs` — what bytes are safe to emit for a given fragment
+ *
+ * **The output is Markdown that must PARSE, and parse as what the HTML MEANT.**
+ * The ingest door runs every body through a Markdown gate and rejects what it
+ * cannot read, and a rejected document is an error that holds the whole feed's
+ * cursor — so a malformed emit here does not spoil one post, it stops the feed.
+ * Worse than a rejection is an emit that parses as the *wrong* tree: the backend
+ * stores its own re-serialization of what it parsed, so a misread structure is
+ * canonicalized into the corpus and no later pass can tell it was ever wrong.
+ *
+ * See `README.md` in this directory for the supported subset, the known
+ * degradations, and how the corpus audit behind them was run.
  *
  * @module
  */
 
 import { parse as parseHtmlDocument } from 'node-html-parser';
+import { decodeUntilMarkup, plainTextToMarkdown, tidy, unwrapCdata } from './html-prepare.mjs';
+import {
+  codeSpan,
+  escapeLinkPart,
+  escapeText,
+  flattenInline,
+  isSafeUrl,
+  quoteLines,
+  renderTable,
+  stripControlCharacters,
+} from './markdown-emit.mjs';
+import { createSink } from './markdown-sink.mjs';
 import { decodeHtmlEntities } from './text.mjs';
 
 /** Elements whose content never belongs in the stored text. */
-const DROP_TAGS = new Set(['script', 'style', 'noscript', 'template', 'iframe', 'svg', 'head']);
+const DROP_TAGS = new Set([
+  'script',
+  'style',
+  'noscript',
+  'template',
+  'iframe',
+  'svg',
+  'head',
+  'form',
+  'button',
+  'input',
+  'select',
+  'option',
+  'audio',
+  'video',
+  'source',
+]);
 
 /** Elements that end a paragraph: a blank line on both sides. */
-const PARAGRAPH_TAGS = new Set(['p', 'blockquote', 'figure', 'table', 'ul', 'ol', 'dl']);
+const PARAGRAPH_TAGS = new Set(['p', 'blockquote', 'figure', 'dl']);
 
 /** Heading tags to their ATX Markdown prefix. */
 const HEADING_MARKERS = {
@@ -44,58 +84,28 @@ const LINE_TAGS = new Set([
   'aside',
   'main',
   'nav',
-  'li',
-  'tr',
   'dt',
   'dd',
   'figcaption',
 ]);
 
 /** Inline emphasis tags and the Markdown marker each becomes. */
-const EMPHASIS_MARKERS = {
-  em: '*',
-  i: '*',
-  strong: '**',
-  b: '**',
-};
-
-/** The blank-run or line boundary a block element contributes, if any. */
-function blockBoundary(tag) {
-  if (PARAGRAPH_TAGS.has(tag)) return '\n\n';
-  if (LINE_TAGS.has(tag)) return '\n';
-  return '';
-}
+const EMPHASIS_MARKERS = { em: '*', i: '*', strong: '**', b: '**' };
 
 /**
- * Render a childless element that maps to fixed output: `br`/`hr` breaks and
- * `img` alt text. Returns false when the tag is not one of them.
+ * Render a fragment in isolation and return it as a string.
+ *
+ * `atBlockStart` seeds the sink's line position. It matters because a nested
+ * render begins with a fresh sink, and a sink that believes it is at the start
+ * of a line eats leading whitespace and escapes leading `#`. Correct for a list
+ * item or a blockquote, wrong for a fragment spliced back INTO a line: the
+ * space in `a<strong> </strong>b` is content, and swallowing it welds two words
+ * into `ab`.
  */
-function renderVoidElement(tag, node, parts) {
-  switch (tag) {
-    case 'br': {
-      parts.push('\n');
-      return true;
-    }
-    case 'hr': {
-      parts.push('\n\n');
-      return true;
-    }
-    case 'img': {
-      const alt = (node.getAttribute('alt') || '').trim();
-      if (alt) parts.push(`[Image: ${decodeHtmlEntities(alt)}]`);
-      return true;
-    }
-    default: {
-      return false;
-    }
-  }
-}
-
-/** Render each child of `node` into `parts`. */
-function renderChildren(node, parts, inPre) {
-  for (const child of node.childNodes) {
-    renderNode(child, parts, inPre);
-  }
+function renderToString(node, context, atBlockStart = false) {
+  const sink = createSink(atBlockStart ? '\n' : 'x');
+  renderChildren(node, sink, context);
+  return sink.toString();
 }
 
 /** Trim leading and trailing newlines only, keeping inner and other whitespace. */
@@ -108,125 +118,138 @@ function trimNewlines(value) {
 }
 
 /**
- * Escape the characters that would break a Markdown link if they appeared raw
- * in its text or its destination.
- *
- * Not cosmetic. The ingest door runs every inline body through a Markdown gate
- * and REJECTS one it cannot parse — and a rejected document is a per-document
- * error that HOLDS THE FEED'S CURSOR, deliberately, so a broken parser is loud
- * rather than silently polluting the corpus. So a title containing `]` or a URL
- * containing `)` does not degrade one document, it stops the feed advancing.
- *
- * @param {string} value - Raw link text or destination.
- * @param {boolean} isUrl - Escape for the `(...)` destination rather than the
- *   `[...]` label.
- * @returns {string} The escaped value.
+ * Render a childless element that maps to fixed output: `br`/`hr` breaks and
+ * `img` alt text. Returns false when the tag is not one of them.
  */
-function escapeLinkPart(value, isUrl) {
-  return isUrl
-    ? value.replaceAll('(', '%28').replaceAll(')', '%29').replaceAll(/\s/g, '%20')
-    : value.replaceAll(/([[\]])/g, String.raw`\$1`);
+function renderVoidElement(tag, node, sink) {
+  switch (tag) {
+    case 'br': {
+      sink.raw('\n');
+      return true;
+    }
+    case 'hr': {
+      sink.raw('\n\n');
+      return true;
+    }
+    case 'img': {
+      const alt = (node.getAttribute('alt') || '').trim();
+      if (alt) sink.raw(`[Image: ${escapeText(decodeHtmlEntities(alt), false)}]`);
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
 }
 
-/**
- * Prefix every line of a rendered fragment with `> `.
- *
- * Applied to the CHILDREN'S rendered output rather than wrapped around it,
- * because a blockquote's own paragraphs and nested quotes each need the marker
- * — a single leading `> ` would quote the first line and silently drop the rest
- * back into body prose, which is the bug this whole change exists to fix.
- *
- * @param {string} body - The rendered children.
- * @returns {string} The quoted block.
- */
-function quoteLines(body) {
-  return (
-    body
-      // Collapse the blank runs FIRST. The outer pass caps consecutive newlines,
-      // but by then every blank line inside a quote is a `>` and no longer looks
-      // blank to it — a two-paragraph quotation would keep three empty `>` lines
-      // between its halves.
-      .replaceAll(/\n{2,}/g, '\n\n')
-      .split('\n')
-      .map((line) => (line.length > 0 ? `> ${line}` : '>'))
-      .join('\n')
-  );
+/** Render each child of `node` into `sink`. */
+function renderChildren(node, sink, context) {
+  for (const child of node.childNodes) {
+    renderNode(child, sink, context);
+  }
 }
 
 /**
  * One `<a>` as Markdown: a link, an autolink, or bare text.
  *
  * @param {object} node - The anchor element.
- * @param {boolean} inPre - Whether we are inside a `<pre>` block.
+ * @param {object} context - The render context.
  * @returns {string} The rendered link.
  */
-function renderLink(node, inPre) {
-  const href = (node.getAttribute('href') || '').trim();
-  const label = [];
-  renderChildren(node, label, inPre);
-  // Link text is collapsed to a single line, the way established HTML-to-Markdown
-  // converters do. A `<br>` inside an anchor otherwise emits a newline between
-  // `[` and `]`; mdast happens to tolerate that today, and building on a
-  // parser's tolerance for malformed input is how a feed breaks on a version
-  // bump rather than on a change anyone made.
-  const text = label.join('').replaceAll(/\s+/g, ' ').trim();
+function renderLink(node, context) {
+  const href = stripControlCharacters((node.getAttribute('href') || '').trim());
+  // Link text is flattened, the way established HTML-to-Markdown converters do.
+  // A `<br>` inside an anchor otherwise emits a newline between `[` and `]`, and
+  // a heading inside one emits `[#### Title]`; mdast happens to tolerate the
+  // first today, and building on a parser's tolerance for malformed input is how
+  // a feed breaks on a version bump rather than on a change anyone made.
+  const text = flattenInline(renderToString(node, context));
   // A link with no destination, or whose text IS the destination, adds only
-  // noise as `[url](url)`.
-  if (!href || !text) return text;
+  // noise as `[url](url)`. An UNSAFE destination degrades to its text rather
+  // than being dropped whole — the words are the source's, only the target is
+  // refused.
+  if (!href || !text || !isSafeUrl(href)) return text;
   if (text === href) return `<${escapeLinkPart(href, true)}>`;
   return `[${escapeLinkPart(text, false)}](${escapeLinkPart(href, true)})`;
 }
 
 /**
- * Render an element that wraps its children in Markdown syntax — a fenced code
- * block (`<pre>`), an inline code chip (`<code>`), an ATX heading (`<h1>`–`<h6>`),
- * or a bulleted list item (`<li>`). Returns false when `tag` is none of them, so
- * the caller falls back to plain block/inline handling.
+ * Render a `<ul>`/`<ol>` as an indented Markdown list.
+ *
+ * Ordered lists keep their numbers and nested lists keep their depth, both of
+ * which the first version of this converter dropped: every `<ol>` came out as
+ * `-` bullets (239 of the 246 ordered lists in the audit corpus lost their
+ * numbering) and every nested list was flattened level with its parent (2,417
+ * bodies). Neither loss is recoverable downstream — by the time the body is
+ * stored, a numbered procedure is indistinguishable from an unordered one.
  */
-function renderWrappedElement(tag, node, parts, inPre) {
+function renderList(tag, node, sink, context) {
+  const ordered = tag === 'ol';
+  const start = Number.parseInt(node.getAttribute('start') ?? '1', 10);
+  const depth = context.listDepth ?? 0;
+  const inner = { ...context, listDepth: depth + 1 };
+  const indent = '  '.repeat(depth);
+  const lines = [];
+  let ordinal = Number.isNaN(start) ? 1 : start;
+
+  for (const child of node.childNodes) {
+    if (child.rawTagName?.toLowerCase() !== 'li') continue;
+    const body = trimNewlines(renderToString(child, inner, true)).trim();
+    // An EMPTY item is skipped, not emitted as a bare `-`. 299 bodies in the
+    // audit corpus contain one — the Guardian ships empty `<li>` as spacing —
+    // and a marker with no content is a list item that says nothing.
+    if (!body) continue;
+    const marker = ordered ? `${ordinal}. ` : '- ';
+    // Continuation lines align under the marker, or Markdown reads them as a new
+    // block that ends the list.
+    const pad = ' '.repeat(marker.length);
+    const [head, ...rest] = body.split('\n');
+    lines.push(
+      [`${indent}${marker}${head}`, ...rest.map((line) => `${indent}${pad}${line}`)].join('\n'),
+    );
+    ordinal++;
+  }
+  if (lines.length > 0) sink.raw(`\n\n${lines.join('\n')}\n\n`);
+}
+
+/** Collect a `<table>`'s cells, in document order, as a matrix of rendered text. */
+function tableMatrix(node, context) {
+  return node
+    .querySelectorAll('tr')
+    .map((row) =>
+      row
+        .querySelectorAll('th,td')
+        .map((cell) => renderToString(cell, { ...context, listDepth: 0 })),
+    );
+}
+
+/** Render `<pre>`, `<code>`, headings, links, quotes, emphasis, lists, tables. */
+function renderWrappedElement(tag, node, sink, context) {
   // `<pre>` keeps its children's whitespace verbatim inside a fence, so the
   // reader renders it as code rather than run-together prose. Children are still
   // parsed so feeds' highlighting spans get stripped.
   if (tag === 'pre') {
-    const code = [];
-    renderChildren(node, code, true);
-    const body = trimNewlines(code.join(''));
-    parts.push(`\n\n\`\`\`\n${body}\n\`\`\`\n\n`);
+    const body = trimNewlines(rawTextOf(node));
+    // The fence has to outlast any backtick run inside, or a code sample that
+    // itself shows a fence closes the block early and dumps the rest into prose.
+    const longest = Math.max(0, ...(body.match(/`{3,}/g) ?? []).map((run) => run.length));
+    const fence = '`'.repeat(Math.max(3, longest + 1));
+    sink.raw(`\n\n${fence}\n${body}\n${fence}\n\n`);
     return true;
   }
-  // Inline `<code>` becomes a backtick chip. Suppressed inside `<pre>`, where the
-  // fence already sets the block as code and inner backticks would be noise.
-  if (tag === 'code' && !inPre) {
-    parts.push('`');
-    renderChildren(node, parts, inPre);
-    parts.push('`');
+  if (tag === 'code') {
+    sink.raw(codeSpan(rawTextOf(node).replaceAll(/\s+/g, ' ').trim()));
     return true;
   }
-  // Headings become ATX Markdown so the reader sets them as headings rather than
-  // dropping them into indistinguishable body prose.
   const heading = HEADING_MARKERS[tag];
-  if (heading) {
-    const inner = [];
-    renderChildren(node, inner, inPre);
-    const body = inner.join('').trim();
-    // An EMPTY heading is dropped, not emitted as a bare `##`.
-    //
-    // Found by running this converter over eight live feeds: Bits About Money
-    // ships `<h2 id></h2>` between sections, and a bare marker is rejected by
-    // the ingest gate ("a producer emitted a bare heading with no text") — which
-    // does not spoil one document, it holds the whole feed's cursor. Two of that
-    // feed's fifteen posts hit it.
-    if (!body) return true;
-    parts.push(`\n\n${heading} ${body}\n\n`);
-    return true;
-  }
+  if (heading) return renderHeading(heading, node, sink, context);
   // Links carry the href through as Markdown. Dropping it was the single
   // biggest fidelity loss in the RSS path: a link-heavy blog reduced to its
   // prose loses what it is ABOUT, and nothing downstream can recover the
   // destination once it is gone — not a re-render, not a reformatting pass,
   // because the href never reached the stored document at all.
   if (tag === 'a') {
-    parts.push(renderLink(node, inPre));
+    sink.raw(renderLink(node, context));
     return true;
   }
   // Blockquotes keep their attribution. Flattened to a paragraph, a quotation
@@ -234,110 +257,117 @@ function renderWrappedElement(tag, node, parts, inPre) {
   // line became indistinguishable from Gruber's prose, which is a correctness
   // problem for any reader, human or model.
   if (tag === 'blockquote') {
-    const inner = [];
-    renderChildren(node, inner, inPre);
-    const body = trimNewlines(inner.join('')).trim();
-    if (body) parts.push(`\n\n${quoteLines(body)}\n\n`);
+    const body = trimNewlines(renderToString(node, context, true)).trim();
+    if (body) sink.raw(`\n\n${quoteLines(body)}\n\n`);
     return true;
   }
-  // Emphasis, last and least. Kept minimal — `*` and `**` only — because every
-  // marker emitted into prose is another chance to trip the ingest gate, and
-  // the payoff here is presentational rather than semantic.
-  const emphasis = EMPHASIS_MARKERS[tag];
-  if (emphasis) {
-    const inner = [];
-    renderChildren(node, inner, inPre);
-    const body = inner.join('');
-    // Whitespace-only or empty emphasis would emit bare `**`, which reads as
-    // literal asterisks rather than as markup.
-    if (body.trim().length === 0) {
-      parts.push(body);
-      return true;
-    }
-    parts.push(`${emphasis}${body.trim()}${emphasis}`);
+  if (tag === 'ul' || tag === 'ol') {
+    renderList(tag, node, sink, context);
     return true;
   }
-  // List items open on their own line with a bullet and take no trailing
-  // boundary — the next item's opening (or the list's closing) provides it.
-  if (tag === 'li') {
-    parts.push('\n- ');
-    renderChildren(node, parts, inPre);
+  if (tag === 'table') {
+    const table = renderTable(tableMatrix(node, context));
+    if (table) sink.raw(`\n\n${table}\n\n`);
     return true;
   }
-  return false;
+  return renderEmphasis(tag, node, sink, context);
+}
+
+/** An ATX heading, or nothing when it has no text. */
+function renderHeading(marker, node, sink, context) {
+  const body = flattenInline(renderToString(node, context));
+  // An EMPTY heading is dropped, not emitted as a bare `##`.
+  //
+  // Found by running this converter over eight live feeds: Bits About Money
+  // ships `<h2 id></h2>` between sections, and a bare marker is rejected by the
+  // ingest gate — which does not spoil one document, it holds the whole feed's
+  // cursor. Two of that feed's fifteen posts hit it.
+  if (body) sink.raw(`\n\n${marker} ${body}\n\n`);
+  return true;
 }
 
 /**
- * Render one DOM node into `parts`. Inside `<pre>` text is kept verbatim
- * (code keeps its line breaks); elsewhere whitespace runs collapse to single
- * spaces, per HTML semantics. Text is entity-decoded twice because feed bodies
- * are HTML that was itself entity-encoded for XML embedding (`&amp;amp;` →
- * `&amp;` → `&`).
+ * Emphasis, last and least. Kept minimal — `*` and `**` only — because every
+ * marker emitted into prose is another chance to trip the ingest gate, and the
+ * payoff here is presentational rather than semantic.
  */
-function renderNode(node, parts, inPre) {
+function renderEmphasis(tag, node, sink, context) {
+  const marker = EMPHASIS_MARKERS[tag];
+  if (!marker) return false;
+  const body = renderToString(node, context);
+  // Whitespace-only or empty emphasis would emit bare `**`, which reads as
+  // literal asterisks rather than as markup.
+  if (body.trim().length === 0) {
+    sink.raw(body);
+    return true;
+  }
+  const merged = sink.mergeEmphasis(marker);
+  sink.raw(`${merged ? '' : marker}${body.trim()}${marker}`);
+  return true;
+}
+
+/** A node's text with entities decoded and control characters stripped. */
+function rawTextOf(node) {
+  return stripControlCharacters(decodeHtmlEntities(decodeHtmlEntities(node.text)));
+}
+
+/** The blank-run or line boundary a block element contributes, if any. */
+function blockBoundary(tag) {
+  if (PARAGRAPH_TAGS.has(tag)) return '\n\n';
+  if (LINE_TAGS.has(tag)) return '\n';
+  return '';
+}
+
+/**
+ * Render one DOM node into `sink`. Inside `<pre>` text is kept verbatim (code
+ * keeps its line breaks); elsewhere whitespace runs collapse to single spaces,
+ * per HTML semantics. Text is entity-decoded twice because feed bodies are HTML
+ * that was itself entity-encoded for XML embedding (`&amp;amp;` → `&amp;` → `&`).
+ */
+function renderNode(node, sink, context) {
   if (node.nodeType === 3) {
-    const text = decodeHtmlEntities(decodeHtmlEntities(node.text));
-    parts.push(inPre ? text : text.replaceAll(/\s+/g, ' '));
+    const text = rawTextOf(node);
+    sink.text(text.replaceAll(/\s+/g, ' '));
     return;
   }
   if (node.nodeType !== 1) return; // comments etc.
   const tag = node.rawTagName?.toLowerCase() ?? '';
   if (DROP_TAGS.has(tag)) return;
-  if (renderVoidElement(tag, node, parts)) return;
-  if (renderWrappedElement(tag, node, parts, inPre)) return;
+  if (renderVoidElement(tag, node, sink)) return;
+  if (renderWrappedElement(tag, node, sink, context)) return;
 
   const boundary = blockBoundary(tag);
-  if (boundary) parts.push(boundary);
-  renderChildren(node, parts, inPre);
-  if (boundary) parts.push(boundary);
+  sink.raw(boundary);
+  renderChildren(node, sink, context);
+  sink.raw(boundary);
 }
 
 /**
  * Reduce an HTML (or already-plain) fragment to clean, lightweight Markdown:
- * headings as `#` lines, paragraphs separated by blank lines, list items as
- * `- ` lines, `<pre>` as a fenced code block and inline `<code>` as a backtick
- * span, `script`/`style` dropped, images reduced to their alt text, entities
- * decoded. Markup is parsed with a real HTML parser. The output is deliberately
- * minimal Markdown — enough structure for the reader, not a full
- * HTML-to-Markdown translation.
+ * headings as `#` lines, paragraphs separated by blank lines, ordered and
+ * nested lists with their numbering and depth, `<pre>` as a fenced code block
+ * and inline `<code>` as a backtick span, tables as GFM tables, links and
+ * blockquotes preserved, `script`/`style` dropped, images reduced to their alt
+ * text, entities decoded.
+ *
+ * The output is deliberately a SUBSET of Markdown — enough structure for the
+ * reader, not a full HTML-to-Markdown translation. `README.md` in this directory
+ * lists what is supported, what degrades, and how.
  */
 export function htmlToText(html) {
   if (!html) return '';
-  // A body that is *entirely* entity-escaped markup (no real tags) needs one
-  // decode before parsing, or its tags would surface as literal text.
-  const source =
-    !html.includes('<') && /&lt;|&#60;|&#x3c;/i.test(html) ? decodeHtmlEntities(html) : html;
+  // A body that is *entirely* entity-escaped markup (no real tags) needs
+  // decoding before parsing, or its tags would surface as literal text.
+  const source = unwrapCdata(decodeUntilMarkup(html));
   // Already-plain text (no markup at all): keep its own line structure instead
   // of applying HTML whitespace collapsing.
-  if (!source.includes('<')) {
-    return decodeHtmlEntities(decodeHtmlEntities(source))
-      .split('\n')
-      .map((line) => line.replaceAll(/[^\S\n]+/g, ' ').trim())
-      .join('\n')
-      .replaceAll(/\n{3,}/g, '\n\n')
-      .trim();
-  }
+  if (!source.includes('<')) return plainTextToMarkdown(source);
   // `pre` is NOT a raw-text block element here: its children must be parsed so
-  // syntax-highlighting spans are stripped while `inPre` keeps the whitespace.
+  // a feed's syntax-highlighting spans are stripped rather than emitted as text.
   const root = parseHtmlDocument(source, {
     blockTextElements: { script: true, style: true, noscript: true },
   });
-  const parts = [];
-  for (const child of root.childNodes) {
-    renderNode(child, parts, false);
-  }
-  return (
-    parts
-      .join('')
-      .split('\n')
-      // Trailing spaces always go; a stray single leading space (an inline join
-      // artifact) goes too, while deeper indentation (pre blocks) is kept.
-      .map((line) => {
-        const trimmed = line.trimEnd();
-        return trimmed.startsWith(' ') && !trimmed.startsWith('  ') ? trimmed.slice(1) : trimmed;
-      })
-      .join('\n')
-      .replaceAll(/\n{3,}/g, '\n\n') // cap consecutive blank lines
-      .trim()
-  );
+  const sink = createSink();
+  renderChildren(root, sink, { listDepth: 0 });
+  return tidy(sink.toString());
 }
