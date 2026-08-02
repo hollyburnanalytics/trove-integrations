@@ -73,7 +73,7 @@ rediscover it from a puzzling document.
 | `<del>`, `<ins>`, `<mark>`, `<u>` | plain text | Emphasis markers are inflationary — every one is another chance to change the parse. GFM `~~` would be available for `<del>` if a source needed it. |
 | `<dl>`/`<dt>`/`<dd>` | paragraph lines | The term/definition relationship is lost. Rare in feeds. |
 | `<figure>`/`<figcaption>` | caption as a line | The caption survives; its binding to the image does not. |
-| Nested tables | inner table flattened into a cell | GFM tables cannot nest. Vanishingly rare. |
+| Nested tables | inner cells become space-separated text inside the outer cell | GFM tables cannot nest. Emitting the inner table's Markdown into a cell escapes its pipes and produces unreadable noise. |
 | Column/row spans | ignored; cells laid out in document order | A spanning cell appears once, in its first position. |
 | Footnote markup | plain text | Not attempted. |
 | `<table>` used for layout | rendered as a table | We cannot tell layout tables from data tables. A GFM table is still better than welded cells. |
@@ -90,6 +90,7 @@ bodies, including malformed and hostile ones. The failure modes are quieter:
 |---|---|
 | Malformed HTML (unclosed, mis-nested) | The parser recovers; output is whatever tree it built. Not detectable here. |
 | Unknown tags | Treated as inline; children still rendered. Content is never lost to an unrecognized tag. |
+| Orphaned `<li>`/`<tr>`/`<td>` (fragment cut mid-structure) | Rendered one per line. No marker or grid, but no welding. |
 | Deep nesting | Recursion is depth-first and unbounded. 60 levels tested; a pathological feed could in principle exhaust the stack. |
 | Very large bodies | No size cap. Cost is linear in input. |
 | Text that looks like Markdown | Escaped when position-significant (see below). |

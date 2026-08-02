@@ -41,6 +41,19 @@ describe('htmlToText — list structure', () => {
     );
   });
 
+  it('finds items through a WRAPPER, which otherwise loses the list entirely', () => {
+    // Scanning only direct children looks right and fails silently: a `<ul>`
+    // whose items sit inside a `<div>` rendered as the empty string, because the
+    // wrapper was not an `<li>` and was skipped whole. Silent total loss is the
+    // worst failure shape available to a converter.
+    expect(htmlToText('<ul><div><li>Alpha</li><li>Beta</li></div></ul>')).toBe('- Alpha\n- Beta');
+  });
+
+  it('does not pull a NESTED list up into its parent', () => {
+    const markdown = htmlToText('<ul><li>Outer<ul><li>Inner</li></ul></li></ul>');
+    expect(markdown.match(/Inner/g)).toHaveLength(1);
+  });
+
   it('aligns a continuation line under its marker, so the list does not end early', () => {
     const markdown = htmlToText('<ul><li>Line<br>Wrapped</li></ul>');
     expect(markdown).toBe('- Line\n  Wrapped');
@@ -72,6 +85,16 @@ describe('htmlToText — tables', () => {
 
   it('escapes a pipe inside a cell, which would otherwise open a column', () => {
     expect(htmlToText('<table><tr><td>a|b</td></tr></table>')).toContain(String.raw`a\|b`);
+  });
+
+  it('does not pull a NESTED table up into its parent', () => {
+    // `querySelectorAll` is unscoped, so a table asking for its rows gets the
+    // rows of every table inside it too — and the inner cells were rendered
+    // twice, once in the outer grid and once inside the cell containing them.
+    const markdown = htmlToText(
+      '<table><tr><td>OUTER<table><tr><td>INNER</td></tr></table></td></tr></table>',
+    );
+    expect(markdown).toBe('| OUTER INNER |\n| --- |');
   });
 });
 
@@ -178,6 +201,16 @@ describe('htmlToText — hostile or malformed input', () => {
     const pretty =
       '<figure>\n      <picture>\n        </picture>\n        <img alt="A caption">\n</figure>';
     expect(htmlToText(pretty)).toBe('[Image: A caption]');
+  });
+
+  it('never WELDS an orphaned row, cell or item into one word', () => {
+    // Feed fragments open mid-structure constantly — an excerpt cut at `<li>`, a
+    // body that starts inside a table. With no line boundary these fall through
+    // to inline handling and `<td>Left</td><td>Right</td>` becomes `LeftRight`,
+    // a string that never appeared in the source.
+    expect(htmlToText('<td>Left</td><td>Right</td>')).not.toContain('LeftRight');
+    expect(htmlToText('<li>One</li><li>Two</li>')).not.toContain('OneTwo');
+    expect(htmlToText('<tr><td>Aaa</td><td>Bbb</td></tr>')).not.toContain('AaaBbb');
   });
 
   it('survives deep nesting without throwing', () => {

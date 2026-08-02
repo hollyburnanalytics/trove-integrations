@@ -74,7 +74,18 @@ const HEADING_MARKERS = {
   h6: '######',
 };
 
-/** Elements that end a line: their content stands on its own line. */
+/**
+ * Elements that end a line: their content stands on its own line.
+ *
+ * `li`, `tr`, `td` and `th` are here as a SAFETY NET, not as their normal path —
+ * inside a list or table they are consumed by `renderList`/`tableMatrix`, which
+ * render their children directly and never reach this table. They matter when
+ * one appears ORPHANED, which feed fragments do constantly: a body that opens
+ * mid-table, or an excerpt cut at `<li>`. Without an entry here they fall
+ * through to inline handling and their text welds — `<td>Left</td><td>Right</td>`
+ * becoming `LeftRight`, a string that never appeared in the source. Never
+ * joining two separate runs of text outranks rendering any particular tag well.
+ */
 const LINE_TAGS = new Set([
   'div',
   'section',
@@ -87,6 +98,10 @@ const LINE_TAGS = new Set([
   'dt',
   'dd',
   'figcaption',
+  'li',
+  'tr',
+  'td',
+  'th',
 ]);
 
 /** Inline emphasis tags and the Markdown marker each becomes. */
@@ -192,8 +207,14 @@ function renderList(tag, node, sink, context) {
   const lines = [];
   let ordinal = Number.isNaN(start) ? 1 : start;
 
-  for (const child of node.childNodes) {
-    if (child.rawTagName?.toLowerCase() !== 'li') continue;
+  // The list's OWN items, wherever they sit beneath it. Scanning only direct
+  // children looks right and silently loses everything: a `<ul>` whose items are
+  // wrapped in a `<div>` — which real feeds emit — rendered as the empty string,
+  // because the wrapper was not an `<li>` and so was skipped whole. The ancestor
+  // check is what keeps a nested list's items out of its parent.
+  const items = node.querySelectorAll('li').filter((li) => nearestAncestor(li, LIST_TAGS) === node);
+
+  for (const child of items) {
     const body = trimNewlines(renderToString(child, inner, true)).trim();
     // An EMPTY item is skipped, not emitted as a bare `-`. 299 bodies in the
     // audit corpus contain one — the Guardian ships empty `<li>` as spacing —
@@ -212,14 +233,37 @@ function renderList(tag, node, sink, context) {
   if (lines.length > 0) sink.raw(`\n\n${lines.join('\n')}\n\n`);
 }
 
-/** Collect a `<table>`'s cells, in document order, as a matrix of rendered text. */
+/**
+ * The nearest ancestor of `node` (inclusive of `node`'s parent) whose tag is in
+ * `tags`, or undefined.
+ *
+ * Needed because `querySelectorAll` is unscoped: asking a `<table>` for its
+ * `tr` returns the rows of every table NESTED inside it too, and asking a
+ * `<ul>` for its `li` returns the items of inner lists. Both then get rendered
+ * twice — once in the outer structure and once inside the cell or item that
+ * contains them.
+ */
+function nearestAncestor(node, tags) {
+  for (let current = node.parentNode; current; current = current.parentNode) {
+    const tag = current.rawTagName?.toLowerCase();
+    if (tag && tags.has(tag)) return current;
+  }
+}
+
+/** Tag sets used to scope a descendant search to its own container. */
+const TABLE_TAGS = new Set(['table']);
+const LIST_TAGS = new Set(['ul', 'ol']);
+
+/** Collect a `<table>`'s own cells, in document order, as a matrix of text. */
 function tableMatrix(node, context) {
   return node
     .querySelectorAll('tr')
+    .filter((row) => nearestAncestor(row, TABLE_TAGS) === node)
     .map((row) =>
       row
         .querySelectorAll('th,td')
-        .map((cell) => renderToString(cell, { ...context, listDepth: 0 })),
+        .filter((cell) => nearestAncestor(cell, TABLE_TAGS) === node)
+        .map((cell) => renderToString(cell, { ...context, listDepth: 0, inTable: true })),
     );
 }
 
@@ -265,7 +309,13 @@ function renderWrappedElement(tag, node, sink, context) {
     renderList(tag, node, sink, context);
     return true;
   }
-  if (tag === 'table') {
+  // A table INSIDE a table cell is left to ordinary block rendering, which its
+  // `tr`/`td` line boundaries turn into one line per cell. GFM tables cannot
+  // nest, so the alternative is emitting a table's Markdown into a cell of
+  // another one — where the pipes are then escaped, and a readable inner table
+  // becomes `OUTER \| INNER \| \| --- \|`. Plain lines lose the grid; they do
+  // not lose or invent a single word.
+  if (tag === 'table' && !context.inTable) {
     const table = renderTable(tableMatrix(node, context));
     if (table) sink.raw(`\n\n${table}\n\n`);
     return true;
@@ -319,10 +369,12 @@ function blockBoundary(tag) {
 }
 
 /**
- * Render one DOM node into `sink`. Inside `<pre>` text is kept verbatim (code
- * keeps its line breaks); elsewhere whitespace runs collapse to single spaces,
- * per HTML semantics. Text is entity-decoded twice because feed bodies are HTML
- * that was itself entity-encoded for XML embedding (`&amp;amp;` → `&amp;` → `&`).
+ * Render one DOM node into `sink`.
+ *
+ * Whitespace runs in text collapse to single spaces, per HTML semantics. `<pre>`
+ * never reaches here as a container — `renderWrappedElement` takes its text
+ * whole, which is what keeps its line breaks — so there is no verbatim mode to
+ * carry through the walk.
  */
 function renderNode(node, sink, context) {
   if (node.nodeType === 3) {
