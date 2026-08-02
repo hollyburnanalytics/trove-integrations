@@ -158,7 +158,11 @@ describe('hacker-news source', () => {
 
     const result = await sync(makeContext());
     const text = result.documents[0].text;
-    expect(text).toContain('See the archive for details');
+    // The link SURVIVES, as Markdown, with its entity-encoded href decoded.
+    // The two negatives below are the point of this test and still hold: raw
+    // HTML must never reach the document (the ingest gate rejects it outright,
+    // which holds the feed's cursor), and entities must be decoded.
+    expect(text).toContain('See [the archive](https://example.com/archive) for details');
     expect(text).not.toContain('<a href');
     expect(text).not.toContain('&#x2F;');
   });

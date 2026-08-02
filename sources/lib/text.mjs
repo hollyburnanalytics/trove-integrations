@@ -148,6 +148,14 @@ const LINE_TAGS = new Set([
   'figcaption',
 ]);
 
+/** Inline emphasis tags and the Markdown marker each becomes. */
+const EMPHASIS_MARKERS = {
+  em: '*',
+  i: '*',
+  strong: '**',
+  b: '**',
+};
+
 /** The blank-run or line boundary a block element contributes, if any. */
 function blockBoundary(tag) {
   if (PARAGRAPH_TAGS.has(tag)) return '\n\n';
@@ -197,6 +205,76 @@ function trimNewlines(value) {
 }
 
 /**
+ * Escape the characters that would break a Markdown link if they appeared raw
+ * in its text or its destination.
+ *
+ * Not cosmetic. The ingest door runs every inline body through a Markdown gate
+ * and REJECTS one it cannot parse — and a rejected document is a per-document
+ * error that HOLDS THE FEED'S CURSOR, deliberately, so a broken parser is loud
+ * rather than silently polluting the corpus. So a title containing `]` or a URL
+ * containing `)` does not degrade one document, it stops the feed advancing.
+ *
+ * @param {string} value - Raw link text or destination.
+ * @param {boolean} isUrl - Escape for the `(...)` destination rather than the
+ *   `[...]` label.
+ * @returns {string} The escaped value.
+ */
+function escapeLinkPart(value, isUrl) {
+  return isUrl
+    ? value.replaceAll('(', '%28').replaceAll(')', '%29').replaceAll(/\s/g, '%20')
+    : value.replaceAll(/([[\]])/g, String.raw`\$1`);
+}
+
+/**
+ * Prefix every line of a rendered fragment with `> `.
+ *
+ * Applied to the CHILDREN'S rendered output rather than wrapped around it,
+ * because a blockquote's own paragraphs and nested quotes each need the marker
+ * — a single leading `> ` would quote the first line and silently drop the rest
+ * back into body prose, which is the bug this whole change exists to fix.
+ *
+ * @param {string} body - The rendered children.
+ * @returns {string} The quoted block.
+ */
+function quoteLines(body) {
+  return (
+    body
+      // Collapse the blank runs FIRST. The outer pass caps consecutive newlines,
+      // but by then every blank line inside a quote is a `>` and no longer looks
+      // blank to it — a two-paragraph quotation would keep three empty `>` lines
+      // between its halves.
+      .replaceAll(/\n{2,}/g, '\n\n')
+      .split('\n')
+      .map((line) => (line.length > 0 ? `> ${line}` : '>'))
+      .join('\n')
+  );
+}
+
+/**
+ * One `<a>` as Markdown: a link, an autolink, or bare text.
+ *
+ * @param {object} node - The anchor element.
+ * @param {boolean} inPre - Whether we are inside a `<pre>` block.
+ * @returns {string} The rendered link.
+ */
+function renderLink(node, inPre) {
+  const href = (node.getAttribute('href') || '').trim();
+  const label = [];
+  renderChildren(node, label, inPre);
+  // Link text is collapsed to a single line, the way established HTML-to-Markdown
+  // converters do. A `<br>` inside an anchor otherwise emits a newline between
+  // `[` and `]`; mdast happens to tolerate that today, and building on a
+  // parser's tolerance for malformed input is how a feed breaks on a version
+  // bump rather than on a change anyone made.
+  const text = label.join('').replaceAll(/\s+/g, ' ').trim();
+  // A link with no destination, or whose text IS the destination, adds only
+  // noise as `[url](url)`.
+  if (!href || !text) return text;
+  if (text === href) return `<${escapeLinkPart(href, true)}>`;
+  return `[${escapeLinkPart(text, false)}](${escapeLinkPart(href, true)})`;
+}
+
+/**
  * Render an element that wraps its children in Markdown syntax — a fenced code
  * block (`<pre>`), an inline code chip (`<code>`), an ATX heading (`<h1>`–`<h6>`),
  * or a bulleted list item (`<li>`). Returns false when `tag` is none of them, so
@@ -228,6 +306,43 @@ function renderWrappedElement(tag, node, parts, inPre) {
     parts.push(`\n\n${heading} `);
     renderChildren(node, parts, inPre);
     parts.push('\n\n');
+    return true;
+  }
+  // Links carry the href through as Markdown. Dropping it was the single
+  // biggest fidelity loss in the RSS path: a link-heavy blog reduced to its
+  // prose loses what it is ABOUT, and nothing downstream can recover the
+  // destination once it is gone — not a re-render, not a reformatting pass,
+  // because the href never reached the stored document at all.
+  if (tag === 'a') {
+    parts.push(renderLink(node, inPre));
+    return true;
+  }
+  // Blockquotes keep their attribution. Flattened to a paragraph, a quotation
+  // reads as the author's own words — in one Daring Fireball post a friend's
+  // line became indistinguishable from Gruber's prose, which is a correctness
+  // problem for any reader, human or model.
+  if (tag === 'blockquote') {
+    const inner = [];
+    renderChildren(node, inner, inPre);
+    const body = trimNewlines(inner.join('')).trim();
+    if (body) parts.push(`\n\n${quoteLines(body)}\n\n`);
+    return true;
+  }
+  // Emphasis, last and least. Kept minimal — `*` and `**` only — because every
+  // marker emitted into prose is another chance to trip the ingest gate, and
+  // the payoff here is presentational rather than semantic.
+  const emphasis = EMPHASIS_MARKERS[tag];
+  if (emphasis) {
+    const inner = [];
+    renderChildren(node, inner, inPre);
+    const body = inner.join('');
+    // Whitespace-only or empty emphasis would emit bare `**`, which reads as
+    // literal asterisks rather than as markup.
+    if (body.trim().length === 0) {
+      parts.push(body);
+      return true;
+    }
+    parts.push(`${emphasis}${body.trim()}${emphasis}`);
     return true;
   }
   // List items open on their own line with a bullet and take no trailing

@@ -661,11 +661,63 @@ describe('decodeHtmlEntities', () => {
 
 // --- htmlToText ---
 describe('htmlToText', () => {
-  it('strips tags and decodes entities to plain text', () => {
+  it('converts tags to Markdown and decodes entities', () => {
+    // Emphasis is KEPT rather than stripped. This assertion used to demand
+    // plain text, which is what discarded every link and blockquote in the RSS
+    // corpus — the document a reader ends up with is Markdown, not prose.
     expect(htmlToText('<p>Hello <strong>world</strong> &amp; friends</p>')).toBe(
-      'Hello world & friends',
+      'Hello **world** & friends',
     );
   });
+  // --- link / blockquote / emphasis fidelity ---
+  //
+  // These three were dropped for years, and the loss was invisible because the
+  // text still read fine. A Daring Fireball post is largely ABOUT what it links
+  // to; a quotation flattened into a paragraph reads as the author's own words.
+  // Nothing downstream can recover either — the href never reaches the stored
+  // document at all.
+  it('keeps a link as Markdown, so what the post is about survives', () => {
+    expect(htmlToText('<p>See <a href="https://x.test/a">this post</a>.</p>')).toBe(
+      'See [this post](https://x.test/a).',
+    );
+  });
+
+  it('collapses a self-linking URL to an autolink rather than [url](url)', () => {
+    expect(htmlToText('<a href="https://x.test/a">https://x.test/a</a>')).toBe(
+      '<https://x.test/a>',
+    );
+  });
+
+  it('drops a link with no destination to its text, not to empty', () => {
+    expect(htmlToText('<p>Plain <a>label</a> here.</p>')).toBe('Plain label here.');
+  });
+
+  it('ESCAPES brackets and parens, because a bad link stops the whole feed', () => {
+    // The ingest door rejects unparseable Markdown, and a rejected document is
+    // an error that holds the feed's cursor. A title with `]` or a URL with `)`
+    // is therefore not a cosmetic problem.
+    expect(htmlToText('<a href="https://x.test/a(b)">Title [with] brackets</a>')).toBe(
+      String.raw`[Title \[with\] brackets](https://x.test/a%28b%29)`,
+    );
+  });
+
+  it('quotes EVERY line of a blockquote, not just the first', () => {
+    // A single leading `> ` would quote the opening line and drop the rest back
+    // into body prose — the exact bug this change exists to fix, reintroduced.
+    expect(htmlToText('<blockquote><p>One.</p><p>Two.</p></blockquote>')).toBe('> One.\n>\n> Two.');
+  });
+
+  it('nests a quote inside a quote', () => {
+    expect(
+      htmlToText('<blockquote><p>Outer.</p><blockquote><p>Inner.</p></blockquote></blockquote>'),
+    ).toBe('> Outer.\n>\n> > Inner.');
+  });
+
+  it('does not emit bare markers for empty emphasis', () => {
+    // `**` alone renders as literal asterisks rather than as markup.
+    expect(htmlToText('<p>a<strong> </strong>b</p>')).toBe('a b');
+  });
+
   it('fences a pre block and strips highlighting markup', () => {
     const html = `<pre><code><span class="pl-k">const</span> x = <span class="pl-c1">1</span></code></pre>`;
     expect(htmlToText(html)).toBe('```\nconst x = 1\n```');

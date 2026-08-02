@@ -10,7 +10,7 @@
   "transport": "feed",
   "watermark": "date",
   "documentSemantics": "append",
-  "formatting": "reformat",
+  "formatting": "verbatim",
   "location": "cloud",
   "schedule": "daily",
   "status": "implemented",
