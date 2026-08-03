@@ -337,4 +337,129 @@ describe('egress client', () => {
     // It gave up on ITS schedule, not after three full attempts plus backoffs.
     expect(Date.now() - started).toBeLessThan(1500);
   }, 10_000);
+
+  // --- POST ------------------------------------------------------------------
+
+  it('sends a POST body with a JSON content-type by default', async () => {
+    const c = client();
+    const context = fakeContext([ok('{"data":1}')]);
+    const result = await c.fetch(context, 'https://x.test/graphql', {
+      method: 'POST',
+      body: '{"query":"{ me }"}',
+    });
+    expect(result.body).toBe('{"data":1}');
+    const { init } = context.calls[0];
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe('{"query":"{ me }"}');
+    expect(init.headers['content-type']).toBe('application/json');
+  });
+
+  it('never attaches a body to a GET', async () => {
+    const c = client();
+    const context = fakeContext([ok('x')]);
+    await c.fetch(context, 'https://x.test/a', { body: 'ignored' });
+    expect(context.calls[0].init.body).toBeUndefined();
+  });
+
+  it('does not cache a POST unless the caller opts in', async () => {
+    const c = client({ cache: { ttlMs: 60_000, maxEntries: 8, maxEntryBytes: 1024 } });
+    const context = fakeContext([ok('first'), ok('second')]);
+    const post = { method: 'POST', body: '{"q":1}' };
+    const first = await c.fetch(context, 'https://x.test/g', post);
+    const second = await c.fetch(context, 'https://x.test/g', post);
+    expect(first.body).toBe('first');
+    expect(second.body).toBe('second');
+    expect(context.calls).toHaveLength(2);
+  });
+
+  it('caches an opted-in POST, keyed on the request body', async () => {
+    const c = client({ cache: { ttlMs: 60_000, maxEntries: 8, maxEntryBytes: 1024 } });
+    const context = fakeContext([ok('one'), ok('two')]);
+    const at = (body) =>
+      c.fetch(context, 'https://x.test/g', { method: 'POST', body, cacheable: true });
+
+    const fresh = await at('{"q":1}');
+    expect(fresh.body).toBe('one');
+    // Same URL, same method, SAME body: served from cache.
+    const cached = await at('{"q":1}');
+    expect(cached.body).toBe('one');
+    expect(context.calls).toHaveLength(1);
+    // Same URL, DIFFERENT body: a different request, so it must reach upstream.
+    const other = await at('{"q":2}');
+    expect(other.body).toBe('two');
+    expect(context.calls).toHaveLength(2);
+  });
+
+  it('keeps salted cache entries apart', async () => {
+    const c = client({ cache: { ttlMs: 60_000, maxEntries: 8, maxEntryBytes: 1024 } });
+    const context = fakeContext([ok('for-a'), ok('for-b')]);
+    const as = (user) => c.fetch(context, 'https://x.test/q', { cacheKeySalt: user });
+
+    const firstUser = await as('user-a');
+    const firstUserAgain = await as('user-a');
+    expect(firstUser.body).toBe('for-a');
+    expect(firstUserAgain.body).toBe('for-a');
+    // A second user must not be served the first user's cached response.
+    const secondUser = await as('user-b');
+    expect(secondUser.body).toBe('for-b');
+    expect(context.calls).toHaveLength(2);
+  });
+
+  it("merges per-request headers over the client's static ones", async () => {
+    const c = createEgressClient({
+      service: 'TestSvc',
+      throttleMs: 0,
+      headers: { 'user-agent': 'ua', 'x-keep': 'yes' },
+    });
+    const context = fakeContext([ok('x')]);
+    await c.fetch(context, 'https://x.test/a', { headers: { 'x-api-key': 'secret' } });
+    expect(context.calls[0].init.headers).toEqual({
+      'user-agent': 'ua',
+      'x-keep': 'yes',
+      'x-api-key': 'secret',
+    });
+  });
+
+  it('lets a caller refuse to cache a response the status calls fine', async () => {
+    const c = client({ cache: { ttlMs: 60_000, maxEntries: 8, maxEntryBytes: 1024 } });
+    const context = fakeContext([ok('{"errors":[1]}'), ok('{"data":1}')]);
+    // An API that reports failure with 200 (GraphQL) would otherwise have its
+    // errors pinned for the full TTL, making a retryable error un-retryable.
+    const at = () =>
+      c.fetch(context, 'https://x.test/gql', {
+        method: 'POST',
+        body: '{"q":1}',
+        cacheable: true,
+        retainIf: (result) => !result.body.includes('errors'),
+      });
+
+    const failed = await at();
+    expect(failed.body).toContain('errors');
+    const retried = await at();
+    expect(retried.body).toBe('{"data":1}');
+    expect(context.calls).toHaveLength(2);
+
+    // The success IS retained, so the cache still does its job.
+    const cached = await at();
+    expect(cached.body).toBe('{"data":1}');
+    expect(context.calls).toHaveLength(2);
+  });
+
+  it('keeps a 400 body when the caller opts in, and drops it otherwise', async () => {
+    const withBody = client({ bodyStatuses: [400] });
+    const kept = await withBody.fetch(
+      fakeContext([new Response('{"errors":[{"message":"add the id field"}]}', { status: 400 })]),
+      'https://x.test/why',
+    );
+    expect(kept.status).toBe(400);
+    // The upstream's own sentence is often the only thing that says how to fix it.
+    expect(kept.body).toContain('add the id field');
+
+    const plain = client();
+    const dropped = await plain.fetch(
+      fakeContext([new Response('{"errors":[1]}', { status: 400 })]),
+      'https://x.test/why',
+    );
+    expect(dropped).toMatchObject({ status: 400, body: '' });
+  });
 });

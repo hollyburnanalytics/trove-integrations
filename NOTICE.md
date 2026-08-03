@@ -8,6 +8,14 @@ logos, and brands are the property of their respective owners. Their use here is
 for **identification and interoperability only** and does **not** imply any
 affiliation with, sponsorship by, or endorsement by those owners.
 
+## Third-party API vocabularies
+
+`mcp/taddy/vocab/` transcribes the genre, country and language enum members from
+Taddy's publicly published GraphQL schema (https://ax0.taddy.org/docs/schema.graphql).
+These are functional API identifiers reproduced for interoperability — a client
+cannot call the API without sending the exact values it defines — not creative
+content. Taddy is not affiliated with this project.
+
 ## Third-party software
 
 The sources ship a single third-party runtime package:

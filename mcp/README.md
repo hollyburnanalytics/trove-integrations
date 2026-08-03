@@ -77,6 +77,11 @@ in their manifest `egress`.
 |---|---|---|---|
 | `x` | `get_user_tweets`, `get_tweet`, `get_post_replies`, `search_posts`, `count_posts`, `resolve_user`, `get_bookmarks` | api.x.com (X API v2) | **`X_BEARER_TOKEN`** (reads) · **`X_OAUTH_CLIENT_ID` + `X_OAUTH_REFRESH_TOKEN`** (+ optional `X_OAUTH_CLIENT_SECRET`) for `get_bookmarks` |
 
+### Media
+| Toolkit | Tools | Upstream | Auth |
+|---|---|---|---|
+| `taddy` | `search_podcasts`, `search_episodes`, `get_podcast`, `get_episode`, `get_transcript`, `get_latest_episodes`, `get_top_charts`, `get_popular_podcasts`, `check_quota` | api.taddy.org (Taddy GraphQL Podcast API) | **`TADDY_USER_ID` + `TADDY_API_KEY`** 🎙|
+
 ### Personal / niche
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
@@ -183,6 +188,44 @@ Sizing is explicit rather than silent: `format: "columnar"` returns parallel
 are business-daily, so a date axis reconstructed from start+frequency would
 mislabel every point after the first weekend), and a pull over 2,000 points is
 refused with the limit to use instead of being quietly shrunk.
+
+🎙 `taddy` — an **independent client for Taddy's Podcast API**, not affiliated
+with or endorsed by Taddy. It is the repo's first **GraphQL** upstream, which is
+why `lib/egress.ts` grew POST support (with a body-aware cache key) rather than
+this server re-implementing deadlines, retry and throttling against raw
+`ctx.fetch`.
+
+**A podcast directory of 4M+ shows and 200M+ episodes**, with transcripts.
+Two searches rather than one — Taddy exposes a single `search` field for shows
+and episodes, but answers an episode-only filter on a series search with an
+empty array instead of an error, so a merged tool would advertise arguments that
+silently match nothing. Genres, countries and languages are taken as free text
+("true crime", "US", "Health & Fitness › Mental Health") and resolved against
+Taddy's 543 enum members, with near-matches on a miss and a refusal to guess
+between two that share a name.
+
+Three upstream behaviours drive the rest of the design.
+
+**Quota is monthly** — 500 requests on the free tier — so `get_podcast` returns
+the show *and* a page of its episodes in one request, arguments are validated
+before egress, responses are cached per user in-isolate, and `check_quota`
+reports the balance rather than leaving it to be inferred.
+
+**Transcripts cost money, in two different ways.** Taddy's
+`useOnDemandCreditsIfNeeded` defaults to `true`, so a missing transcript is
+generated and billed at a credit apiece; `get_transcript` inverts that to opt-in
+(`allow_on_demand`, default false) rather than spending silently on a tool an
+agent may call across a page of results. Separately — and this is the part that
+is easy to get wrong — only a transcript the *podcast* publishes is free. One
+Taddy generated needs a paid plan and is metered even when it already exists,
+and `taddyTranscribeStatus` reports both as `COMPLETED`, so every surface that
+shows the status says which guarantee it is and is not making.
+
+**Errors arrive as HTTP 200** with an `errors` array. Beyond mapping each
+documented code to the right retryability, that shape means failures must be
+kept out of the response cache — a cache that decides on status alone would pin
+a "try again shortly" error for its full TTL and make the advice impossible to
+act on. `lib/egress.ts` grew a `retainIf` hook for exactly this.
 
 ⊕ `owid` — an **independent client for Our World in Data's public
 APIs**, not affiliated with or endorsed by Our World in Data or Global Change
