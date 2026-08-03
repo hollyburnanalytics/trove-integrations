@@ -120,13 +120,63 @@ function plainText(html) {
  * Resolve an Atom link set: prefer `rel="alternate"`, then any link with an
  * `href`, then a link carried as element text (RSS-style).
  */
-function atomLink(value) {
+function atomLink(value, feedHost = '') {
   const links = asArray(value);
   const withHref = links.filter((l) => typeof l === 'object' && l !== null && l['@_href']);
   const alternate = withHref.find((l) => (l['@_rel'] ?? 'alternate') === 'alternate');
   const chosen = alternate ?? withHref[0];
-  if (chosen) return String(chosen['@_href']).trim();
-  return nodeText(value);
+  if (!chosen) return nodeText(value);
+  const href = String(chosen['@_href']).trim();
+  return permalinkFor(withHref, href, feedHost);
+}
+
+/**
+ * The item's permalink ON THE PUBLISHER'S OWN SITE, given the `alternate` href.
+ *
+ * A LINK BLOG inverts what `rel="alternate"` means. On Daring Fireball, a
+ * linked-list item's `alternate` is the article Gruber is pointing AT, and the
+ * permalink for his own post — the thing we actually stored, his commentary —
+ * is carried as `rel="related"`. 39 of the 48 entries in that feed are this
+ * shape, so four out of five Daring Fireball documents in the library opened
+ * somebody else's website when you asked for the original.
+ *
+ * The rule is narrow on purpose: it fires only when `alternate` leaves the
+ * publisher's host AND a sibling link returns to it. Across the rest of the
+ * catalog's feeds — Simon Willison, Ben Evans, Benn Stancil — zero entries have
+ * an off-site `alternate` and none carry `rel="related"` at all, so nothing else
+ * changes. It is also deliberately not keyed to Daring Fireball: the convention
+ * is the general one for link blogs, and a host comparison expresses the actual
+ * rule where a source name would only encode where we first met it.
+ *
+ * Note this does NOT change document identity — that comes from Atom `<id>` —
+ * so correcting a URL re-points existing documents rather than duplicating them.
+ *
+ * @param {object[]} links - The entry's `<link>` elements that carry an href.
+ * @param {string} href - The chosen `alternate` href.
+ * @param {string} feedHost - The publisher's own host, from the feed element.
+ * @returns {string} The permalink to store as the document's URL.
+ */
+function permalinkFor(links, href, feedHost) {
+  if (!feedHost || hostOf(href) === feedHost) return href;
+  // `rel="related"` specifically, not merely "some other link on the same host".
+  // Atom entries carry `replies`, `edit` and `hub` links that are also on the
+  // publisher's host and are emphatically not the post — taking the first
+  // same-host link would quietly send a reader to a comment feed. Requiring the
+  // rel that link blogs actually use costs nothing (it is what all 39 Daring
+  // Fireball entries carry) and cannot mistake a sibling for a permalink.
+  const related = links.find(
+    (l) => l['@_rel'] === 'related' && hostOf(String(l['@_href']).trim()) === feedHost,
+  );
+  return related ? String(related['@_href']).trim() : href;
+}
+
+/** A URL's lowercase host, or '' when it has none we can read. */
+function hostOf(url) {
+  try {
+    return new URL(url).host.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
 }
 
 /** An author node's name: `<author><name>…</name></author>` or bare text. */
@@ -180,8 +230,8 @@ function rssItem(item, feedAuthor) {
 }
 
 /** Normalize one Atom `<entry>`. */
-function atomEntry(entry, feedAuthor) {
-  const link = atomLink(entry.link);
+function atomEntry(entry, feedAuthor, feedHost = '') {
+  const link = atomLink(entry.link, feedHost);
   const contentHtml = htmlPayload(entry.content);
   const summaryHtml = htmlPayload(entry.summary);
   return {
@@ -292,7 +342,10 @@ function parseXmlFeed(trimmed) {
   if (feed || parsed.entry !== undefined) {
     const entries = feed ? asArray(feed.entry) : asArray(parsed.entry);
     const feedAuthor = authorName(feed?.author) || nodeText(feed?.title);
-    return entries.map((entry) => atomEntry(entry, feedAuthor));
+    // The publisher's own host, so a link blog's entries can be told apart from
+    // the sites they point at. See `permalinkFor`.
+    const feedHost = hostOf(atomLink(feed?.link));
+    return entries.map((entry) => atomEntry(entry, feedAuthor, feedHost));
   }
   if (parsed.item !== undefined) {
     return asArray(parsed.item).map((item) => rssItem(item, ''));
