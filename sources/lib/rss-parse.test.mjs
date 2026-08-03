@@ -217,4 +217,59 @@ describe('unrecognizable documents fail loudly', () => {
   it('still returns an empty list for a valid feed with no items', () => {
     expect(parseRSS('<rss><channel><title>Empty</title></channel></rss>')).toEqual([]);
   });
+
+  // --- link blogs: whose page is `rel="alternate"`? ---
+  //
+  // On a link blog the entry's `alternate` is the article being pointed AT, and
+  // the permalink for the post we actually stored is `rel="related"`. Reported
+  // from the phone: tapping "open original" on a Daring Fireball post opened Six
+  // Colors. 39 of that feed's 48 entries are this shape.
+  const LINK_BLOG = `<feed xmlns="http://www.w3.org/2005/Atom">
+      <title>Daring Fireball</title>
+      <link rel="alternate" type="text/html" href="https://daringfireball.net/" />
+      <link rel="self" type="application/atom+xml" href="https://daringfireball.net/feeds/main" />
+      <entry>
+        <title>Apple Q3 2026 Results</title>
+        <id>tag:daringfireball.net,2026:/linked//6.43312</id>
+        <link rel="alternate" type="text/html" href="https://sixcolors.com/post/2026/07/apple-q3/" />
+        <link rel="shorturl" type="text/html" href="http://df4.us/xf4" />
+        <link rel="related" type="text/html" href="https://daringfireball.net/linked/2026/08/01/apple-q3" />
+        <content type="html">Jason Snell:</content>
+      </entry>
+      <entry>
+        <title>An Article Gruber Wrote Himself</title>
+        <id>tag:daringfireball.net,2026:/feeds/main//6.43300</id>
+        <link rel="alternate" type="text/html" href="https://daringfireball.net/2026/07/temu" />
+        <content type="html">Body.</content>
+      </entry>
+    </feed>`;
+
+  it('links a LINK-BLOG post to the publisher, not to the site it points at', () => {
+    const [linked] = parseRSS(LINK_BLOG);
+    expect(linked.link).toBe('https://daringfireball.net/linked/2026/08/01/apple-q3');
+  });
+
+  it('leaves the publisher’s OWN article alone', () => {
+    // No `related` to prefer, and `alternate` is already on the publisher's
+    // host — the rule must not fire here.
+    expect(parseRSS(LINK_BLOG)[1].link).toBe('https://daringfireball.net/2026/07/temu');
+  });
+
+  it('does NOT change identity, so a corrected URL cannot duplicate a document', () => {
+    // Identity comes from Atom `<id>`. If it came from the link, this fix would
+    // re-ingest every linked-list post as a new document.
+    expect(parseRSS(LINK_BLOG)[0].guid).toBe('tag:daringfireball.net,2026:/linked//6.43312');
+  });
+
+  it('keeps an off-site alternate when nothing points back to the publisher', () => {
+    // An aggregator feed — every entry points out, and out is correct.
+    const aggregator = `<feed xmlns="http://www.w3.org/2005/Atom">
+        <link rel="alternate" type="text/html" href="https://news.example.com/" />
+        <entry>
+          <title>Elsewhere</title><id>x1</id>
+          <link rel="alternate" type="text/html" href="https://other.example.org/story" />
+        </entry>
+      </feed>`;
+    expect(parseRSS(aggregator)[0].link).toBe('https://other.example.org/story');
+  });
 });
