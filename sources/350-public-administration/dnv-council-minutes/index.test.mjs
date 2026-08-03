@@ -20,7 +20,7 @@ function makeContext(overrides = {}) {
 
 function meeting(overrides = {}) {
   return {
-    date: '2025-12-08',
+    date: '2026-02-10',
     type: 'Regular Meeting',
     subject: '',
     bylaw: '',
@@ -50,15 +50,22 @@ describe('dnv-council-minutes source', () => {
     expect(result.documents).toHaveLength(1);
     const [document] = result.documents;
     expect(document.id).toBe('dnv-council-101');
-    expect(document.title).toBe('Minutes — Regular Meeting, 2025-12-08');
-    expect(document.text).toBe('Minutes — Regular Meeting, 2025-12-08');
+    expect(document.title).toBe('Minutes — Regular Meeting, 2026-02-10');
+    expect(document.text).toBe('Minutes — Regular Meeting, 2026-02-10');
     expect(document.file_url).toBe('https://app.dnv.org/OpenDocument/Default.aspx?docNum=101');
     expect(document.mime_type).toBe('application/pdf');
     expect(document.url).toBe('https://app.dnv.org/OpenDocument/Default.aspx?docNum=101');
     expect(document.author).toBe('District of North Vancouver');
-    // Noon in the District's own timezone (PST in December), so the meeting
-    // renders on 2025-12-08 locally rather than rolling back to the 7th.
-    expect(document.date).toBe('2025-12-08T20:00:00.000Z');
+    // Noon in the District's own timezone, so the meeting renders on its own
+    // calendar day locally rather than rolling back to the day before.
+    //
+    // February on purpose. Bun's bundled tzdata never applies the November 2026
+    // fall-back — it reports America/Vancouver as PDT for every date from
+    // ~2026-11-01 onward, where Node reports PST. A fixture dated in that window
+    // asserts one offset under `bun test` and the other under Node, which reads
+    // as a flaky test rather than as the runtime disagreement it is. Production
+    // runs on workerd and is unaffected.
+    expect(document.date).toBe('2026-02-10T20:00:00.000Z');
     expect(document.tags).toEqual(['Minutes', 'Regular Meeting']);
     expect(result.cursor).toEqual({ type: 'idSet', values: ['101'], max: 10_000 });
     expect(result.stats).toEqual({ fetched: 1, remaining: 0 });
@@ -75,14 +82,14 @@ describe('dnv-council-minutes source', () => {
     const result = await sync(makeContext());
 
     expect(result.documents[0].title).toBe(
-      'Minutes — Public Hearing (1565 Rupert Street), 2025-12-08',
+      'Minutes — Public Hearing (1565 Rupert Street), 2026-02-10',
     );
     expect(result.documents[0].text).toContain('Bylaw: Bylaw 8500');
   });
 
   it('skips video links and already-synced document numbers, oldest first', async () => {
     const older = meeting({
-      date: '2025-01-06',
+      date: '2026-01-06',
       meetingDocuments: [
         { docNumber: '50', docType: 'Agenda', text: 'Agenda' },
         { docNumber: '51', docType: 'Video', text: 'Video' },
@@ -133,5 +140,52 @@ describe('dnv-council-minutes source', () => {
     fetchPage.mockRejectedValue(new Error('HTTP 503 fetching index'));
 
     expect(sync(makeContext())).rejects.toThrow('HTTP 503');
+  });
+
+  // --- the 2026 cutoff ---
+  //
+  // The District's API returns its whole archive back to 2011: 1,327 meetings
+  // and 4,702 documents, of which 270 fall on or after 2026-01-01. Each one
+  // costs a PDF download, a text extraction and a formatting pass, so the
+  // boundary is worth asserting rather than assuming.
+
+  it('SKIPS a meeting before the cutoff', async () => {
+    fetchPage.mockResolvedValue(JSON.stringify([meeting({ date: '2025-12-31' })]));
+
+    const result = await sync(makeContext());
+
+    expect(result.documents).toEqual([]);
+  });
+
+  it('KEEPS a meeting on the cutoff day itself', async () => {
+    // The boundary is inclusive, and it is compared as a `YYYY-MM-DD` string
+    // rather than through `Date` — parsing a bare day gives midnight UTC, which
+    // is the previous day on this coast, so a January 1st meeting would be
+    // pushed to the wrong side of its own cutoff.
+    fetchPage.mockResolvedValue(JSON.stringify([meeting({ date: '2026-01-01' })]));
+
+    expect(await sync(makeContext())).toHaveProperty('documents.0.id', 'dnv-council-101');
+  });
+
+  it('drops an UNDATED meeting rather than assuming it is recent', async () => {
+    // Every meeting the District returns carries a date today, so this decides
+    // nothing now — it decides what happens if that stops being true.
+    fetchPage.mockResolvedValue(JSON.stringify([meeting({ date: '' })]));
+
+    const result = await sync(makeContext());
+    expect(result.documents).toEqual([]);
+  });
+
+  it('counts only in-window documents as remaining, so the backfill looks finite', async () => {
+    const old = meeting({
+      date: '2019-05-01',
+      meetingDocuments: [{ docNumber: '900', docType: 'Agenda', text: 'Agenda' }],
+    });
+    fetchPage.mockResolvedValue(JSON.stringify([meeting(), old]));
+
+    const result = await sync(makeContext());
+
+    expect(result.documents).toHaveLength(1);
+    expect(result.stats.remaining).toBe(0);
   });
 });

@@ -8,8 +8,14 @@
  * Minutes are published to a meeting's record weeks after the meeting date, so
  * a date watermark would skip them; the cursor is instead an `idSet` of synced
  * document numbers. New documents are offered oldest-first in bounded batches,
- * so the 2011-to-present backfill converges across runs while the per-document
- * downloads stay paced.
+ * so the backfill converges across runs while the per-document downloads stay
+ * paced.
+ *
+ * The District's API returns its whole archive back to 2011 — 1,327 meetings and
+ * 4,702 documents. Only meetings from {@link EARLIEST_MEETING_DAY} onward are
+ * synced (270 documents), because the older record is a research archive rather
+ * than something a reader is following, and every document in it costs a PDF
+ * download, a text extraction and a formatting pass.
  */
 
 import { fetchPage } from '../../lib/http.mjs';
@@ -26,6 +32,18 @@ const MEETING_TIME_ZONE = 'America/Vancouver';
 // this bounds how hard a round hits the District's document endpoint; the
 // runner's round pacing spreads the ~4,700-document backfill over time.
 const MAX_DOCUMENTS_PER_RUN = 25;
+
+/**
+ * The earliest meeting day to sync, as the `YYYY-MM-DD` the API itself uses.
+ *
+ * Compared as a string on purpose: the API's `date` is a bare calendar day in
+ * that exact format, and ISO day strings sort correctly lexicographically. Going
+ * through `Date` here would reintroduce the timezone bug that `dayToLocalNoonIso`
+ * exists to fix — a bare day parses as midnight UTC, which is the *previous* day
+ * on this coast, so a January 1st meeting would fall on the wrong side of its own
+ * cutoff.
+ */
+const EARLIEST_MEETING_DAY = '2026-01-01';
 
 /**
  * @typedef {{ text: string, link: string, docName: string, docNumber: string,
@@ -48,6 +66,11 @@ function pendingDocuments(meetings, seenNumbers) {
   const items = [];
   const queued = new Set();
   for (const meeting of meetings) {
+    // A meeting with no date is dropped rather than kept. Every one of the
+    // District's 1,327 meetings carries a date today, so this decides nothing
+    // now; it decides what happens if that ever stops being true, and an
+    // undated meeting cannot be shown to fall inside the window.
+    if (!meeting.date || meeting.date < EARLIEST_MEETING_DAY) continue;
     for (const document of meeting.meetingDocuments ?? []) {
       const { docNumber, docType } = document;
       if (!docNumber || docType === 'Video') continue;
