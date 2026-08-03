@@ -1,5 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
-import { parse } from 'node-html-parser';
+// The REAL converter, imported from the module that defines it so this mock
+// cannot shadow it. See the note on `htmlToText` below.
+import { htmlToText } from '../../lib/html-markdown.mjs';
 
 afterAll(() => mock.restore());
 
@@ -9,10 +11,20 @@ const deadlineReached = mock(() => false);
 mock.module('../../lib/feeds.mjs', () => ({
   fetchPage,
   deadlineReached,
-  htmlToText: (html) =>
-    parse(String(html ?? ''))
-      .textContent.replaceAll(/\s+/g, ' ')
-      .trim(),
+  // The REAL implementation, not a stand-in.
+  //
+  // This was a tag-stripper — `parse(html).textContent` — and it broke the
+  // hacker-news suite on Linux CI while passing on macOS, for two days of
+  // apparent flakiness. Bun's module mocks leak across test files and the file
+  // execution order differs by platform, so whenever this file happened to run
+  // first, every later suite got a converter that silently discarded links.
+  //
+  // The stripper agreed with the real function while the real one also
+  // discarded links; the moment the converter started keeping them, the lie
+  // became a failure — in a different directory, on one platform only. A mock
+  // of shared infrastructure has to be faithful or it is a time bomb with a
+  // delay measured in refactors.
+  htmlToText,
   // Faithful to the real safeDate: undefined for missing AND invalid dates.
   // (`new Date(invalid).toISOString()` throws — and module mocks can leak
   // across test files, so an unfaithful mock here breaks other suites.)
