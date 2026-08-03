@@ -539,7 +539,7 @@
       "documentSemantics": "append",
       "location": "cloud",
       "config": {},
-      "formatting": "reformat"
+      "formatting": "verbatim"
     },
     {
       "id": "stratechery",
