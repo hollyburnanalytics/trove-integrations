@@ -43,6 +43,33 @@ const STD =
   (item) =>
     feedItemDocument(idPrefix, item, { defaultAuthor: author });
 
+/** An item with its own guid but the show's shared homepage as <link>. */
+function sharedLinkItem(title, guid) {
+  return `<item><title>${title}</title><link>https://show.test</link>
+    <guid isPermaLink="false">${guid}</guid>
+    <pubDate>Mon, 15 Jan 2024 10:00:00 GMT</pubDate></item>`;
+}
+
+/** A response whose declared Content-Length blows the cap. */
+function huge(bytes) {
+  return { ok: true, headers: new Headers({ 'content-length': String(bytes) }), body: undefined };
+}
+
+/** `count` feed descriptors, whose URLs end in their index. */
+function feedsFor(count) {
+  return Array.from({ length: count }, (_, index) => ({ url: `https://s.test/${index}` }));
+}
+
+/** Respond to /<i> with a single item titled "Ep <i>". */
+function respondPerFeed() {
+  globalThis.fetch.mockImplementation((url) => {
+    const index = String(url).split('/').pop();
+    return Promise.resolve(
+      ok(rss(rssItem({ title: `Ep ${index}`, link: `https://a.test/${index}` }))),
+    );
+  });
+}
+
 describe('feedItemDocument', () => {
   it('builds a stable, normalized document', () => {
     const document = feedItemDocument('bbc', {
@@ -299,5 +326,403 @@ describe('syncFeeds feed autodiscovery', () => {
     await expect(
       syncFeeds(context, { feeds: [{ url: 'https://blog.test/' }], toDocument: STD() }),
     ).rejects.toThrow(/failed to fetch/);
+  });
+});
+
+describe('syncFeeds item rejection', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('counts an item as skipped when toDocument returns undefined', async () => {
+    fetch.mockResolvedValue(
+      ok(
+        rss(
+          rssItem({ title: 'Keep', link: 'https://s.test/keep' }),
+          rssItem({ title: 'Drop', link: 'https://s.test/drop' }),
+        ),
+      ),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: (item) => (item.title === 'Drop' ? undefined : STD('s')(item)),
+    });
+    expect(result.documents.map((d) => d.title)).toEqual(['Keep']);
+    expect(result.stats.skipped).toBe(1);
+  });
+
+  it('does not advance the cursor on behalf of a rejected item', async () => {
+    fetch.mockResolvedValue(
+      ok(
+        rss(
+          rssItem({
+            title: 'Kept',
+            link: 'https://s.test/a',
+            date: 'Tue, 02 Jan 2024 00:00:00 GMT',
+          }),
+          rssItem({
+            title: 'Rejected',
+            link: 'https://s.test/b',
+            date: 'Wed, 31 Dec 2025 00:00:00 GMT',
+          }),
+        ),
+      ),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: (item) => (item.title === 'Rejected' ? undefined : STD('s')(item)),
+    });
+    expect(result.cursor.value).toBe('2024-01-02T00:00:00.000Z');
+  });
+});
+
+describe('syncFeeds maxDocuments and firstRunLookbackMs', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  /** `count` items dated one day apart, newest first — the order real feeds use. */
+  function feedOf(count) {
+    const items = Array.from({ length: count }, (_, index) =>
+      rssItem({
+        title: `E${index}`,
+        link: `https://s.test/${index}`,
+        date: new Date(Date.now() - index * DAY_MS).toUTCString(),
+      }),
+    );
+    return rss(...items);
+  }
+
+  it('emits the oldest slice first and holds the rest back', async () => {
+    fetch.mockResolvedValue(ok(feedOf(5)));
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+      maxDocuments: 2,
+    });
+    expect(result.documents.map((d) => d.title)).toEqual(['E4', 'E3']);
+    expect(result.stats).toMatchObject({ fetched: 2, remaining: 3 });
+  });
+
+  it('advances the cursor only to the newest EMITTED item', async () => {
+    fetch.mockResolvedValue(ok(feedOf(5)));
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+      maxDocuments: 2,
+    });
+    // E3, not E0: the held-back items must not be stranded behind the cursor.
+    const expected = new Date(result.documents[1].date).toISOString();
+    expect(result.cursor.value).toBe(expected);
+  });
+
+  it('drains the backlog across runs without losing an item', async () => {
+    fetch.mockResolvedValue(ok(feedOf(5)));
+    const seen = [];
+    let cursor;
+    for (let run = 0; run < 3; run++) {
+      const result = await syncFeeds(makeContext(cursor), {
+        feeds: [{ url: 'https://s.test/1' }],
+        toDocument: STD('s'),
+        maxDocuments: 2,
+      });
+      seen.push(...result.documents.map((d) => d.title));
+      cursor = result.cursor;
+    }
+    expect(seen).toEqual(['E4', 'E3', 'E2', 'E1', 'E0']);
+  });
+
+  it('reports no remaining and preserves feed order when under the cap', async () => {
+    fetch.mockResolvedValue(ok(feedOf(3)));
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+      maxDocuments: 25,
+    });
+    expect(result.documents.map((d) => d.title)).toEqual(['E0', 'E1', 'E2']);
+    expect(result.stats.remaining).toBe(0);
+  });
+
+  it('omits remaining entirely when no cap is configured', async () => {
+    fetch.mockResolvedValue(ok(feedOf(3)));
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+    });
+    expect(result.stats).toEqual({ fetched: 3, skipped: 0 });
+  });
+
+  it('ignores items older than the first-run lookback', async () => {
+    fetch.mockResolvedValue(
+      ok(
+        rss(
+          rssItem({ title: 'Recent', link: 'https://s.test/new', date: new Date().toUTCString() }),
+          rssItem({
+            title: 'Archive',
+            link: 'https://s.test/old',
+            date: new Date(Date.now() - 400 * DAY_MS).toUTCString(),
+          }),
+        ),
+      ),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+      firstRunLookbackMs: 14 * DAY_MS,
+    });
+    expect(result.documents.map((d) => d.title)).toEqual(['Recent']);
+    expect(result.stats.skipped).toBe(1);
+  });
+
+  it('lets an existing cursor override the lookback', async () => {
+    fetch.mockResolvedValue(
+      ok(
+        rss(
+          rssItem({
+            title: 'Older than lookback, newer than cursor',
+            link: 'https://s.test/mid',
+            date: new Date(Date.now() - 100 * DAY_MS).toUTCString(),
+          }),
+        ),
+      ),
+    );
+    const cursor = { type: 'date', value: new Date(Date.now() - 200 * DAY_MS).toISOString() };
+    const result = await syncFeeds(makeContext(cursor), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+      firstRunLookbackMs: 14 * DAY_MS,
+    });
+    expect(result.documents).toHaveLength(1);
+  });
+});
+
+describe('syncFeeds dedupe keys on identity, not link', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('keeps every episode when a feed points them all at one page', async () => {
+    // The Freakonomics/Hard Fork shape: one <link> for all 924 episodes. Keying
+    // dedupe on the link collapsed 923 of them onto the first.
+    fetch.mockResolvedValue(
+      ok(
+        rss(
+          sharedLinkItem('Ep 1', 'g-1'),
+          sharedLinkItem('Ep 2', 'g-2'),
+          sharedLinkItem('Ep 3', 'g-3'),
+        ),
+      ),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+    });
+    expect(result.documents.map((d) => d.title)).toEqual(['Ep 1', 'Ep 2', 'Ep 3']);
+    expect(new Set(result.documents.map((d) => d.id)).size).toBe(3);
+  });
+
+  it('still dedupes the same guid across two feeds', async () => {
+    fetch.mockResolvedValue(ok(rss(sharedLinkItem('Same', 'g-1'))));
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }, { url: 'https://s.test/2' }],
+      toDocument: STD('s'),
+    });
+    expect(result.documents).toHaveLength(1);
+  });
+});
+
+describe('syncFeeds oversized-feed handling', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('raises the cap when feedMaxBytes is set', async () => {
+    // Declares 12 MB — over fetchPage's 10 MB default, under the raised cap.
+    const response = ok(rss(rssItem({ title: 'Big', link: 'https://s.test/big' })));
+    response.headers = new Headers({ 'content-length': String(12 * 1024 * 1024) });
+    fetch.mockResolvedValue(response);
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+      feedMaxBytes: 32 * 1024 * 1024,
+    });
+    expect(result.documents).toHaveLength(1);
+  });
+
+  it('does not hold the watermark hostage to a permanently oversized feed', async () => {
+    // Feed 1 is too big to ever fetch; feed 2 is healthy. The cursor must still
+    // advance, or feed 2's backlog can never drain.
+    const healthy = ok(
+      rss(
+        rssItem({
+          title: 'Fine',
+          link: 'https://s.test/ok',
+          date: 'Wed, 10 Jan 2024 00:00:00 GMT',
+        }),
+      ),
+    );
+    fetch.mockImplementation((url) =>
+      Promise.resolve(String(url).includes('/big') ? huge(999 * 1024 * 1024) : healthy),
+    );
+    const context = makeContext();
+    const result = await syncFeeds(context, {
+      feeds: [{ url: 'https://s.test/big' }, { url: 'https://s.test/ok' }],
+      toDocument: STD('s'),
+    });
+    expect(result.cursor.value).toBe('2024-01-10T00:00:00.000Z');
+    expect(context.log.warn).toHaveBeenCalledWith(expect.stringContaining('skipping permanently'));
+  });
+
+  it('still holds the watermark for a transient failure', async () => {
+    const healthy = ok(
+      rss(
+        rssItem({
+          title: 'Fine',
+          link: 'https://s.test/ok',
+          date: 'Wed, 10 Jan 2024 00:00:00 GMT',
+        }),
+      ),
+    );
+    fetch.mockImplementation((url) =>
+      String(url).includes('/flaky')
+        ? Promise.reject(new Error('socket hang up'))
+        : Promise.resolve(healthy),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/flaky' }, { url: 'https://s.test/ok' }],
+      toDocument: STD('s'),
+    });
+    expect(result.cursor).toBeUndefined();
+  });
+
+  it('still throws when every feed fails, oversized included', async () => {
+    fetch.mockResolvedValue(huge(999 * 1024 * 1024));
+    await expect(
+      syncFeeds(makeContext(), { feeds: [{ url: 'https://s.test/big' }], toDocument: STD('s') }),
+    ).rejects.toThrow(/failed to fetch/);
+  });
+});
+
+describe('syncFeeds concurrency and the soft deadline', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('collects in feed order even when responses land out of order', async () => {
+    // Feed 0 resolves last; document order must still follow the feed list, or
+    // which feed wins a shared identity would vary run to run.
+    globalThis.fetch.mockImplementation((url) => {
+      const index = Number(String(url).split('/').pop());
+      const body = rss(rssItem({ title: `Ep ${index}`, link: `https://a.test/${index}` }));
+      return new Promise((resolve) => setTimeout(() => resolve(ok(body)), index === 0 ? 30 : 1));
+    });
+    const result = await syncFeeds(makeContext(), {
+      feeds: feedsFor(4),
+      toDocument: STD('s'),
+      concurrency: 4,
+    });
+    expect(result.documents.map((d) => d.title)).toEqual(['Ep 0', 'Ep 1', 'Ep 2', 'Ep 3']);
+  });
+
+  it('fetches concurrently rather than one at a time', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    globalThis.fetch.mockImplementation((url) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      const index = String(url).split('/').pop();
+      const body = rss(rssItem({ title: `Ep ${index}`, link: `https://a.test/${index}` }));
+      return new Promise((resolve) =>
+        setTimeout(() => {
+          inFlight--;
+          resolve(ok(body));
+        }, 5),
+      );
+    });
+    await syncFeeds(makeContext(), { feeds: feedsFor(10), toDocument: STD('s'), concurrency: 5 });
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(5);
+  });
+
+  it('defaults to sequential so existing sources are unchanged', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    globalThis.fetch.mockImplementation((url) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      const index = String(url).split('/').pop();
+      const body = rss(rssItem({ title: `Ep ${index}`, link: `https://a.test/${index}` }));
+      return new Promise((resolve) =>
+        setTimeout(() => {
+          inFlight--;
+          resolve(ok(body));
+        }, 2),
+      );
+    });
+    await syncFeeds(makeContext(), { feeds: feedsFor(4), toDocument: STD('s') });
+    expect(peak).toBe(1);
+  });
+
+  it('stops at the soft deadline instead of overrunning the run', async () => {
+    respondPerFeed();
+    const context = makeContext();
+    context.deadline = Date.now() - 1; // already past
+    const result = await syncFeeds(context, { feeds: feedsFor(10), toDocument: STD('s') });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(result.documents).toHaveLength(0);
+    expect(context.log.warn).toHaveBeenCalledWith(expect.stringContaining('Soft deadline reached'));
+  });
+
+  it('holds the cursor when feeds went unreached, so they are not skipped later', async () => {
+    // Deadline trips after the first batch: feeds 2..3 were never fetched and
+    // may carry items older than what feed 0-1 advanced the watermark to.
+    globalThis.fetch.mockImplementation((url) => {
+      const index = String(url).split('/').pop();
+      const body = rss(rssItem({ title: `Ep ${index}`, link: `https://a.test/${index}` }));
+      return new Promise((resolve) => setTimeout(() => resolve(ok(body)), 30));
+    });
+    const context = makeContext();
+    // Enough budget for the first batch, spent by the time the second is due.
+    context.deadline = Date.now() + 20;
+    const result = await syncFeeds(context, {
+      feeds: feedsFor(4),
+      toDocument: STD('s'),
+      concurrency: 2,
+    });
+    expect(result.documents).toHaveLength(2);
+    expect(result.cursor).toBeUndefined();
+  });
+
+  it('ignores the deadline when the harness supplies none', async () => {
+    respondPerFeed();
+    const result = await syncFeeds(makeContext(), { feeds: feedsFor(3), toDocument: STD('s') });
+    expect(result.documents).toHaveLength(3);
   });
 });

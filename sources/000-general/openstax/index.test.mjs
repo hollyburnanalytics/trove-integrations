@@ -5,11 +5,32 @@ import { htmlToText } from '../../lib/html-markdown.mjs';
 
 afterAll(() => mock.restore());
 
+import { okResponse } from '../../lib/feed-fixtures.mjs';
+
+const ORIGINAL_FETCH = globalThis.fetch;
+
+/**
+ * Stands in for `fetchPage` WITHOUT mocking it in the module registry — see the
+ * note below on how far a `mock.module` of this barrel reaches. Routing stays
+ * exactly as these tests wrote it; only the seam moved to `fetch`.
+ */
 const fetchPage = mock();
-const deadlineReached = mock(() => false);
+
+function installFetch() {
+  globalThis.fetch = mock(async (url) => okResponse(await fetchPage(String(url))));
+}
+
+// Faithful by default: this registry entry is process-global, so a hard-coded
+// `false` would silently disable deadline handling in every other suite that
+// reaches `deadlineReached` through this specifier. Tests override explicitly.
+const deadlineReached = mock((context) => realFeeds.deadlineReached(context));
+
+// Spread the real module first — anything omitted here becomes `undefined` for
+// every OTHER source importing this specifier, not just for this suite.
+import * as realFeeds from '../../lib/feeds.mjs';
 
 mock.module('../../lib/feeds.mjs', () => ({
-  fetchPage,
+  ...realFeeds,
   deadlineReached,
   // The REAL implementation, not a stand-in.
   //
@@ -121,10 +142,14 @@ const context = (overrides = {}) => ({
 describe('openstax source', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    installFetch();
     deadlineReached.mockReturnValue(false);
     route({});
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
 
   it('syncs a book into one document per section, skipping stubs and fetch failures', async () => {
     const runContext = context();

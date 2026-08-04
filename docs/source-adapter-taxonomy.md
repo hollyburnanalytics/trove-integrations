@@ -64,8 +64,15 @@ ones below are the shapes the repo actually exercises:
 | **Feed-poll** | feed × `date` × single | `syncRSS()` | `650-business/stratechery`, `000-general/rss-feeds` |
 | **Full-text feed** | scrape × `date` × single | `syncFeedArticles()` | `500-science/quanta-magazine` |
 | **API-poll** | api × `date`/`none` × single / multi-entity | direct `fetch` | `070-news/hacker-news` |
+| **Media-feed-poll** | feed × `date` × multi | `syncFeeds()` + `maxDocuments` | `000-general/podcast-feeds` |
 | **Local-store-sync** | local × `date` × single | direct read | `000-general/apple-podcasts` |
 | **Authed-browser-harvest** | browser × `none` × paged-scroll | `ctx.browser` | — (harness-supported; none shipped) |
+
+**Media-feed-poll** is Feed-poll where the body is not in the feed at all: the item's
+`<enclosure>` is emitted as `audio_url` and the server transcribes it. Because every emitted
+document buys a transcription, the class is defined by its two cost bounds — a first-run
+lookback and a per-run `maxDocuments` cap, which together let a back catalogue drain
+oldest-first across scheduled runs instead of landing in one run.
 
 `syncFeedArticles()` is the one full-text exception to the repo's "store the syndicated
 excerpt" default: for **Creative Commons / public-domain** feeds that carry only excerpts, it

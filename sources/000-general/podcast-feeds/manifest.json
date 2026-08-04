@@ -1,0 +1,26 @@
+{
+  "id": "podcast-feeds",
+  "name": "Podcasts",
+  "description": "Subscribe to any podcast by feed URL. Trove downloads each new episode and transcribes it, so the whole show becomes searchable text.",
+  "icon": "🎧",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "category": "000-general",
+  "kind": "scheduled-sync",
+  "transport": "feed",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "location": "cloud",
+  "schedule": "every 6 hours",
+  "status": "implemented",
+  "available": true,
+  "config": {
+    "feeds": {
+      "label": "Podcast feed URLs",
+      "type": "url[]"
+    }
+  },
+  "fanOut": "feeds",
+  "needs_browser": false,
+  "live": false
+}

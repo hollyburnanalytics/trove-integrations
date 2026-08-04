@@ -2,7 +2,12 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock } fro
 
 afterAll(() => mock.restore());
 
-mock.module('../../lib/feeds.mjs', () => ({ syncRSS: mock() }));
+// Spread the real module: replacing it wholesale would strip stableId/safeDate/
+// decodeHtmlEntities for every OTHER test file too — Bun's module mock registry is
+// process-global and keyed by specifier string.
+import * as realFeeds from '../../lib/feeds.mjs';
+
+mock.module('../../lib/feeds.mjs', () => ({ ...realFeeds, syncRSS: mock() }));
 
 import { syncRSS } from '../../lib/feeds.mjs';
 import { sync } from './index.mjs';

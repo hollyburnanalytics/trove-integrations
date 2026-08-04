@@ -1,10 +1,22 @@
-import { afterAll, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { okResponse } from '../../lib/feed-fixtures.mjs';
 
-afterAll(() => mock.restore());
+const ORIGINAL_FETCH = globalThis.fetch;
 
+/**
+ * Stands in for `fetchPage` WITHOUT mocking the module. `mock.module` writes to
+ * a process-global registry, and replacing `http.mjs` wholesale both dropped
+ * its other exports and stubbed `fetchPage` for every OTHER suite — whose feeds
+ * then all failed to parse an empty body. Mocking `fetch` keeps it local here.
+ *
+ * The `fetchPage`-shaped API is unchanged: configure with `.mockResolvedValue`
+ * / `.mockRejectedValue`, assert with `.toHaveBeenCalled*` and `.mock.calls`.
+ */
 const fetchPage = mock();
 
-mock.module('../../lib/http.mjs', () => ({ fetchPage }));
+function installFetch() {
+  globalThis.fetch = mock(async (url) => okResponse(await fetchPage(String(url))));
+}
 
 const { sync } = await import('./index.mjs');
 
@@ -40,6 +52,11 @@ function meeting(overrides = {}) {
 describe('dnv-council-minutes source', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    installFetch();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
   });
 
   it('maps a meeting document to a file_url document the server extracts', async () => {

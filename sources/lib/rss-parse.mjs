@@ -198,6 +198,63 @@ function authorName(value) {
   return '';
 }
 
+/**
+ * Normalize one enclosure's attributes. `type` is lowercased and stripped of
+ * any MIME parameters so callers can test it with a plain prefix comparison;
+ * `length` is omitted unless the feed gave a positive byte count.
+ *
+ * @param {string} url
+ * @param {unknown} type
+ * @param {unknown} length
+ * @returns {{ url: string, type: string, length?: number }}
+ */
+function enclosureOf(url, type, length) {
+  const bytes = Number.parseInt(String(length ?? ''), 10);
+  const enclosure = {
+    url,
+    type: String(type ?? '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase(),
+  };
+  if (Number.isFinite(bytes) && bytes > 0) enclosure.length = bytes;
+  return enclosure;
+}
+
+/**
+ * The media file an RSS item points at: `<enclosure url type length>`. A
+ * podcast episode's audio arrives this way (the element is how RSS 2.0 carries
+ * an attached file at all). Feeds occasionally repeat the element — for a
+ * low-bitrate alternate, or by mistake — so the first one with a URL wins,
+ * matching how podcast clients read them.
+ */
+function rssEnclosure(value) {
+  for (const node of asArray(value)) {
+    if (typeof node !== 'object' || node === null) continue;
+    const url = String(node['@_url'] ?? '').trim();
+    if (url) return enclosureOf(url, node['@_type'], node['@_length']);
+  }
+}
+
+/** The same, for Atom's `<link rel="enclosure" href type length>`. */
+function atomEnclosure(value) {
+  for (const link of asArray(value)) {
+    if (typeof link !== 'object' || link === null) continue;
+    if (link['@_rel'] !== 'enclosure') continue;
+    const url = String(link['@_href'] ?? '').trim();
+    if (url) return enclosureOf(url, link['@_type'], link['@_length']);
+  }
+}
+
+/** The same, for a JSON Feed item's first `attachments[]` entry. */
+function jsonFeedEnclosure(value) {
+  for (const attachment of asArray(value)) {
+    if (typeof attachment !== 'object' || attachment === null) continue;
+    const url = String(attachment.url ?? '').trim();
+    if (url) return enclosureOf(url, attachment.mime_type, attachment.size_in_bytes);
+  }
+}
+
 /** Category labels: RSS text nodes and Atom `term` attributes, de-duplicated. */
 function categoryLabels(value) {
   const labels = [];
@@ -212,7 +269,7 @@ function categoryLabels(value) {
 }
 
 /** Normalize one RSS 2.0 / RSS 1.0 `<item>`. */
-function rssItem(item, feedAuthor) {
+function rssItem(item, feedAuthor, feedTitle = '') {
   const descriptionHtml = htmlPayload(item.description);
   const contentHtml = htmlPayload(item.encoded); // <content:encoded>
   const link = atomLink(item.link);
@@ -226,11 +283,13 @@ function rssItem(item, feedAuthor) {
     author: nodeText(item.creator) || authorName(item.author) || feedAuthor,
     guid: nodeText(item.guid) || link,
     categories: categoryLabels(item.category),
+    enclosure: rssEnclosure(item.enclosure),
+    feedTitle,
   };
 }
 
 /** Normalize one Atom `<entry>`. */
-function atomEntry(entry, feedAuthor, feedHost = '') {
+function atomEntry(entry, feedAuthor, feedHost = '', feedTitle = '') {
   const link = atomLink(entry.link, feedHost);
   const contentHtml = htmlPayload(entry.content);
   const summaryHtml = htmlPayload(entry.summary);
@@ -244,11 +303,13 @@ function atomEntry(entry, feedAuthor, feedHost = '') {
     author: authorName(entry.author) || feedAuthor,
     guid: nodeText(entry.id) || link,
     categories: categoryLabels(entry.category),
+    enclosure: atomEnclosure(entry.link),
+    feedTitle,
   };
 }
 
 /** Normalize one JSON Feed item (https://jsonfeed.org, 1.0 and 1.1). */
-function jsonFeedItem(item, feedAuthor) {
+function jsonFeedItem(item, feedAuthor, feedTitle = '') {
   const link = typeof item.url === 'string' ? item.url : (item.external_url ?? '');
   const contentHtml = typeof item.content_html === 'string' ? item.content_html : '';
   const contentText = typeof item.content_text === 'string' ? item.content_text : '';
@@ -264,6 +325,8 @@ function jsonFeedItem(item, feedAuthor) {
     author: author ?? '',
     guid: item.id !== undefined && item.id !== null ? String(item.id) : link,
     categories: Array.isArray(item.tags) ? item.tags.filter((t) => typeof t === 'string') : [],
+    enclosure: jsonFeedEnclosure(item.attachments),
+    feedTitle,
   };
 }
 
@@ -277,8 +340,9 @@ function parseJsonFeed(text) {
   }
   if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) return;
   const feedAuthor = parsed.authors?.[0]?.name ?? parsed.author?.name ?? '';
-  const fallback = feedAuthor || (typeof parsed.title === 'string' ? parsed.title : '');
-  return parsed.items.map((item) => jsonFeedItem(item, fallback));
+  const feedTitle = typeof parsed.title === 'string' ? parsed.title : '';
+  const fallback = feedAuthor || feedTitle;
+  return parsed.items.map((item) => jsonFeedItem(item, fallback, feedTitle));
 }
 
 /**
@@ -299,6 +363,14 @@ function parseJsonFeed(text) {
  *  - `author` — item author, falling back to the feed-level author, then the
  *    feed title (so single-author blogs attribute correctly even when items
  *    carry no author)
+ *  - `feedTitle` — the channel/feed `<title>`: the publication's own name,
+ *    distinct from `author`. A podcast feed names the SHOW here while its items
+ *    name the hosts, so a source adapter that must attribute to the show reads
+ *    this rather than `author`. `''` for a bare fragment with no feed element.
+ *  - `enclosure` — the attached media file as `{ url, type, length? }`, or
+ *    `undefined` when the item has none. RSS `<enclosure>`, Atom
+ *    `<link rel="enclosure">`, JSON Feed `attachments[0]`. This is how a
+ *    podcast feed carries its episode audio.
  *
  * @param {string} text - The raw feed document (XML or JSON).
  * @returns {Array<object>} Normalized items (empty for a feed with no items).
@@ -329,23 +401,23 @@ function parseXmlFeed(trimmed) {
   const channel = parsed.rss?.channel ?? parsed.RDF ?? parsed.channel;
   if (channel) {
     const channelNode = parsed.RDF ? asArray(parsed.RDF.channel)[0] : asArray(channel)[0];
+    const feedTitle = nodeText(channelNode?.title);
     const feedAuthor =
-      nodeText(channelNode?.creator) ||
-      authorName(channelNode?.author) ||
-      nodeText(channelNode?.title);
+      nodeText(channelNode?.creator) || authorName(channelNode?.author) || feedTitle;
     const items = asArray(channel).flatMap((c) => asArray(c.item));
-    return items.map((item) => rssItem(item, feedAuthor));
+    return items.map((item) => rssItem(item, feedAuthor, feedTitle));
   }
 
   // Atom <feed> documents and bare fragments.
   const feed = parsed.feed;
   if (feed || parsed.entry !== undefined) {
     const entries = feed ? asArray(feed.entry) : asArray(parsed.entry);
-    const feedAuthor = authorName(feed?.author) || nodeText(feed?.title);
+    const feedTitle = nodeText(feed?.title);
+    const feedAuthor = authorName(feed?.author) || feedTitle;
     // The publisher's own host, so a link blog's entries can be told apart from
     // the sites they point at. See `permalinkFor`.
     const feedHost = hostOf(atomLink(feed?.link));
-    return entries.map((entry) => atomEntry(entry, feedAuthor, feedHost));
+    return entries.map((entry) => atomEntry(entry, feedAuthor, feedHost, feedTitle));
   }
   if (parsed.item !== undefined) {
     return asArray(parsed.item).map((item) => rssItem(item, ''));
