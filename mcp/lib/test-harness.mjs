@@ -45,9 +45,22 @@ export function fetchMock(responder) {
  * @param {object} args - The tool arguments.
  * @param {object|Function} [responder] - A `fetchMock` responder (omit for arg-validation tests).
  * @param {string[]} [scopes] - Granted scopes for this call (e.g. `['trove:ingest']` to enable `ctx.trove`).
+ * @param {string} [userId] - The calling user id (default `'test-user'`).
+ *   Vary it to test anything keyed on the caller. A server that salts its
+ *   response cache with `ctx.userId` — the usual way to stop one tenant's
+ *   response reaching another — cannot be tested at all against a fixed id: a
+ *   constant prefix on every key is indistinguishable from no prefix, so the
+ *   isolation is untested however many tests exist.
  * @returns {Promise<object>} The `McpToolCallResult`.
  */
-export async function callTool(server, tool, arguments_, responder, scopes = []) {
+export async function callTool(
+  server,
+  tool,
+  arguments_,
+  responder,
+  scopes = [],
+  userId = 'test-user',
+) {
   const saved = globalThis.fetch;
   globalThis.fetch = fetchMock(
     responder ??
@@ -61,7 +74,7 @@ export async function callTool(server, tool, arguments_, responder, scopes = [])
       args: arguments_,
       ctxToken: 'test-ctx-token',
       callbackBase: 'https://callback.test',
-      userId: 'test-user',
+      userId,
       scopes,
     });
   } finally {

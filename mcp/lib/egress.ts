@@ -112,10 +112,62 @@ export interface EgressClientOptions {
 export interface EgressRequestOptions {
   /** `accept` header for this request (merged over the static headers). */
   accept?: string;
-  /** Set false to bypass the cache for this request (default true). */
+  /**
+   * Set false to bypass the cache for this request.
+   *
+   * Defaults to true for GET/HEAD and **false for POST**: a POST is a write
+   * until proven otherwise, and silently replaying one from cache would be a
+   * correctness bug rather than an optimisation. A read-only POST — a GraphQL
+   * query is the motivating case — opts back in explicitly.
+   */
   cacheable?: boolean;
-  /** HTTP method (default GET). A HEAD probe reads only the status line. */
-  method?: 'GET' | 'HEAD';
+  /**
+   * HTTP method (default GET). A HEAD probe reads only the status line.
+   *
+   * POST exists for upstreams whose READS are POSTs. GraphQL is the whole
+   * reason: every query, however read-only, is a POST with the document in the
+   * body, so without this such an API cannot use this client at all and has to
+   * re-implement deadlines, retry and throttling from scratch against raw
+   * `ctx.fetch` — which is exactly how those protections get forgotten.
+   */
+  method?: 'GET' | 'HEAD' | 'POST';
+  /** Request body, for POST. Ignored for GET/HEAD. */
+  body?: string;
+  /** `content-type` for {@link body} (default `application/json`). */
+  contentType?: string;
+  /**
+   * Extra headers for this request, merged over the client's static headers.
+   *
+   * For credentials that are resolved PER INVOCATION — a per-tenant API key out
+   * of the vault — which cannot live in the module-scope client options.
+   */
+  headers?: Record<string, string>;
+  /**
+   * An opaque string mixed into this request's cache key.
+   *
+   * The cache is module scope, so one isolate's entries are shared by every user
+   * it serves. That is correct for a public endpoint whose answer depends only
+   * on the URL — and WRONG the moment the answer also depends on who asked.
+   * A quota balance, or content gated on the caller's plan, would otherwise be
+   * served from the entry the previous tenant populated. Pass `ctx.userId` here
+   * to keep such responses per-user; the same caller still gets its own repeats
+   * for free, which is where the saving actually comes from.
+   */
+  cacheKeySalt?: string;
+  /**
+   * Decide, having seen the response, whether it is worth KEEPING. Return false
+   * to serve the result to this caller but not store it.
+   *
+   * The cache otherwise retains on status alone, which is right only for an
+   * upstream that reports failure with a status. An API that answers every
+   * error with `200 OK` and an error envelope in the body — GraphQL does this
+   * by specification — would have its failures pinned for the full TTL: the
+   * retry a "temporarily unavailable" error asks for is then served from cache
+   * without ever leaving the isolate, and a corrected credential stays invisible
+   * until the entry expires. Status is not enough information; this hook is the
+   * body-aware second opinion.
+   */
+  retainIf?: (result: FetchResult) => boolean;
   /** Override the client's {@link EgressClientOptions.timeoutMs} for this request. */
   timeoutMs?: number;
   /**
@@ -293,7 +345,12 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
   ): Promise<ResponseDecision> {
     if (limitStatuses.has(res.status)) return handleRateLimit(res, isLastAttempt);
     if (res.status >= 500) return handleServerError(isLastAttempt);
-    if (res.status === 400 || res.status === 404) {
+    // `bodyStatuses` is consulted FIRST, so a caller can opt 400/404 into
+    // keeping their body. Handling them above this check made the option
+    // impossible to exercise for exactly the two statuses whose bodies most
+    // often carry the reason — Taddy answers a malformed query with 400 and a
+    // sentence naming the field to fix, and it was being thrown away.
+    if (!bodyPassThrough.has(res.status) && (res.status === 400 || res.status === 404)) {
       return { result: { status: res.status, body: '', url: res.url, redirected: res.redirected } };
     }
     if (!res.ok && !bodyPassThrough.has(res.status)) {
@@ -336,6 +393,28 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     );
   }
 
+  /**
+   * The method, headers and body for one attempt.
+   *
+   * Only a POST carries a body — passing one on a GET is a `fetch` TypeError,
+   * not a no-op — and only a POST needs a `content-type`.
+   */
+  function requestInit(
+    requestHeaders: Record<string, string>,
+    request: EgressRequestOptions,
+  ): { method: string; headers: Record<string, string>; body?: string } {
+    const method = request.method ?? 'GET';
+    if (method !== 'POST') return { method, headers: requestHeaders };
+    return {
+      method,
+      headers: {
+        ...requestHeaders,
+        'content-type': request.contentType ?? 'application/json',
+      },
+      body: request.body ?? '',
+    };
+  }
+
   async function attemptFetch(
     ctx: ToolContext,
     url: string,
@@ -352,8 +431,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
       // returns, the tool hangs until the MCP client gives up, and the caller is
       // told only "tool timed out or crashed".
       const response = await ctx.fetch(url, {
-        headers: requestHeaders,
-        method: request.method ?? 'GET',
+        ...requestInit(requestHeaders, request),
         signal: AbortSignal.timeout(deadline),
       });
       decision = await classifyResponse(response, isLast, request.method === 'HEAD');
@@ -384,10 +462,22 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
    * body, and cached under the bare URL it would be served to a later GET of the
    * same URL as a 200 with no content — leaving the caller to conclude the page
    * was blank.
+   *
+   * For a POST it also includes the REQUEST BODY, because the URL alone does not
+   * identify the request: a GraphQL endpoint is one URL serving every query, so
+   * keying on the URL would make the first response the answer to all of them.
+   *
+   * The body goes in verbatim rather than hashed. A hash would be shorter, but a
+   * collision serves one query's data as another's — a silent wrong answer, and
+   * the one failure mode a cache must never have. Keys are bounded by
+   * `maxEntries` anyway, so verbatim costs a few KB per isolate.
    */
   function cacheKey(url: string, request: EgressRequestOptions): string {
+    const salt = request.cacheKeySalt ? `${request.cacheKeySalt} ` : '';
     const method = request.method ?? 'GET';
-    return method === 'GET' ? url : `${method} ${url}`;
+    if (method === 'GET') return `${salt}${url}`;
+    if (method === 'POST') return `${salt}POST ${url}\n${request.body ?? ''}`;
+    return `${salt}${method} ${url}`;
   }
 
   /**
@@ -433,19 +523,23 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     url: string,
     requestOptions: EgressRequestOptions = {},
   ): Promise<FetchResult> {
-    const cacheable = requestOptions.cacheable ?? true;
+    // A POST is a write until its caller says otherwise; see `cacheable`.
+    const cacheable = requestOptions.cacheable ?? requestOptions.method !== 'POST';
     const key = cacheKey(url, requestOptions);
     const cached = servedFromCache(ctx, key, cacheable);
     if (cached) return cached;
 
-    const requestHeaders = requestOptions.accept
-      ? { ...headers, accept: requestOptions.accept }
-      : headers;
+    const requestHeaders = {
+      ...headers,
+      ...(requestOptions.accept ? { accept: requestOptions.accept } : {}),
+      ...requestOptions.headers,
+    };
 
     const budget = startBudget(requestOptions.overallTimeoutMs ?? overallTimeoutMs);
     const result = await attemptUntilBudgetSpent(ctx, url, requestHeaders, requestOptions, budget);
 
-    if (cacheable && result.status === 200) cache.set(key, result);
+    const retain = requestOptions.retainIf?.(result) ?? true;
+    if (cacheable && result.status === 200 && retain) cache.set(key, result);
     return result;
   }
 
