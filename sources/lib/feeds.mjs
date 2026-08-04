@@ -16,7 +16,7 @@ import { dateWatermark, readDateWatermark } from './watermark.mjs';
 
 // Re-export the feed primitives so `feeds.mjs` stays the single import surface
 // for adapters, even though the implementations live in focused sibling modules.
-export { fetchPage } from './http.mjs';
+export { fetchPage, isTooLargeError } from './http.mjs';
 export { parseRSS, xmlText } from './rss-parse.mjs';
 export { dayToLocalNoonIso, decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
 
@@ -75,7 +75,7 @@ export function warnIfUndated(context, documents, origin) {
  * the feed would collapse onto that one document ID, silently overwriting each
  * other. Callers drop these instead (see {@link identifiedItems}).
  */
-function itemIdentity(item) {
+export function itemIdentity(item) {
   return item.guid || item.link || item.title || '';
 }
 

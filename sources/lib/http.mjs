@@ -125,13 +125,19 @@ async function fetchCappedBytes(url, maxBytes, signal) {
 /**
  * Fetch a URL with our honest bot UA, a hard timeout, and a response-size cap.
  * Rejects non-public hosts (SSRF guard), throws on non-200. Returns body text.
+ *
+ * `maxBytes` raises the cap for document classes that are legitimately larger
+ * than an article feed — a podcast feed carries every episode it has ever
+ * published, so The Daily's is 17.6 MB against the 10 MB default. A rejection
+ * throws an error {@link isTooLargeError} recognizes, so callers can treat it
+ * as permanent rather than retry it forever.
  */
-export async function fetchPage(url) {
+export async function fetchPage(url, { maxBytes = MAX_RESPONSE_BYTES } = {}) {
   assertPublicHttpUrl(url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const bytes = await fetchCappedBytes(url, MAX_RESPONSE_BYTES, controller.signal);
+    const bytes = await fetchCappedBytes(url, maxBytes, controller.signal);
     return new TextDecoder().decode(bytes);
   } finally {
     clearTimeout(timer);

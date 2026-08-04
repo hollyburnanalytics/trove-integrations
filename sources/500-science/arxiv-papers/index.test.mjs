@@ -1,13 +1,26 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
-
-afterAll(() => mock.restore());
-
-import * as blogUtilities from '../../lib/feeds.mjs';
+import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { okResponse } from '../../lib/feed-fixtures.mjs';
 import { PAGE_SIZE, sync } from './index.mjs';
 
-mock.module('../../lib/feeds.mjs', () => ({ ...blogUtilities, fetchPage: mock() }));
+const ORIGINAL_FETCH = globalThis.fetch;
 
-import { fetchPage } from '../../lib/feeds.mjs';
+/**
+ * Stands in for `fetchPage` WITHOUT mocking the module. `mock.module` writes to
+ * a process-global registry keyed by specifier, and mocking the `feeds.mjs`
+ * barrel replaces the re-exported binding in `http.mjs` too — so stubbing
+ * `fetchPage` here silently stubbed it for every other suite, whose feeds then
+ * all "failed to fetch". Mocking `fetch` keeps the stub local to this file and
+ * exercises the real fetchPage (SSRF guard, timeout, size cap) besides.
+ *
+ * The `fetchPage`-shaped API is preserved: configure bodies with
+ * `.mockResolvedValue`/`.mockImplementation`, assert with `.toHaveBeenCalled*`
+ * and `.mock.calls[i][0]` (the requested URL).
+ */
+const fetchPage = mock();
+
+function installFetch() {
+  globalThis.fetch = mock(async (url) => okResponse(await fetchPage(String(url))));
+}
 
 function makeContext(config = {}, cursor) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor };
@@ -39,8 +52,14 @@ const ARXIV_RESPONSE = `<feed>
 </feed>`;
 
 describe('arxiv-papers source', () => {
-  beforeEach(() => jest.clearAllMocks());
-  afterEach(() => jest.restoreAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    installFetch();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
 
   it('fetches papers with default queries', async () => {
     fetchPage.mockResolvedValue(ARXIV_RESPONSE);

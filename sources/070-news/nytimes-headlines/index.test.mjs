@@ -1,53 +1,49 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
-
-afterAll(() => mock.restore());
-
-import * as feedSync from '../../lib/feed-sync.mjs';
-
-mock.module('../../lib/feed-sync.mjs', () => ({
-  ...feedSync,
-  syncFeeds: mock(() => ({ documents: [], cursor: undefined, stats: { fetched: 0 } })),
-}));
-
-import { syncFeeds } from '../../lib/feed-sync.mjs';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { fetchedUrls, okResponse, rssFeedXml, rssItemXml } from '../../lib/feed-fixtures.mjs';
 import { sync } from './index.mjs';
+
+const ORIGINAL_FETCH = globalThis.fetch;
 
 function makeContext(config = {}) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor: undefined };
 }
 
-async function optionsFor(config) {
-  await sync(makeContext(config));
-  return syncFeeds.mock.calls.at(-1)[1];
+function respondWith(xml) {
+  globalThis.fetch = mock(() => Promise.resolve(okResponse(xml)));
 }
 
+const STORY = rssFeedXml([
+  rssItemXml({ title: 'Story', link: 'https://nyt.test/1', description: 'x' }),
+]);
+
 describe('nytimes source', () => {
-  beforeEach(() => jest.clearAllMocks());
-  afterEach(() => jest.restoreAllMocks());
+  beforeEach(() => {
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+  });
 
   it('defaults to the HomePage feed', async () => {
-    const options = await optionsFor({});
-    expect(options.feeds).toEqual([
-      { url: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml', label: 'HomePage' },
+    respondWith(STORY);
+    await sync(makeContext({}));
+    expect(fetchedUrls(globalThis.fetch)).toEqual([
+      'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml',
     ]);
   });
 
   it('builds a feed URL per configured section', async () => {
-    const options = await optionsFor({ sections: ['Technology'] });
-    expect(options.feeds[0].url).toBe(
+    respondWith(STORY);
+    await sync(makeContext({ sections: ['Technology'] }));
+    expect(fetchedUrls(globalThis.fetch)).toEqual([
       'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml',
-    );
+    ]);
   });
 
   it('builds documents with the nyt id prefix and default author', async () => {
-    const options = await optionsFor({});
-    const document = options.toDocument({
-      title: 'Story',
-      link: 'https://nyt.test/1',
-      guid: 'https://nyt.test/1',
-      description: 'x',
-    });
-    expect(document.id).toMatch(/^nyt-/);
-    expect(document.author).toBe('The New York Times');
+    respondWith(STORY);
+    const result = await sync(makeContext({}));
+    expect(result.documents[0].id).toMatch(/^nyt-/);
+    expect(result.documents[0].author).toBe('The New York Times');
   });
 });

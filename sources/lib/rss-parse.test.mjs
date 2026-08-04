@@ -273,3 +273,106 @@ describe('unrecognizable documents fail loudly', () => {
     expect(parseRSS(aggregator)[0].link).toBe('https://other.example.org/story');
   });
 });
+
+describe('enclosures — how a podcast feed carries its audio', () => {
+  it('reads url, type and length from an RSS <enclosure>', () => {
+    const [item] = parseRSS(`<rss><channel><item>
+      <title>Ep 1</title><link>https://show.test/1</link>
+      <enclosure url="https://cdn.test/1.mp3" length="42000000" type="audio/mpeg"/>
+    </item></channel></rss>`);
+    expect(item.enclosure).toEqual({
+      url: 'https://cdn.test/1.mp3',
+      type: 'audio/mpeg',
+      length: 42_000_000,
+    });
+  });
+
+  it('leaves enclosure undefined for an item without one', () => {
+    const [item] = parseRSS(
+      `<rss><channel><item><title>No audio</title><link>https://s.test/a</link></item></channel></rss>`,
+    );
+    expect(item.enclosure).toBeUndefined();
+  });
+
+  it('normalizes the type and drops a non-numeric length', () => {
+    const [item] = parseRSS(`<rss><channel><item>
+      <enclosure url="https://cdn.test/1.mp3" length="" type="Audio/MPEG; charset=binary"/>
+    </item></channel></rss>`);
+    expect(item.enclosure.type).toBe('audio/mpeg');
+    expect(item.enclosure.length).toBeUndefined();
+  });
+
+  it('takes the first enclosure when a feed repeats the element', () => {
+    const [item] = parseRSS(`<rss><channel><item>
+      <enclosure url="https://cdn.test/hi.mp3" type="audio/mpeg"/>
+      <enclosure url="https://cdn.test/lo.mp3" type="audio/mpeg"/>
+    </item></channel></rss>`);
+    expect(item.enclosure.url).toBe('https://cdn.test/hi.mp3');
+  });
+
+  it('reads an Atom <link rel="enclosure"> without mistaking it for the permalink', () => {
+    const [entry] = parseRSS(`<feed><entry>
+      <title>Ep 2</title>
+      <link rel="alternate" href="https://show.test/2"/>
+      <link rel="enclosure" type="audio/mpeg" length="99" href="https://cdn.test/2.mp3"/>
+    </entry></feed>`);
+    expect(entry.link).toBe('https://show.test/2');
+    expect(entry.enclosure).toEqual({
+      url: 'https://cdn.test/2.mp3',
+      type: 'audio/mpeg',
+      length: 99,
+    });
+  });
+
+  it('reads a JSON Feed attachment', () => {
+    const [item] = parseRSS(
+      JSON.stringify({
+        version: 'https://jsonfeed.org/version/1.1',
+        items: [
+          {
+            id: '3',
+            url: 'https://show.test/3',
+            attachments: [
+              { url: 'https://cdn.test/3.m4a', mime_type: 'audio/x-m4a', size_in_bytes: 7 },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(item.enclosure).toEqual({
+      url: 'https://cdn.test/3.m4a',
+      type: 'audio/x-m4a',
+      length: 7,
+    });
+  });
+});
+
+describe('feedTitle — the publication, distinct from the author', () => {
+  it('carries the RSS channel title on every item', () => {
+    const [item] = parseRSS(`<rss><channel>
+      <title>The Test Show</title>
+      <item><title>Ep 1</title><author>hosts@show.test (Ada and Grace)</author></item>
+    </channel></rss>`);
+    expect(item.feedTitle).toBe('The Test Show');
+    expect(item.author).toBe('Ada and Grace');
+  });
+
+  it('carries the Atom feed title', () => {
+    const [entry] = parseRSS(
+      `<feed><title>The Test Show</title><entry><title>Ep 1</title></entry></feed>`,
+    );
+    expect(entry.feedTitle).toBe('The Test Show');
+  });
+
+  it('carries the JSON Feed title', () => {
+    const [item] = parseRSS(
+      JSON.stringify({ version: '1.1', title: 'The Test Show', items: [{ id: '1' }] }),
+    );
+    expect(item.feedTitle).toBe('The Test Show');
+  });
+
+  it('is empty for a bare fragment with no feed element', () => {
+    const [item] = parseRSS(`<item><title>Loose</title></item>`);
+    expect(item.feedTitle).toBe('');
+  });
+});

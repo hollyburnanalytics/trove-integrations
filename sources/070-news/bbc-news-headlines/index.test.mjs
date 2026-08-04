@@ -1,53 +1,54 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
-
-afterAll(() => mock.restore());
-
-import * as feedSync from '../../lib/feed-sync.mjs';
-
-mock.module('../../lib/feed-sync.mjs', () => ({
-  ...feedSync,
-  syncFeeds: mock(() => ({ documents: [], cursor: undefined, stats: { fetched: 0 } })),
-}));
-
-import { syncFeeds } from '../../lib/feed-sync.mjs';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { fetchedUrls, okResponse, rssFeedXml, rssItemXml } from '../../lib/feed-fixtures.mjs';
 import { sync } from './index.mjs';
+
+const ORIGINAL_FETCH = globalThis.fetch;
 
 function makeContext(config = {}) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor: undefined };
 }
 
-async function optionsFor(config) {
-  await sync(makeContext(config));
-  return syncFeeds.mock.calls.at(-1)[1];
+function respondWith(xml) {
+  globalThis.fetch = mock(() => Promise.resolve(okResponse(xml)));
 }
 
+const STORY = rssFeedXml([
+  rssItemXml({ title: 'Story', link: 'https://bbc.test/1', description: 'x' }),
+]);
+
 describe('bbc-news source', () => {
-  beforeEach(() => jest.clearAllMocks());
-  afterEach(() => jest.restoreAllMocks());
+  beforeEach(() => {
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+  });
 
   it('defaults to five sections', async () => {
-    const options = await optionsFor({});
-    expect(options.feeds).toHaveLength(5);
+    respondWith(STORY);
+    await sync(makeContext({}));
+    expect(fetchedUrls(globalThis.fetch)).toHaveLength(5);
   });
 
   it('maps top_stories to the base feed URL', async () => {
-    const options = await optionsFor({ sections: ['top_stories'] });
-    expect(options.feeds[0].url).toBe('https://feeds.bbci.co.uk/news/rss.xml');
+    respondWith(STORY);
+    await sync(makeContext({ sections: ['top_stories'] }));
+    expect(fetchedUrls(globalThis.fetch)).toEqual(['https://feeds.bbci.co.uk/news/rss.xml']);
   });
 
   it('maps a named section to its feed URL', async () => {
-    const options = await optionsFor({ sections: ['technology'] });
-    expect(options.feeds[0].url).toBe('https://feeds.bbci.co.uk/news/technology/rss.xml');
+    respondWith(STORY);
+    await sync(makeContext({ sections: ['technology'] }));
+    expect(fetchedUrls(globalThis.fetch)).toEqual([
+      'https://feeds.bbci.co.uk/news/technology/rss.xml',
+    ]);
   });
 
   it('tags documents with the section and defaults the author', async () => {
-    const options = await optionsFor({ sections: ['world'] });
-    const document = options.toDocument(
-      { title: 'Story', link: 'https://bbc.test/1', guid: 'https://bbc.test/1', description: 'x' },
-      options.feeds[0],
-    );
-    expect(document.id).toMatch(/^bbc-/);
-    expect(document.author).toBe('BBC News');
-    expect(document.tags).toEqual(['world']);
+    respondWith(STORY);
+    const result = await sync(makeContext({ sections: ['world'] }));
+    expect(result.documents[0].id).toMatch(/^bbc-/);
+    expect(result.documents[0].author).toBe('BBC News');
+    expect(result.documents[0].tags).toEqual(['world']);
   });
 });

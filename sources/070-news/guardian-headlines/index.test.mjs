@@ -1,49 +1,52 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
-
-afterAll(() => mock.restore());
-
-import * as feedSync from '../../lib/feed-sync.mjs';
-
-mock.module('../../lib/feed-sync.mjs', () => ({
-  ...feedSync,
-  syncFeeds: mock(() => ({ documents: [], cursor: undefined, stats: { fetched: 0 } })),
-}));
-
-import { syncFeeds } from '../../lib/feed-sync.mjs';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { fetchedUrls, okResponse, rssFeedXml, rssItemXml } from '../../lib/feed-fixtures.mjs';
 import { sync } from './index.mjs';
+
+const ORIGINAL_FETCH = globalThis.fetch;
 
 function makeContext(config = {}) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor: undefined };
 }
 
-async function optionsFor(config) {
-  await sync(makeContext(config));
-  return syncFeeds.mock.calls.at(-1)[1];
+function respondWith(xml) {
+  globalThis.fetch = mock(() => Promise.resolve(okResponse(xml)));
 }
 
 describe('guardian source', () => {
-  beforeEach(() => jest.clearAllMocks());
-  afterEach(() => jest.restoreAllMocks());
+  beforeEach(() => {
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+  });
 
   it('defaults to four sections', async () => {
-    const options = await optionsFor({});
-    expect(options.feeds).toHaveLength(4);
+    respondWith(rssFeedXml([rssItemXml({})]));
+    await sync(makeContext({}));
+    expect(fetchedUrls(globalThis.fetch)).toHaveLength(4);
   });
 
   it('builds the /rss section URL', async () => {
-    const options = await optionsFor({ sections: ['technology'] });
-    expect(options.feeds[0].url).toBe('https://www.theguardian.com/technology/rss');
+    respondWith(rssFeedXml([rssItemXml({})]));
+    await sync(makeContext({ sections: ['technology'] }));
+    expect(fetchedUrls(globalThis.fetch)).toEqual(['https://www.theguardian.com/technology/rss']);
   });
 
   it('uses category tags and strips the boilerplate "Continue reading" link', async () => {
-    const options = await optionsFor({ sections: ['world'] });
-    const document = options.toDocument({
-      title: 'Story',
-      link: 'https://guardian.test/1',
-      guid: 'https://guardian.test/1',
-      description: 'Summary [Continue reading...](https://guardian.test/1)',
-      categories: ['World news', 'Politics'],
-    });
+    respondWith(
+      rssFeedXml([
+        rssItemXml({
+          title: 'Story',
+          link: 'https://guardian.test/1',
+          // Exactly what the live feed carries: the anchor arrives tag-stripped,
+          // so the boilerplate is plain text, not a markdown link.
+          description: 'Summary Continue reading...',
+          categories: ['World news', 'Politics'],
+        }),
+      ]),
+    );
+    const result = await sync(makeContext({ sections: ['world'] }));
+    const document = result.documents[0];
     expect(document.id).toMatch(/^guardian-/);
     expect(document.tags).toEqual(['World news', 'Politics']);
     expect(document.text).not.toMatch(/Continue reading/i);

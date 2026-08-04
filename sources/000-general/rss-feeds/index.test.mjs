@@ -1,50 +1,64 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
-
-afterAll(() => mock.restore());
-
-import * as feedSync from '../../lib/feed-sync.mjs';
-
-mock.module('../../lib/feed-sync.mjs', () => ({
-  ...feedSync,
-  syncFeeds: mock(() => ({ documents: [], cursor: undefined, stats: { fetched: 0 } })),
-}));
-
-import { syncFeeds } from '../../lib/feed-sync.mjs';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { fetchedUrls, okResponse, rssFeedXml, rssItemXml } from '../../lib/feed-fixtures.mjs';
 import { sync } from './index.mjs';
+
+const ORIGINAL_FETCH = globalThis.fetch;
 
 function makeContext(config = {}) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor: undefined };
 }
 
-async function optionsFor(config) {
-  await sync(makeContext(config));
-  return syncFeeds.mock.calls.at(-1)[1];
+function respondWith(xml) {
+  globalThis.fetch = mock(() => Promise.resolve(okResponse(xml)));
 }
 
 describe('rss-feeds source', () => {
-  beforeEach(() => jest.clearAllMocks());
-  afterEach(() => jest.restoreAllMocks());
-
-  it('maps each configured feed URL to a feed descriptor', async () => {
-    const options = await optionsFor({ feeds: ['https://a.test/feed', 'https://b.test/rss'] });
-    expect(options.feeds).toEqual([{ url: 'https://a.test/feed' }, { url: 'https://b.test/rss' }]);
-    expect(options.emptyWarning).toBe('No feeds configured');
+  beforeEach(() => {
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
   });
 
-  it('passes no feeds when none configured', async () => {
-    const options = await optionsFor({});
-    expect(options.feeds).toEqual([]);
+  it('fetches each configured feed URL', async () => {
+    respondWith(rssFeedXml([rssItemXml({})]));
+    await sync(makeContext({ feeds: ['https://a.test/feed', 'https://b.test/rss'] }));
+    expect(fetchedUrls(globalThis.fetch)).toEqual(['https://a.test/feed', 'https://b.test/rss']);
+  });
+
+  it('warns and fetches nothing when no feeds are configured', async () => {
+    const context = makeContext({});
+    const result = await sync(context);
+    expect(context.log.warn).toHaveBeenCalledWith('No feeds configured');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(result.documents).toEqual([]);
   });
 
   it('builds documents with the rss id prefix', async () => {
-    const options = await optionsFor({ feeds: ['https://a.test/feed'] });
-    const document = options.toDocument({
-      title: 'Post',
-      link: 'https://a.test/p',
-      guid: 'https://a.test/p',
-      description: 'Body',
-    });
-    expect(document.id).toMatch(/^rss-/);
-    expect(document.title).toBe('Post');
+    respondWith(
+      rssFeedXml([rssItemXml({ title: 'Post', link: 'https://a.test/p', description: 'Body' })]),
+    );
+    const result = await sync(makeContext({ feeds: ['https://a.test/feed'] }));
+    expect(result.documents[0].id).toMatch(/^rss-/);
+    expect(result.documents[0].title).toBe('Post');
+  });
+
+  it('stores the fullest body the feed provides, not just the excerpt', async () => {
+    respondWith(
+      rssFeedXml([
+        rssItemXml({
+          description: 'Short excerpt',
+          extra: '<content:encoded><![CDATA[<p>The whole post body</p>]]></content:encoded>',
+        }),
+      ]),
+    );
+    const result = await sync(makeContext({ feeds: ['https://a.test/feed'] }));
+    expect(result.documents[0].text).toContain('The whole post body');
+  });
+
+  it('attaches the feed’s own categories as tags', async () => {
+    respondWith(rssFeedXml([rssItemXml({ categories: ['Tech', 'Opinion'] })]));
+    const result = await sync(makeContext({ feeds: ['https://a.test/feed'] }));
+    expect(result.documents[0].tags).toEqual(['Tech', 'Opinion']);
   });
 });
