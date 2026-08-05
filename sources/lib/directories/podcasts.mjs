@@ -125,3 +125,37 @@ export async function query(input, context) {
   // where it belongs — the client demotes dormant shows by `latestAt`.
   return fetchEntries(context, url);
 }
+
+/**
+ * Look a show up by a feed URL it used to live at.
+ *
+ * This is **repair, not identity**. A subscription is addressed by its URL, and
+ * a well-behaved move announces itself — `<itunes:new-feed-url>` or a permanent
+ * redirect. Some moves are not well-behaved: the old host simply stops
+ * answering. The index has usually seen where the show went, because it tracks
+ * feeds rather than addresses.
+ *
+ * Only ever called for a feed that has already died, so it costs nothing on the
+ * healthy path and puts no third party between Trove and a working feed.
+ *
+ * @param {string} url - The address that stopped answering.
+ * @param {object} context - The directory context (signing fetch + log).
+ * @returns {Promise<object | undefined>} The show as the index knows it today.
+ */
+export async function lookup(url, context) {
+  const endpoint = new URL(`${BASE}/podcasts/byfeedurl`);
+  endpoint.searchParams.set('url', url);
+
+  const response = await context.fetch(endpoint.toString());
+  // 404 is a real answer here — the index has never heard of this feed — and is
+  // not worth failing a repair attempt over.
+  if (response.status === 404) return;
+  if (!response.ok) {
+    throw new Error(`Podcast Index returned ${String(response.status)} for ${endpoint.pathname}`);
+  }
+
+  const body = await response.json();
+  const feed = body?.feed;
+  if (!feed || typeof feed !== 'object' || Array.isArray(feed)) return;
+  return toEntry(feed);
+}
