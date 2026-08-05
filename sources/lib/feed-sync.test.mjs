@@ -809,3 +809,83 @@ describe('syncFeeds reports what the feed calls itself (trove docs/39 D10)', () 
     expect(result.feedName).toBe('Renamed Show');
   });
 });
+
+/** A channel advertising a permanent move, the way Apple's spec defines it. */
+function movedRss(newUrl, ...items) {
+  return `<rss><channel><title>A Show</title>
+    <itunes:new-feed-url>${newUrl}</itunes:new-feed-url>${items.join('')}</channel></rss>`;
+}
+
+describe('syncFeeds follows a feed that says it has moved', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('reports the new address a single feed advertises', async () => {
+    fetch.mockResolvedValueOnce(
+      ok(movedRss('https://new.test/feed.xml', rssItem({ title: 'A', link: 'https://s.test/a' }))),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://old.test/feed.xml' }],
+      toDocument: STD('s'),
+    });
+    expect(result.feedUrl).toBe('https://new.test/feed.xml');
+  });
+
+  it('reports nothing when the feed advertises the address we already fetched', async () => {
+    // Publishing your own current URL is common and correct — it is not a move,
+    // and reporting it would churn a relocation every single round.
+    const url = 'https://same.test/feed.xml';
+    fetch.mockResolvedValueOnce(
+      ok(movedRss(url, rssItem({ title: 'A', link: 'https://s.test/a' }))),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url }],
+      toDocument: STD('s'),
+    });
+    expect(result.feedUrl).toBeUndefined();
+  });
+
+  it('reports nothing for a feed advertising no move at all', async () => {
+    fetch.mockResolvedValueOnce(ok(rss(rssItem({ title: 'A', link: 'https://s.test/a' }))));
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+    });
+    expect(result.feedUrl).toBeUndefined();
+  });
+
+  it('reports NO move when a round covered several feeds', async () => {
+    fetch
+      .mockResolvedValueOnce(
+        ok(movedRss('https://new-a.test/f', rssItem({ title: 'A', link: 'https://s.test/a' }))),
+      )
+      .mockResolvedValueOnce(ok(rss(rssItem({ title: 'B', link: 'https://s.test/b' }))));
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }, { url: 'https://s.test/2' }],
+      toDocument: STD('s'),
+    });
+    // Applying it would point one subscription at another show's feed.
+    expect(result.feedUrl).toBeUndefined();
+  });
+
+  it('keeps reporting the move when the feed has nothing new', async () => {
+    // A moved feed is usually a stale feed — the publisher stopped updating it
+    // once the move was announced. If the signal only rode along with
+    // documents, exactly the feeds that need following would never be followed.
+    fetch.mockResolvedValueOnce(
+      ok(movedRss('https://new.test/feed.xml', rssItem({ title: 'A', link: 'https://s.test/a' }))),
+    );
+    const result = await syncFeeds(
+      makeContext({ type: 'date', value: '2099-01-01T00:00:00.000Z' }),
+      { feeds: [{ url: 'https://old.test/feed.xml' }], toDocument: STD('s') },
+    );
+    expect(result.documents).toHaveLength(0);
+    expect(result.feedUrl).toBe('https://new.test/feed.xml');
+  });
+});

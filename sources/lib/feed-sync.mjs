@@ -1,4 +1,5 @@
 import { parse as parseHtmlDocument } from 'node-html-parser';
+import { feedRelocation, feedSelfTitle, selfReport } from './feed-identity.mjs';
 import {
   deadlineReached,
   decodeHtmlEntities,
@@ -217,21 +218,6 @@ function selectEntries(entries, maxDocuments) {
  *
  * @returns {Promise<{entries: Array<{document: object, ms: number}>, skipped: number, transient: number, permanent: number, unreached: number}>}
  */
-/**
- * What a feed calls itself, read off its items.
- *
- * The parsers stamp the channel title onto every item (`rss-parse` sets
- * `feedTitle`), so this needs no second pass over the document. A feed carrying
- * no items yields nothing, which is the honest answer rather than a guess.
- *
- * @param {object[]} items - The feed's parsed items.
- * @returns {string | undefined} The trimmed title, or undefined.
- */
-function feedSelfTitle(items) {
-  const title = items.find((item) => item.feedTitle)?.feedTitle;
-  return title ? title.trim() : undefined;
-}
-
 /** Warn about one feed's fetch failure, naming it and why it failed. */
 function warnFetchFailure(context, outcome) {
   const origin = outcome.feed.label || outcome.feed.url;
@@ -276,7 +262,17 @@ function absorbFeedItems(context, outcome, { entries, seenIdentities, lastDate, 
  * @returns {{skipped: number, transient: number, permanent: number}} Deltas.
  */
 function absorbBatch(context, outcomes, state) {
-  const { entries, feedTitles, seenIdentities, lastDate, toDocument, total, start, label } = state;
+  const {
+    entries,
+    feedTitles,
+    relocations,
+    seenIdentities,
+    lastDate,
+    toDocument,
+    total,
+    start,
+    label,
+  } = state;
   let skipped = 0;
   let transient = 0;
   let permanent = 0;
@@ -289,6 +285,13 @@ function absorbBatch(context, outcomes, state) {
     } else {
       const title = feedSelfTitle(outcome.items);
       if (title) feedTitles.push(title);
+      const moved = feedRelocation(outcome.items, outcome.feed.url);
+      if (moved) {
+        relocations.push(moved);
+        context.log.info(
+          `  ${outcome.feed.label || outcome.feed.url}: says it has moved to ${moved}`,
+        );
+      }
       skipped += absorbFeedItems(context, outcome, {
         entries,
         seenIdentities,
@@ -312,6 +315,7 @@ async function fetchAllFeeds(
 ) {
   const entries = [];
   const feedTitles = [];
+  const relocations = [];
   const seenIdentities = new Set();
   let skipped = 0;
   let transient = 0;
@@ -342,6 +346,7 @@ async function fetchAllFeeds(
     const tally = absorbBatch(context, outcomes, {
       entries,
       feedTitles,
+      relocations,
       seenIdentities,
       lastDate,
       toDocument,
@@ -354,7 +359,7 @@ async function fetchAllFeeds(
     permanent += tally.permanent;
   }
 
-  return { entries, feedTitles, skipped, transient, permanent, unreached };
+  return { entries, feedTitles, relocations, skipped, transient, permanent, unreached };
 }
 
 /**
@@ -419,9 +424,8 @@ export async function syncFeeds(
     (firstRunLookbackMs ? new Date(Date.now() - firstRunLookbackMs) : undefined);
   context.log.info(`Fetching ${feeds.length} ${label}...`);
 
-  const { entries, feedTitles, skipped, transient, permanent, unreached } = await fetchAllFeeds(
-    context,
-    {
+  const { entries, feedTitles, relocations, skipped, transient, permanent, unreached } =
+    await fetchAllFeeds(context, {
       feeds,
       label,
       parseFeed,
@@ -429,8 +433,7 @@ export async function syncFeeds(
       toDocument,
       maxBytes: feedMaxBytes,
       concurrency,
-    },
-  );
+    });
 
   if (transient + permanent === feeds.length) {
     throw new Error(`All ${feeds.length} ${label} failed to fetch`);
@@ -470,14 +473,9 @@ export async function syncFeeds(
   return {
     documents,
     cursor,
-    // What this subscription calls itself, so the row can stop being named
-    // after its URL (trove docs/39 D10). Reported ONLY for a single-feed round,
-    // because with several feeds in one round there is no one row the name
-    // belongs to. The cloud narrows a fan-out source's config to one feed per
-    // round, so in practice every podcast/RSS subscription reports its own.
-    ...(feeds.length === 1 && feedTitles.length === 1 && feedTitles[0]
-      ? { feedName: feedTitles[0] }
-      : {}),
+    // What this subscription says about itself — see feed-identity.mjs for
+    // why both facts are single-feed-only.
+    ...selfReport({ feedCount: feeds.length, titles: feedTitles, relocations }),
     stats: {
       fetched: documents.length,
       skipped,
