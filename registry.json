@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-05T01:25:35.465Z",
+  "updated_at": "2026-08-05T22:45:11.334Z",
   "source_count": 26,
   "categories": [
     "000-general",
@@ -518,7 +518,12 @@
       "config": {
         "feeds": {
           "label": "Feed URLs",
-          "type": "url[]"
+          "type": "url[]",
+          "directory": {
+            "provider": "feeds",
+            "mode": "resolve",
+            "placeholder": "Paste a site or feed URL"
+          }
         }
       },
       "fanOut": "feeds",
