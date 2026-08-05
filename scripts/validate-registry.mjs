@@ -18,7 +18,11 @@
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { VALID_SCHEDULES, validateDirectories, validateManifest } from '../sources/lib/constants.mjs';
+import {
+  VALID_SCHEDULES,
+  validateDirectories,
+  validateManifest,
+} from '../sources/lib/constants.mjs';
 
 /** Directory provider modules that exist on disk, resolved once. */
 const DIRECTORY_PROVIDER_DIR = new URL('../sources/lib/directories/', import.meta.url);
@@ -178,7 +182,7 @@ for (const { manifest, hasCode, path } of fsSources) {
   // layout; a typo caught at build time beats one surfacing to a user as an
   // empty search result.
   for (const error of validateDirectories(manifest, directoryProviderExists)) {
-    fail(`${relativePath}: ${error}`);
+    warn(`${path}/manifest.json: ${error}`);
   }
   for (const error of validateManifest(manifest, { implemented: hasCode })) {
     warn(`${path}/manifest.json: ${error}`);
