@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   VALID_SCHEDULES,
+  validateDirectories,
   validateFanOut,
   validateFormatting,
   validateLocation,
@@ -334,5 +335,43 @@ describe('validateManifest', () => {
     expect(
       validateManifest({ ...validCloudManifest, formatting: 'reformat' }, { implemented: true }),
     ).toEqual([]);
+  });
+});
+
+describe('validateDirectories', () => {
+  const exists = (name) => name === 'podcasts';
+  const withDirectory = (directory) => ({
+    config: { feeds: { label: 'Podcast feed URLs', type: 'url[]', directory } },
+  });
+
+  it('accepts a well-formed directory', () => {
+    expect(
+      validateDirectories(withDirectory({ provider: 'podcasts', mode: 'search' }), exists),
+    ).toEqual([]);
+  });
+
+  it('accepts a manifest with no directory at all', () => {
+    expect(validateDirectories({ config: { feeds: { type: 'url[]' } } }, exists)).toEqual([]);
+  });
+
+  it('rejects a provider with no module on disk', () => {
+    const errors = validateDirectories(withDirectory({ provider: 'nope', mode: 'search' }), exists);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('has no module in sources/lib/directories/');
+  });
+
+  it('rejects a mode no client can render', () => {
+    const errors = validateDirectories(
+      withDirectory({ provider: 'podcasts', mode: 'browse' }),
+      exists,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('mode must be');
+  });
+
+  it('rejects a non-object directory', () => {
+    expect(validateDirectories(withDirectory('podcasts'), exists)).toEqual([
+      'config.feeds.directory must be an object',
+    ]);
   });
 });

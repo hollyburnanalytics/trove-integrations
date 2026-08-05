@@ -18,7 +18,20 @@
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { VALID_SCHEDULES, validateManifest } from '../sources/lib/constants.mjs';
+import { VALID_SCHEDULES, validateDirectories, validateManifest } from '../sources/lib/constants.mjs';
+
+/** Directory provider modules that exist on disk, resolved once. */
+const DIRECTORY_PROVIDER_DIR = new URL('../sources/lib/directories/', import.meta.url);
+
+/**
+ * Whether a directory provider module exists for `name`.
+ *
+ * @param {string} name - The provider named by a manifest field.
+ * @returns {boolean} True when `sources/lib/directories/{name}.mjs` exists.
+ */
+function directoryProviderExists(name) {
+  return existsSync(new URL(`${name}.mjs`, DIRECTORY_PROVIDER_DIR));
+}
 
 const { join } = path;
 
@@ -160,6 +173,13 @@ for (const { manifest, path } of fsSources) {
 // MVP cut when implemented), `location` + the cloud-eligibility predicate, and
 // the optional `fanOut` reference. See sources/lib/constants.mjs.
 for (const { manifest, hasCode, path } of fsSources) {
+  // A manifest's directory provider must have a module on disk. Checked here
+  // rather than inside validateManifest because only the script knows the repo
+  // layout; a typo caught at build time beats one surfacing to a user as an
+  // empty search result.
+  for (const error of validateDirectories(manifest, directoryProviderExists)) {
+    fail(`${relativePath}: ${error}`);
+  }
   for (const error of validateManifest(manifest, { implemented: hasCode })) {
     warn(`${path}/manifest.json: ${error}`);
   }

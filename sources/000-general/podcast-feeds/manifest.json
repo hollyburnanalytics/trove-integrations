@@ -17,7 +17,12 @@
   "config": {
     "feeds": {
       "label": "Podcast feed URLs",
-      "type": "url[]"
+      "type": "url[]",
+      "directory": {
+        "provider": "podcasts",
+        "mode": "search",
+        "placeholder": "Search shows by name"
+      }
     }
   },
   "fanOut": "feeds",
