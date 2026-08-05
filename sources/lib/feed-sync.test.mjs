@@ -726,3 +726,86 @@ describe('syncFeeds concurrency and the soft deadline', () => {
     expect(result.documents).toHaveLength(3);
   });
 });
+
+/** A channel with a title, so the feed can say what it calls itself. */
+function titledRss(title, ...items) {
+  return `<rss><channel><title>${title}</title>${items.join('')}</channel></rss>`;
+}
+
+describe('syncFeeds reports what the feed calls itself (trove docs/39 D10)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('reports the channel title for a single-feed round', async () => {
+    fetch.mockResolvedValueOnce(
+      ok(titledRss('Accidental Tech Podcast', rssItem({ title: 'A', link: 'https://s.test/a' }))),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+    });
+    // The subscription row is created named after its URL; this is the only
+    // thing that can ever tell it otherwise.
+    expect(result.feedName).toBe('Accidental Tech Podcast');
+  });
+
+  it('reports NO name when a round covered several feeds', async () => {
+    fetch
+      .mockResolvedValueOnce(
+        ok(titledRss('Show One', rssItem({ title: 'A', link: 'https://s.test/a' }))),
+      )
+      .mockResolvedValueOnce(
+        ok(titledRss('Show Two', rssItem({ title: 'B', link: 'https://s.test/b' }))),
+      );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }, { url: 'https://s.test/2' }],
+      toDocument: STD('s'),
+    });
+    // Two titles and one round: there is no single row the name belongs to, and
+    // guessing would rename one subscription after another's show.
+    expect(result.feedName).toBeUndefined();
+  });
+
+  it('reports no name when the channel is untitled', async () => {
+    fetch.mockResolvedValueOnce(ok(rss(rssItem({ title: 'A', link: 'https://s.test/a' }))));
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+    });
+    expect(result.feedName).toBeUndefined();
+  });
+
+  it('reports no name for an empty feed, having nothing to read it from', async () => {
+    fetch.mockResolvedValueOnce(ok(titledRss('Silent Show')));
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/1' }],
+      toDocument: STD('s'),
+    });
+    expect(result.documents).toHaveLength(0);
+    expect(result.feedName).toBeUndefined();
+  });
+
+  it('keeps reporting the title once the feed has nothing new', async () => {
+    // The rename path depends on this: a settled feed emits no documents every
+    // round, and if the name only rode along with documents a show could never
+    // be renamed after its first sync.
+    fetch.mockResolvedValueOnce(
+      ok(titledRss('Renamed Show', rssItem({ title: 'A', link: 'https://s.test/a' }))),
+    );
+    const result = await syncFeeds(
+      makeContext({ type: 'date', value: '2099-01-01T00:00:00.000Z' }),
+      {
+        feeds: [{ url: 'https://s.test/1' }],
+        toDocument: STD('s'),
+      },
+    );
+    expect(result.documents).toHaveLength(0);
+    expect(result.feedName).toBe('Renamed Show');
+  });
+});
