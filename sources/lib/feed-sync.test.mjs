@@ -889,3 +889,94 @@ describe('syncFeeds follows a feed that says it has moved', () => {
     expect(result.feedUrl).toBe('https://new.test/feed.xml');
   });
 });
+
+/** A redirect response, as `redirect: 'manual'` surfaces it. */
+function moved(status, location) {
+  return new Response(undefined, { status, headers: { location } });
+}
+
+describe('syncFeeds treats a permanent redirect as a move', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    globalThis.fetch = mock();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('reports a 301 target as the feed’s new address', async () => {
+    fetch.mockImplementation((url) =>
+      Promise.resolve(
+        String(url) === 'https://old.test/f'
+          ? moved(301, 'https://new.test/f')
+          : ok(rss(rssItem({ title: 'A', link: 'https://s.test/a' }))),
+      ),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://old.test/f' }],
+      toDocument: STD('s'),
+    });
+    expect(result.feedUrl).toBe('https://new.test/f');
+  });
+
+  it('ignores a 302, which is routing rather than moving', async () => {
+    fetch.mockImplementation((url) =>
+      Promise.resolve(
+        String(url) === 'https://s.test/f'
+          ? moved(302, 'https://edge.test/f')
+          : ok(rss(rssItem({ title: 'A', link: 'https://s.test/a' }))),
+      ),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://s.test/f' }],
+      toDocument: STD('s'),
+    });
+    expect(result.feedUrl).toBeUndefined();
+  });
+
+  it('prefers the show’s own new-feed-url over the host’s redirect', async () => {
+    // The tag is the publisher's statement of where subscribers should end up;
+    // a redirect is the platform's. When they disagree, the publisher wins.
+    fetch.mockImplementation((url) =>
+      Promise.resolve(
+        String(url) === 'https://old.test/f'
+          ? moved(301, 'https://host-says.test/f')
+          : ok(
+              movedRss(
+                'https://show-says.test/f',
+                rssItem({ title: 'A', link: 'https://s.test/a' }),
+              ),
+            ),
+      ),
+    );
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://old.test/f' }],
+      toDocument: STD('s'),
+    });
+    expect(result.feedUrl).toBe('https://show-says.test/f');
+  });
+
+  it('reports no move when a redirect only reaches a discovered feed', async () => {
+    // Following a site URL to the feed it advertises is not the SUBSCRIPTION
+    // relocating; reporting it would move the row onto the homepage chain.
+    fetch.mockImplementation((url) => {
+      const s = String(url);
+      if (s === 'https://site.test') {
+        return Promise.resolve(moved(301, 'https://site.test/home'));
+      }
+      if (s === 'https://site.test/home') {
+        return Promise.resolve(
+          ok('<html><link rel="alternate" type="application/rss+xml" href="/feed.xml"></html>'),
+        );
+      }
+      return Promise.resolve(ok(rss(rssItem({ title: 'A', link: 'https://s.test/a' }))));
+    });
+    const result = await syncFeeds(makeContext(), {
+      feeds: [{ url: 'https://site.test' }],
+      toDocument: STD('s'),
+    });
+    expect(result.documents).toHaveLength(1);
+    expect(result.feedUrl).toBeUndefined();
+  });
+});
