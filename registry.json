@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-03T21:00:04.620Z",
+  "updated_at": "2026-08-05T01:25:35.465Z",
   "source_count": 26,
   "categories": [
     "000-general",
@@ -460,7 +460,12 @@
       "config": {
         "feeds": {
           "label": "Podcast feed URLs",
-          "type": "url[]"
+          "type": "url[]",
+          "directory": {
+            "provider": "podcasts",
+            "mode": "search",
+            "placeholder": "Search shows by name"
+          }
         }
       },
       "fanOut": "feeds",

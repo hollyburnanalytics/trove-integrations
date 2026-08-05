@@ -50,6 +50,17 @@ export const CLOUD_ELIGIBLE_TRANSPORTS = ['feed', 'api', 'scrape'];
  */
 export const FAN_OUT_FIELD_TYPES = ['url[]', 'text[]'];
 
+/** Affordances a directoried config field can ask a client to render. @type {readonly string[]} */
+export const DIRECTORY_MODES = ['search', 'resolve'];
+
+/**
+ * Auth strategies trove-api knows how to sign with. A provider names one; the
+ * seam applies it. Listed here so a manifest naming an unimplementable strategy
+ * fails registry validation rather than at a user's first search.
+ * @type {readonly string[]}
+ */
+export const DIRECTORY_AUTH_STRATEGIES = ['podcast-index'];
+
 /** Resume strategy declared by a source; the value lives in the feed's cursor. @type {readonly string[]} */
 export const WATERMARK_STRATEGIES = [
   'date',
@@ -238,5 +249,52 @@ export function validateManifest(manifest, { implemented }) {
     ...validateLocation(manifest),
     ...validateFanOut(manifest),
     ...validateFormatting(manifest),
+    ...validateDirectories(manifest),
   ];
+}
+
+/**
+ * Validate every `directory` descriptor in a manifest's config block (docs/39
+ * D1). A directory is a property of a FIELD, so this walks fields rather than
+ * looking for a source-level flag.
+ *
+ * The provider must exist on disk and the mode must be one a client can render.
+ * Both are checked here rather than at query time because a typo that reaches
+ * production surfaces to a user as "no results", which is indistinguishable
+ * from a genuinely empty search.
+ *
+ * @param {Record<string, unknown>} manifest - the parsed manifest.json
+ * @param {(name: string) => boolean} [providerExists] - resolver for provider
+ *   existence; defaults to accepting any name (the registry script injects a
+ *   real one that checks `sources/lib/directories/`).
+ * @returns {string[]} validation errors (empty when absent or valid)
+ */
+export function validateDirectories(manifest, providerExists = () => true) {
+  const config = manifest.config;
+  if (!isRecord(config)) return [];
+  const errors = [];
+
+  for (const [name, field] of Object.entries(config)) {
+    if (!isRecord(field)) continue;
+    const directory = field.directory;
+    if (directory === undefined) continue;
+    if (!isRecord(directory)) {
+      errors.push(`config.${name}.directory must be an object`);
+      continue;
+    }
+    const { provider, mode } = directory;
+    if (typeof provider !== 'string' || provider === '') {
+      errors.push(`config.${name}.directory.provider must be a non-empty string`);
+    } else if (!providerExists(provider)) {
+      errors.push(
+        `config.${name}.directory.provider "${provider}" has no module in sources/lib/directories/`,
+      );
+    }
+    if (!DIRECTORY_MODES.includes(/** @type {string} */ (mode))) {
+      errors.push(
+        `config.${name}.directory.mode must be ∈ {${DIRECTORY_MODES.join(', ')}} (got ${JSON.stringify(mode)})`,
+      );
+    }
+  }
+  return errors;
 }
