@@ -269,7 +269,7 @@ function categoryLabels(value) {
 }
 
 /** Normalize one RSS 2.0 / RSS 1.0 `<item>`. */
-function rssItem(item, feedAuthor, feedTitle = '') {
+function rssItem(item, feedAuthor, feedTitle = '', feedNewUrl = '') {
   const descriptionHtml = htmlPayload(item.description);
   const contentHtml = htmlPayload(item.encoded); // <content:encoded>
   const link = atomLink(item.link);
@@ -285,6 +285,7 @@ function rssItem(item, feedAuthor, feedTitle = '') {
     categories: categoryLabels(item.category),
     enclosure: rssEnclosure(item.enclosure),
     feedTitle,
+    feedNewUrl,
   };
 }
 
@@ -367,6 +368,9 @@ function parseJsonFeed(text) {
  *    distinct from `author`. A podcast feed names the SHOW here while its items
  *    name the hosts, so a source adapter that must attribute to the show reads
  *    this rather than `author`. `''` for a bare fragment with no feed element.
+ *  - `feedNewUrl` — the channel's `<itunes:new-feed-url>`: where the show says
+ *    it has permanently moved to. `''` when the feed advertises no move, which
+ *    is nearly always. RSS only — Atom and JSON Feed define no equivalent.
  *  - `enclosure` — the attached media file as `{ url, type, length? }`, or
  *    `undefined` when the item has none. RSS `<enclosure>`, Atom
  *    `<link rel="enclosure">`, JSON Feed `attachments[0]`. This is how a
@@ -404,8 +408,13 @@ function parseXmlFeed(trimmed) {
     const feedTitle = nodeText(channelNode?.title);
     const feedAuthor =
       nodeText(channelNode?.creator) || authorName(channelNode?.author) || feedTitle;
+    // `<itunes:new-feed-url>` — the podcast standard for a permanent move. The
+    // namespace prefix is stripped by the parser (removeNSPrefix), so it
+    // arrives as `new-feed-url`. Published by the show itself, which makes it
+    // the most authoritative relocation signal available.
+    const feedNewUrl = nodeText(channelNode?.['new-feed-url']);
     const items = asArray(channel).flatMap((c) => asArray(c.item));
-    return items.map((item) => rssItem(item, feedAuthor, feedTitle));
+    return items.map((item) => rssItem(item, feedAuthor, feedTitle, feedNewUrl));
   }
 
   // Atom <feed> documents and bare fragments.
