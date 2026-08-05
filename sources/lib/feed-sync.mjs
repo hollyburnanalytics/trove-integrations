@@ -4,6 +4,7 @@ import {
   deadlineReached,
   decodeHtmlEntities,
   fetchPage,
+  fetchPageWithMeta,
   htmlToText,
   isTooLargeError,
   itemIdentity,
@@ -94,14 +95,17 @@ export function feedItemDocument(idPrefix, item, { defaultAuthor, tags, fullText
  * advertises instead of failing.
  */
 async function fetchFeedItems(context, feed, parseFeed, maxBytes) {
-  const body = await fetchPage(feed.url, { maxBytes });
+  const { text: body, movedPermanentlyTo } = await fetchPageWithMeta(feed.url, { maxBytes });
   try {
-    return parseFeed(body);
+    return { items: parseFeed(body), movedPermanentlyTo };
   } catch (parseError) {
     const discovered = discoverFeedUrl(body, feed.url);
     if (!discovered || discovered === feed.url) throw parseError;
     context.log.info(`  ${feed.label || feed.url}: HTML page — using its feed ${discovered}`);
-    return parseFeed(await fetchPage(discovered, { maxBytes }));
+    // A discovered feed is a different resource, not this one relocating, so
+    // the redirect that led here says nothing about where the SUBSCRIPTION
+    // lives. Reporting it would move the row onto the site's homepage chain.
+    return { items: parseFeed(await fetchPage(discovered, { maxBytes })) };
   }
 }
 
@@ -285,7 +289,7 @@ function absorbBatch(context, outcomes, state) {
     } else {
       const title = feedSelfTitle(outcome.items);
       if (title) feedTitles.push(title);
-      const moved = feedRelocation(outcome.items, outcome.feed.url);
+      const moved = feedRelocation(outcome.items, outcome.feed.url, outcome.movedPermanentlyTo);
       if (moved) {
         relocations.push(moved);
         context.log.info(
@@ -336,7 +340,7 @@ async function fetchAllFeeds(
     const outcomes = await Promise.all(
       batch.map(async (feed) => {
         try {
-          return { feed, items: await fetchFeedItems(context, feed, parseFeed, maxBytes) };
+          return { feed, ...(await fetchFeedItems(context, feed, parseFeed, maxBytes)) };
         } catch (error) {
           return { feed, error };
         }

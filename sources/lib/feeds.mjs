@@ -16,7 +16,7 @@ import { dateWatermark, readDateWatermark } from './watermark.mjs';
 
 // Re-export the feed primitives so `feeds.mjs` stays the single import surface
 // for adapters, even though the implementations live in focused sibling modules.
-export { fetchPage, isTooLargeError } from './http.mjs';
+export { fetchPage, fetchPageWithMeta, isTooLargeError } from './http.mjs';
 export { parseRSS, xmlText } from './rss-parse.mjs';
 export { dayToLocalNoonIso, decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
 

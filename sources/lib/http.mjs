@@ -88,6 +88,65 @@ function tooLargeError(message) {
   return Object.assign(new Error(message), { code: TOO_LARGE_CODE });
 }
 
+/** Redirect hops followed before giving up. Feeds need far fewer than a browser. */
+const MAX_REDIRECTS = 5;
+
+/** Statuses that mean "this resource has permanently moved". */
+const PERMANENT_REDIRECTS = new Set([301, 308]);
+
+/** Statuses that are a redirect at all. */
+const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * Follow redirects by hand, so a **permanent** one can be told from a routine
+ * one, and so every hop is re-checked against the SSRF guard.
+ *
+ * `fetch` follows redirects transparently and reports only the final URL, which
+ * cannot distinguish 301 (the resource moved; update your records) from 302 (a
+ * CDN routing you somewhere today). Treating the latter as a move would corrupt
+ * healthy subscriptions, so the distinction has to be made here.
+ *
+ * The permanent target is the URL reached by the **leading run** of permanent
+ * hops. A 301 followed by a 302 has permanently moved once — to the 302's
+ * origin, not past it.
+ *
+ * @param {string} url - The starting address.
+ * @param {AbortSignal} signal
+ * @returns {Promise<{response: Response, url: string, movedPermanentlyTo?: string}>}
+ */
+async function fetchFollowing(url, signal) {
+  let current = url;
+  let permanentSoFar = true;
+  let movedPermanentlyTo;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const response = await fetch(current, { headers: HEADERS, signal, redirect: 'manual' });
+    if (!REDIRECTS.has(response.status)) {
+      return { response, url: current, ...(movedPermanentlyTo ? { movedPermanentlyTo } : {}) };
+    }
+
+    const location = response.headers.get('location');
+    if (!location) throw new Error(`HTTP ${response.status} with no Location fetching ${current}`);
+
+    let next;
+    try {
+      next = new URL(location, current).toString();
+    } catch {
+      throw new Error(`HTTP ${response.status} with an unusable Location fetching ${current}`);
+    }
+    // Every hop is a fresh fetch target chosen by the upstream, so every hop is
+    // re-checked. A redirect chain is the classic way past a guard applied only
+    // to the URL a caller supplied.
+    assertPublicHttpUrl(next);
+
+    if (permanentSoFar && PERMANENT_REDIRECTS.has(response.status)) movedPermanentlyTo = next;
+    else permanentSoFar = false;
+
+    current = next;
+  }
+  throw new Error(`Too many redirects (${MAX_REDIRECTS}) fetching ${url}`);
+}
+
 /**
  * Fetch a URL and return the raw response bytes, enforcing `maxBytes` both on
  * the declared Content-Length and while streaming the body.
@@ -95,10 +154,10 @@ function tooLargeError(message) {
  * @param {string} url
  * @param {number} maxBytes
  * @param {AbortSignal} signal
- * @returns {Promise<Uint8Array>}
+ * @returns {Promise<{bytes: Uint8Array, movedPermanentlyTo?: string}>}
  */
 async function fetchCappedBytes(url, maxBytes, signal) {
-  const response = await fetch(url, { headers: HEADERS, signal });
+  const { response, movedPermanentlyTo } = await fetchFollowing(url, signal);
   if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
 
   const contentLength = response.headers.get('content-length');
@@ -119,7 +178,7 @@ async function fetchCappedBytes(url, maxBytes, signal) {
     }
     chunks.push(value);
   }
-  return Buffer.concat(chunks);
+  return { bytes: Buffer.concat(chunks), movedPermanentlyTo };
 }
 
 /**
@@ -132,13 +191,33 @@ async function fetchCappedBytes(url, maxBytes, signal) {
  * throws an error {@link isTooLargeError} recognizes, so callers can treat it
  * as permanent rather than retry it forever.
  */
-export async function fetchPage(url, { maxBytes = MAX_RESPONSE_BYTES } = {}) {
+export async function fetchPage(url, options = {}) {
+  const { text } = await fetchPageWithMeta(url, options);
+  return text;
+}
+
+/**
+ * {@link fetchPage} plus what the fetch learned about the address itself.
+ *
+ * `movedPermanentlyTo` is set only when the chain began with 301/308 — the
+ * resource announcing a new home, as opposed to a 302 routing this request
+ * somewhere today. Callers that track where a subscription lives read this;
+ * everyone else uses {@link fetchPage} and never sees it.
+ *
+ * @param {string} url
+ * @param {{ maxBytes?: number }} [options]
+ * @returns {Promise<{text: string, movedPermanentlyTo?: string}>}
+ */
+export async function fetchPageWithMeta(url, { maxBytes = MAX_RESPONSE_BYTES } = {}) {
   assertPublicHttpUrl(url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const bytes = await fetchCappedBytes(url, maxBytes, controller.signal);
-    return new TextDecoder().decode(bytes);
+    const { bytes, movedPermanentlyTo } = await fetchCappedBytes(url, maxBytes, controller.signal);
+    return {
+      text: new TextDecoder().decode(bytes),
+      ...(movedPermanentlyTo ? { movedPermanentlyTo } : {}),
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -161,7 +240,8 @@ export async function fetchBytes(url, { maxBytes = MAX_RESPONSE_BYTES } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetchCappedBytes(url, maxBytes, controller.signal);
+    const { bytes } = await fetchCappedBytes(url, maxBytes, controller.signal);
+    return bytes;
   } finally {
     clearTimeout(timer);
   }
