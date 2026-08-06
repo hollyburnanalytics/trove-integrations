@@ -45,12 +45,20 @@ function holidaysError(res: Response): ToolError {
   return new ToolError('The holidays service is temporarily unavailable.', { retryable: true });
 }
 
-/** Format a holiday list as text + the structured payload. */
-function holidayResult(
+/**
+ * Format a holiday list as text + the structured payload.
+ *
+ * Generic over the caller's own fields rather than taking
+ * `Record<string, unknown>`: the two tools sharing this helper declare
+ * different output schemas (only one carries `year`), and a widened record
+ * satisfies neither. Preserving `T` lets each caller's result match the schema
+ * it actually declared.
+ */
+function holidayResult<T extends Record<string, unknown>>(
   heading: string,
   holidays: Holiday[],
-  structured: Record<string, unknown>,
-): { text: string; structured: Record<string, unknown> } {
+  structured: T,
+): { text: string; structured: T & { count: number; holidays: Holiday[] } } {
   if (holidays.length === 0) {
     return {
       text: `No holidays found for ${heading}.`,

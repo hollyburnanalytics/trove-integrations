@@ -80,7 +80,12 @@ async function discoverConcepts(
   taxonomy: string,
   search: string,
   limit: number,
-): Promise<{ text: string; structured: Record<string, unknown> }> {
+) {
+  // Return type inferred rather than annotated. It was
+  // `structured: Record<string, unknown>`, which widened away the exact shape
+  // this builds — and the declared `output` schema then had nothing to compare
+  // against. Both branches do return all eleven fields; only the annotation
+  // said otherwise.
   const body = await edgarJson(
     ctx,
     companyFactsUrl(resolved.cik),
