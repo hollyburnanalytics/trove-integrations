@@ -2,7 +2,7 @@
   "id": "arxiv-papers",
   "name": "arXiv Papers",
   "description": "ML and CS paper abstracts matching your search queries",
-  "icon": "📄",
+  "icon": "\ud83d\udcc4",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "500-science",
@@ -11,13 +11,18 @@
   "watermark": "date",
   "documentSemantics": "append",
   "formatting": "verbatim",
-  "location": "client",
+  "location": "cloud",
   "schedule": "every 6 hours",
   "status": "implemented",
   "config": {
     "queries": {
       "label": "Search Queries",
-      "type": "text[]"
+      "type": "text[]",
+      "directory": {
+        "provider": "arxiv",
+        "mode": "search",
+        "placeholder": "Search arXiv subjects"
+      }
     }
   },
   "needs_browser": false,

@@ -16,7 +16,7 @@
  */
 
 import { parse } from 'node-html-parser';
-import { dayToLocalNoonIso, stableId } from '../../lib/feeds.mjs';
+import { dayToLocalNoonIso, fetchPage, stableId } from '../../lib/feeds.mjs';
 import { advanceDateWatermark, readDateWatermark } from '../../lib/watermark.mjs';
 
 const FILING_TYPES = new Set([
@@ -32,8 +32,15 @@ const FILING_TYPES = new Set([
   'F-1/A',
 ]);
 
+/**
+ * EDGAR refuses a generic bot User-Agent outright — a request carrying one
+ * comes back 403 "Request Rate Threshold Exceeded" on the very first call,
+ * whatever the actual rate. Their published policy asks for an identifying
+ * organisation and a contact address, and supplying one is the difference
+ * between this source working and not.
+ */
 const SEC_HEADERS = {
-  'User-Agent': 'TroveBot/0.1 (+https://github.com/hollyburnanalytics/trove-integrations)',
+  'User-Agent': 'Hollyburn Analytics Inc. bots@hollyburnanalytics.com',
   Accept: 'application/json, text/html, */*',
 };
 
@@ -45,16 +52,17 @@ const MIN_TEXT_LENGTH = 100;
 
 // --- Helpers ---
 
+// Both go through the shared fetch rather than calling `fetch` directly: it
+// carries the SSRF guard, the response-size cap, the request timeout and the
+// redirect handling. That mattered less when this source only ran on the
+// user's own Mac; running in the cloud it fetches on everyone's behalf.
+
 async function fetchJson(url) {
-  const response = await fetch(url, { headers: SEC_HEADERS });
-  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
-  return response.json();
+  return JSON.parse(await fetchPage(url, { headers: SEC_HEADERS }));
 }
 
 async function fetchHtml(url) {
-  const response = await fetch(url, { headers: SEC_HEADERS });
-  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
-  return response.text();
+  return fetchPage(url, { headers: SEC_HEADERS });
 }
 
 /**

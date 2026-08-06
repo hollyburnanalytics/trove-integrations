@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-05T22:45:11.334Z",
+  "updated_at": "2026-08-06T00:46:53.964Z",
   "source_count": 26,
   "categories": [
     "000-general",
@@ -52,11 +52,16 @@
       "transport": "api",
       "watermark": "date",
       "documentSemantics": "append",
-      "location": "client",
+      "location": "cloud",
       "config": {
         "queries": {
           "label": "Search Queries",
-          "type": "text[]"
+          "type": "text[]",
+          "directory": {
+            "provider": "arxiv",
+            "mode": "search",
+            "placeholder": "Search arXiv subjects"
+          }
         }
       },
       "formatting": "verbatim"
@@ -545,7 +550,12 @@
         "tickers": {
           "label": "Company Tickers",
           "type": "array",
-          "default": []
+          "default": [],
+          "directory": {
+            "provider": "companies",
+            "mode": "search",
+            "placeholder": "Search companies by name"
+          }
         }
       },
       "path": "sources/650-business/sec-filings",
@@ -554,8 +564,8 @@
       "transport": "api",
       "watermark": "date",
       "documentSemantics": "append",
-      "available": false,
-      "location": "client"
+      "available": true,
+      "location": "cloud"
     },
     {
       "id": "simon-willison",
