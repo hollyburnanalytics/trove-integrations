@@ -199,7 +199,7 @@ export default defineMcpServer({
       output: z.object({
         count: z.number(),
         notFound: z.array(z.string()),
-        products: z.array(z.record(z.unknown())),
+        products: z.array(z.record(z.string(), z.unknown())),
       }),
       async handler(args, ctx) {
         ctx.log('lookup_products', { count: args.ids.length });
@@ -242,9 +242,9 @@ export default defineMcpServer({
         context: contextInput,
       }),
       output: z.object({
-        product: z.record(z.unknown()).nullable(),
-        options: z.array(z.record(z.unknown())),
-        variants: z.array(z.record(z.unknown())),
+        product: z.record(z.string(), z.unknown()).nullable(),
+        options: z.array(z.record(z.string(), z.unknown())),
+        variants: z.array(z.record(z.string(), z.unknown())),
       }),
       async handler(args, ctx) {
         ctx.log('get_product', { id: args.id });

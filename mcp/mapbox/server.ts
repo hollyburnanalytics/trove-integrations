@@ -75,7 +75,7 @@ export default defineMcpServer({
       }),
       output: z.object({
         type: z.literal('FeatureCollection'),
-        features: z.array(z.record(z.unknown())),
+        features: z.array(z.record(z.string(), z.unknown())),
       }),
       async handler(args, ctx) {
         const { lng, lat, contours_minutes, profile } = args;
@@ -193,7 +193,7 @@ export default defineMcpServer({
         found: z.boolean(),
         duration_seconds: z.number().nullable(),
         distance_meters: z.number().nullable(),
-        geometry: z.record(z.unknown()).nullable(),
+        geometry: z.record(z.string(), z.unknown()).nullable(),
         steps: z.array(z.string()).optional(),
       }),
       async handler(args, ctx) {

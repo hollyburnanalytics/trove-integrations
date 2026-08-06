@@ -204,7 +204,7 @@ export default defineMcpServer({
         resourceId: z.string(),
         total: z.number(),
         fields: z.array(z.string()),
-        records: z.array(z.record(z.unknown())),
+        records: z.array(z.record(z.string(), z.unknown())),
       }),
       async handler(args, ctx) {
         const { resourceId, q, limit } = args;
