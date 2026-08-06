@@ -1,6 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
 import { extractFilingText, filterFilings, sync } from './index.mjs';
 
+/**
+ * A real `Response`, because the adapter fetches through the shared
+ * `fetchPage` — which streams the body and reads headers, so a bare
+ * `{ ok, json }` object no longer models what comes back.
+ */
+function jsonResponse(payload) {
+  return Promise.resolve(Response.json(payload));
+}
+
+/** A real text `Response`. */
+function textResponse(body, status = 200) {
+  return Promise.resolve(new Response(body, { status }));
+}
+
 function makeContext(cursor, config = {}) {
   return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor };
 }
@@ -45,15 +59,15 @@ const FILING_HTML = `<html><body>
 function mockFetchForSync({ submissions = SUBMISSIONS_RESPONSE, html = FILING_HTML } = {}) {
   fetch.mockImplementation((url) => {
     if (typeof url === 'string' && url.includes('company_tickers.json')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(TICKER_MAP_RESPONSE) });
+      return jsonResponse(TICKER_MAP_RESPONSE);
     }
     if (typeof url === 'string' && url.includes('data.sec.gov/submissions')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(submissions) });
+      return jsonResponse(submissions);
     }
     if (typeof url === 'string' && url.includes('/Archives/edgar/') && url.endsWith('.htm')) {
-      return Promise.resolve({ ok: true, text: () => Promise.resolve(html) });
+      return textResponse(html);
     }
-    return Promise.resolve({ ok: false, status: 404 });
+    return textResponse('', 404);
   });
 }
 
@@ -131,12 +145,12 @@ describe('sec-filings source', () => {
   it('handles submissions API error gracefully', async () => {
     fetch.mockImplementation((url) => {
       if (typeof url === 'string' && url.includes('company_tickers.json')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(TICKER_MAP_RESPONSE) });
+        return jsonResponse(TICKER_MAP_RESPONSE);
       }
       if (typeof url === 'string' && url.includes('data.sec.gov/submissions')) {
-        return Promise.resolve({ ok: false, status: 500 });
+        return textResponse('', 500);
       }
-      return Promise.resolve({ ok: false, status: 404 });
+      return textResponse('', 404);
     });
 
     const context = makeContext(undefined, { tickers: ['TEST'] });
@@ -150,20 +164,20 @@ describe('sec-filings source', () => {
     let htmlFetchCount = 0;
     fetch.mockImplementation((url) => {
       if (typeof url === 'string' && url.includes('company_tickers.json')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(TICKER_MAP_RESPONSE) });
+        return jsonResponse(TICKER_MAP_RESPONSE);
       }
       if (typeof url === 'string' && url.includes('data.sec.gov/submissions')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(SUBMISSIONS_RESPONSE) });
+        return jsonResponse(SUBMISSIONS_RESPONSE);
       }
       if (typeof url === 'string' && url.includes('/Archives/edgar/') && url.endsWith('.htm')) {
         htmlFetchCount++;
         // First filing HTML fetch fails, rest succeed
         if (htmlFetchCount === 1) {
-          return Promise.resolve({ ok: false, status: 500 });
+          return textResponse('', 500);
         }
-        return Promise.resolve({ ok: true, text: () => Promise.resolve(FILING_HTML) });
+        return textResponse(FILING_HTML);
       }
-      return Promise.resolve({ ok: false, status: 404 });
+      return textResponse('', 404);
     });
 
     const context = makeContext(undefined, { tickers: ['TEST'] });
@@ -381,18 +395,16 @@ describe('extractFilingText', () => {
   it('holds the cursor when one ticker fails (others still return filings)', async () => {
     fetch.mockImplementation((url) => {
       if (typeof url === 'string' && url.includes('company_tickers.json')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(TICKER_MAP_RESPONSE) });
+        return jsonResponse(TICKER_MAP_RESPONSE);
       }
       if (typeof url === 'string' && url.includes('data.sec.gov/submissions')) {
         // OTHER (cik 7654321) is down; TEST succeeds.
-        return url.includes('7654321')
-          ? Promise.resolve({ ok: false, status: 500 })
-          : Promise.resolve({ ok: true, json: () => Promise.resolve(SUBMISSIONS_RESPONSE) });
+        return url.includes('7654321') ? textResponse('', 500) : jsonResponse(SUBMISSIONS_RESPONSE);
       }
       if (typeof url === 'string' && url.includes('/Archives/edgar/') && url.endsWith('.htm')) {
-        return Promise.resolve({ ok: true, text: () => Promise.resolve(FILING_HTML) });
+        return textResponse(FILING_HTML);
       }
-      return Promise.resolve({ ok: false, status: 404 });
+      return textResponse('', 404);
     });
 
     const cursor = { type: 'date', value: '2020-01-01T00:00:00.000Z' };

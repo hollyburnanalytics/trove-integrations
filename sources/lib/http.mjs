@@ -114,13 +114,16 @@ const REDIRECTS = new Set([301, 302, 303, 307, 308]);
  * @param {AbortSignal} signal
  * @returns {Promise<{response: Response, url: string, movedPermanentlyTo?: string}>}
  */
-async function fetchFollowing(url, signal) {
+async function fetchFollowing(url, signal, extraHeaders) {
+  // Merged over the defaults rather than replacing them, so a caller adding one
+  // header does not silently drop the honest User-Agent or Accept.
+  const headers = extraHeaders ? { ...HEADERS, ...extraHeaders } : HEADERS;
   let current = url;
   let permanentSoFar = true;
   let movedPermanentlyTo;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const response = await fetch(current, { headers: HEADERS, signal, redirect: 'manual' });
+    const response = await fetch(current, { headers, signal, redirect: 'manual' });
     if (!REDIRECTS.has(response.status)) {
       return { response, url: current, ...(movedPermanentlyTo ? { movedPermanentlyTo } : {}) };
     }
@@ -156,8 +159,8 @@ async function fetchFollowing(url, signal) {
  * @param {AbortSignal} signal
  * @returns {Promise<{bytes: Uint8Array, movedPermanentlyTo?: string}>}
  */
-async function fetchCappedBytes(url, maxBytes, signal) {
-  const { response, movedPermanentlyTo } = await fetchFollowing(url, signal);
+async function fetchCappedBytes(url, maxBytes, signal, headers) {
+  const { response, movedPermanentlyTo } = await fetchFollowing(url, signal, headers);
   if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
 
   const contentLength = response.headers.get('content-length');
@@ -205,15 +208,20 @@ export async function fetchPage(url, options = {}) {
  * everyone else uses {@link fetchPage} and never sees it.
  *
  * @param {string} url
- * @param {{ maxBytes?: number }} [options]
+ * @param {{ maxBytes?: number, headers?: Record<string, string> }} [options]
  * @returns {Promise<{text: string, movedPermanentlyTo?: string}>}
  */
-export async function fetchPageWithMeta(url, { maxBytes = MAX_RESPONSE_BYTES } = {}) {
+export async function fetchPageWithMeta(url, { maxBytes = MAX_RESPONSE_BYTES, headers } = {}) {
   assertPublicHttpUrl(url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const { bytes, movedPermanentlyTo } = await fetchCappedBytes(url, maxBytes, controller.signal);
+    const { bytes, movedPermanentlyTo } = await fetchCappedBytes(
+      url,
+      maxBytes,
+      controller.signal,
+      headers,
+    );
     return {
       text: new TextDecoder().decode(bytes),
       ...(movedPermanentlyTo ? { movedPermanentlyTo } : {}),
@@ -232,15 +240,15 @@ export async function fetchPageWithMeta(url, { maxBytes = MAX_RESPONSE_BYTES } =
  * (skip the document) rather than transient (retry next run).
  *
  * @param {string} url
- * @param {{ maxBytes?: number }} [options]
+ * @param {{ maxBytes?: number, headers?: Record<string, string> }} [options]
  * @returns {Promise<Uint8Array>}
  */
-export async function fetchBytes(url, { maxBytes = MAX_RESPONSE_BYTES } = {}) {
+export async function fetchBytes(url, { maxBytes = MAX_RESPONSE_BYTES, headers } = {}) {
   assertPublicHttpUrl(url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const { bytes } = await fetchCappedBytes(url, maxBytes, controller.signal);
+    const { bytes } = await fetchCappedBytes(url, maxBytes, controller.signal, headers);
     return bytes;
   } finally {
     clearTimeout(timer);
