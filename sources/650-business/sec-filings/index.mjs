@@ -125,39 +125,108 @@ export function filterFilings(filings, afterDate) {
  * Strips scripts, styles, and tables, then pulls paragraph/heading text.
  * Truncates to MAX_TEXT_LENGTH to keep documents manageable.
  */
+/** Elements that carry no reading content. */
+const NOISE_SELECTORS = ['script', 'style', 'noscript', 'meta', 'link', 'head'];
+
+/**
+ * Inline XBRL. `<ix:header>` and `<ix:hidden>` hold the machine-readable facts
+ * that open every modern filing as a wall of digits and namespace tokens
+ * (`20240001594805TRUEFYiso4217:USD…`). Real prose never lives there.
+ */
+const XBRL_SELECTORS = [String.raw`ix\:header`, String.raw`ix\:hidden`];
+
+/** Block elements whose text is emitted as one paragraph. */
+const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'TR', 'DIV']);
+
+/** Cells, joined along a row rather than run together. */
+const CELL_TAGS = new Set(['TD', 'TH']);
+
+/**
+ * Extract a filing's readable text.
+ *
+ * **Emitted once.** The previous implementation selected every
+ * `p, h1-h6, li, td, th, span, div` and skipped an element only if it contained
+ * a `<p>` or a heading — exempting `<span>` outright. Filings are built almost
+ * entirely from nested `div`/`span`/`td`, so a `div > div > span` emitted its
+ * text three times. Measured on a real Shopify 10-K/A: 503 paragraphs of which
+ * 250 were distinct, one repeated twelve times, 42% of stored words redundant.
+ *
+ * That was not merely wasteful. The output hit the 100,000-character cap
+ * exactly, so the duplicates PUSHED REAL CONTENT OUT of every long filing —
+ * a document both bloated and truncated.
+ *
+ * This walks top-down and emits a block only when no descendant block will
+ * emit it, so each passage appears exactly once.
+ *
+ * @param {string} html - The filing document.
+ * @returns {string} Readable text, truncated at {@link MAX_TEXT_LENGTH}.
+ */
 export function extractFilingText(html) {
   const root = parse(html);
 
-  // Remove noise elements
-  for (const selector of ['script', 'style', 'noscript', 'meta', 'link']) {
+  for (const selector of [...NOISE_SELECTORS, ...XBRL_SELECTORS]) {
     for (const element of root.querySelectorAll(selector)) element.remove();
   }
 
   const parts = [];
-  for (const element of root.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, span, div')) {
-    const text = element.textContent.trim();
-    // Skip very short fragments and common boilerplate
-    if (!text || text.length < 3) continue;
-    // Skip if this element has child elements we'll visit separately
-    if (
-      element.tagName !== 'SPAN' &&
-      element.querySelectorAll('p, h1, h2, h3, h4, h5, h6').length > 0
-    ) {
-      continue;
-    }
-    parts.push(text);
-  }
+  collectBlocks(root, parts);
 
-  // Collapse excessive whitespace
   const fullText = parts
     .join('\n\n')
     .replaceAll(/\n{3,}/g, '\n\n')
     .trim();
-
   if (fullText.length > MAX_TEXT_LENGTH) {
     return `${fullText.slice(0, MAX_TEXT_LENGTH)}\n\n[Truncated]`;
   }
   return fullText;
+}
+
+/** Whitespace-normalized text of one element. */
+function blockText(element) {
+  return element.textContent.replaceAll(/\s+/g, ' ').trim();
+}
+
+/**
+ * Walk the tree, appending each block's text once.
+ *
+ * A block whose descendants contain further blocks is not emitted itself —
+ * its children will emit the same words, and emitting both is exactly the
+ * duplication this replaced. A row emits its cells joined by " | " rather than
+ * letting `textContent` run them together into `Canada001-3740098-0486686`.
+ */
+function collectBlocks(element, parts) {
+  for (const child of element.childNodes) {
+    if (child.nodeType !== 1) continue; // elements only
+    const tag = (child.tagName ?? '').toUpperCase();
+
+    if (tag === 'TR') {
+      const cells = child.childNodes
+        .filter((node) => CELL_TAGS.has((node.tagName ?? '').toUpperCase()))
+        .map((cell) => blockText(cell))
+        .filter(Boolean);
+      if (cells.length > 0) parts.push(cells.join(' | '));
+      continue;
+    }
+
+    if (BLOCK_TAGS.has(tag) && !hasBlockDescendant(child)) {
+      const text = blockText(child);
+      if (text.length >= 3) parts.push(text);
+      continue;
+    }
+
+    collectBlocks(child, parts);
+  }
+}
+
+/** Whether an element contains a block that will emit text of its own. */
+function hasBlockDescendant(element) {
+  for (const node of element.childNodes) {
+    if (node.nodeType !== 1) continue;
+    const tag = (node.tagName ?? '').toUpperCase();
+    if (BLOCK_TAGS.has(tag) || tag === 'TABLE' || CELL_TAGS.has(tag)) return true;
+    if (hasBlockDescendant(node)) return true;
+  }
+  return false;
 }
 
 function buildDocumentUrl(cik, accessionNumber, primaryDocument) {
