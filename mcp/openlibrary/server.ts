@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 /**
  * Open Library — a no-auth hosted MCP server over the free Open Library API
@@ -48,7 +48,7 @@ const BookData = z.object({
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_books',
       title: 'Books: Search',
       description:
@@ -118,8 +118,8 @@ export default defineMcpServer({
           structured: { total: body.numFound, count: books.length, books },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_book',
       title: 'Books: Get by ISBN',
       description:
@@ -190,6 +190,6 @@ export default defineMcpServer({
           structured: result,
         };
       },
-    },
+    }),
   ],
 });

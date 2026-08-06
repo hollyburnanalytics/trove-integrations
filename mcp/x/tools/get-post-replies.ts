@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import {
   MEDIA_EXPANSION,
   MEDIA_FIELDS,
@@ -15,7 +15,7 @@ import { indexMedia, indexUsers, mapTweet, parseTweetId, snippet, tweetLine } fr
  * `get_post_replies` — the reply thread under a post. Resolves the post's
  * conversation id, then pulls the thread via recent or full-archive search.
  */
-export const getPostReplies: ToolDefinition = {
+export const getPostReplies = tool({
   name: 'get_post_replies',
   title: 'X: Get a post’s reply thread',
   description:
@@ -143,4 +143,4 @@ export const getPostReplies: ToolDefinition = {
       },
     };
   },
-};
+});

@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { jonasGet } from '../client.ts';
 import { boolish, pageInput, str, uuid } from '../fields.ts';
 
@@ -6,7 +6,7 @@ import { boolish, pageInput, str, uuid } from '../fields.ts';
  * `search_jobs` — jobs (projects) in one company, yielding the jobId/jobNumber
  * the job-cost, estimate, and subcontract tools consume.
  */
-export const searchJobs: ToolDefinition = {
+export const searchJobs = tool({
   name: 'search_jobs',
   title: 'Premier: Search jobs',
   description:
@@ -74,4 +74,4 @@ export const searchJobs: ToolDefinition = {
       structured: { count: jobs.length, jobs },
     };
   },
-};
+});

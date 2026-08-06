@@ -1,9 +1,9 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { fetchBook, fetchBookText } from '../client.ts';
 import { foldForSearch, snippetAround } from '../search.ts';
 
 /** `search_inside` — forgiving full-text search within a single book. */
-export const searchInside: ToolDefinition = {
+export const searchInside = tool({
   name: 'search_inside',
   title: 'Gutenberg: Search inside a book',
   description:
@@ -87,4 +87,4 @@ export const searchInside: ToolDefinition = {
       structured: { bookId, title: book.title, query, totalMatches: total, matches },
     };
   },
-};
+});

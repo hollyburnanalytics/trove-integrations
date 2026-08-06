@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { uuidField } from '../fields.ts';
 import { episodeOutput, getEpisode } from '../lookup.ts';
 import { renderEpisode } from '../render.ts';
@@ -6,7 +6,7 @@ import { renderEpisode } from '../render.ts';
 /**
  * `get_episode` — one episode, optionally with chapter markers.
  */
-export const getEpisodeTool: ToolDefinition = {
+export const getEpisodeTool = tool({
   name: 'get_episode',
   title: 'Taddy: Get episode',
   description:
@@ -30,4 +30,4 @@ export const getEpisodeTool: ToolDefinition = {
     const result = await getEpisode(ctx, args);
     return { text: renderEpisode(result.episode), structured: result };
   },
-};
+});

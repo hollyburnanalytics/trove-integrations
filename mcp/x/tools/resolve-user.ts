@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { USER_FIELDS_PROFILE } from '../client.ts';
 import { costNote } from '../cost.ts';
 import { profileShape } from '../shapes.ts';
@@ -9,7 +9,7 @@ import { cleanUsername, mapProfile, resolveUser } from '../users.ts';
  * `resolve_user` — look up an X profile by @handle (id, bio, follower counts,
  * verified flag, and more) for a single user read.
  */
-export const resolveUserTool: ToolDefinition = {
+export const resolveUserTool = tool({
   name: 'resolve_user',
   title: 'X: Resolve a handle to a profile',
   description:
@@ -40,4 +40,4 @@ export const resolveUserTool: ToolDefinition = {
       structured: { ...profile, note },
     };
   },
-};
+});

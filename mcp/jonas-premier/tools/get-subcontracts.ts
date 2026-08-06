@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { jonasGet } from '../client.ts';
 import { fmt, isoDate, num, pageInput, str, sum, uuid } from '../fields.ts';
 
@@ -6,7 +6,7 @@ import { fmt, isoDate, num, pageInput, str, sum, uuid } from '../fields.ts';
  * `get_subcontracts` — subcontract commitments for a company; the committed-cost
  * side of budget-vs-committed-vs-actual.
  */
-export const getSubcontracts: ToolDefinition = {
+export const getSubcontracts = tool({
   name: 'get_subcontracts',
   title: 'Premier: Get subcontracts',
   description:
@@ -112,4 +112,4 @@ export const getSubcontracts: ToolDefinition = {
       structured: { count: subcontracts.length, totalAmount, subcontracts },
     };
   },
-};
+});

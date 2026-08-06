@@ -1,10 +1,10 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { getQuota, quotaOutput } from '../discover.ts';
 
 /**
  * `check_quota` — the account's remaining monthly requests and transcript credits.
  */
-export const checkQuotaTool: ToolDefinition = {
+export const checkQuotaTool = tool({
   name: 'check_quota',
   title: 'Taddy: Check remaining quota',
   description:
@@ -29,4 +29,4 @@ export const checkQuotaTool: ToolDefinition = {
       structured: result,
     };
   },
-};
+});

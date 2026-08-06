@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { edgarJson, requireCompany } from '../client.ts';
 
 /**
@@ -71,7 +71,7 @@ function buildSearchParams(opts: {
   return params;
 }
 
-export const searchFilings: ToolDefinition = {
+export const searchFilings = tool({
   name: 'search_filings',
   title: 'EDGAR: Search filings',
   description:
@@ -156,4 +156,4 @@ export const searchFilings: ToolDefinition = {
       structured: { query, cik, total, count: filings.length, from, nextFrom, filings },
     };
   },
-};
+});

@@ -18,7 +18,7 @@
  *    `frequency`/`aggregation_method` (server-side downsampling) are free at
  *    FRED and cost logarithms-by-language-model here, so both are forwarded.
  */
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 import { runObservations } from './observations.ts';
 import { runSearch } from './search.ts';
 
@@ -50,7 +50,7 @@ const seriesSchema = z.object({
 export default defineMcpServer({
   egress: ['api.stlouisfed.org'],
   tools: [
-    {
+    tool({
       name: 'search_series',
       title: 'FRED: Search series',
       description:
@@ -98,8 +98,8 @@ export default defineMcpServer({
         ctx.log('search_series', args);
         return runSearch(args, ctx);
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_observations',
       title: 'FRED: Get observations',
       description:
@@ -204,9 +204,7 @@ export default defineMcpServer({
       }),
       async handler(args, ctx) {
         ctx.log('get_observations', args);
-        // The SDK's ToolDefinition defaults its schema generic, so `args` reaches
-        // the handler untyped; the Zod schema above is what actually validated it.
-        const requested = args.series_ids as string[];
+        const requested = args.series_ids;
         const ids = [...new Set(requested.map((id) => id.trim()).filter(Boolean))];
         if (ids.length === 0) {
           throw new ToolError('series_ids contained no usable series id.', { retryable: false });
@@ -237,6 +235,6 @@ export default defineMcpServer({
           ctx,
         );
       },
-    },
+    }),
   ],
 });

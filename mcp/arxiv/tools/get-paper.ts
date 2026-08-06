@@ -1,8 +1,8 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { fetchPaper, paperShape } from '../papers.ts';
 
 /** `get_paper` — fetch a single arXiv paper's metadata by identifier. */
-export const getPaper: ToolDefinition = {
+export const getPaper = tool({
   name: 'get_paper',
   title: 'arXiv: Get paper',
   description:
@@ -28,4 +28,4 @@ export const getPaper: ToolDefinition = {
       structured: paper,
     };
   },
-};
+});

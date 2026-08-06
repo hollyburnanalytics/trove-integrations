@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 /**
  * HathiTrust — a no-auth hosted MCP server over the public HathiTrust
@@ -58,7 +58,7 @@ function str(value: unknown): string | null {
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'lookup_volume',
       title: 'HathiTrust: Look up a volume',
       description:
@@ -191,6 +191,6 @@ export default defineMcpServer({
           structured: { identifier: key, found: true, catalogUrl, records, items },
         };
       },
-    },
+    }),
   ],
 });

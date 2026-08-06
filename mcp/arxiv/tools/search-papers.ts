@@ -1,11 +1,11 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { ARXIV_API, arxivFetch } from '../client.ts';
 import { authorLine, paperShape, truncate } from '../papers.ts';
 import { parseFeed, totalResults } from '../parse.ts';
 import { buildSearchQuery, SORT_BY } from '../search-query.ts';
 
 /** `search_papers` — search arXiv.org for papers (free-text or field-scoped). */
-export const searchPapers: ToolDefinition = {
+export const searchPapers = tool({
   name: 'search_papers',
   title: 'arXiv: Search papers',
   description:
@@ -84,7 +84,7 @@ export const searchPapers: ToolDefinition = {
     const params = new URLSearchParams({
       start: String(start),
       max_results: String(maxResults),
-      sortBy: SORT_BY[sortBy as keyof typeof SORT_BY],
+      sortBy: SORT_BY[sortBy],
       sortOrder: 'descending',
     });
     // search_query is appended raw: its `+AND+` joiners and `[lo+TO+hi]`
@@ -141,4 +141,4 @@ export const searchPapers: ToolDefinition = {
       },
     };
   },
-};
+});

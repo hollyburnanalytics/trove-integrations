@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import {
   MEDIA_EXPANSION,
   MEDIA_FIELDS,
@@ -16,7 +16,7 @@ import { indexMedia, indexUsers, mapTweet, tweetLine } from '../tweets.ts';
  * `search_posts` — search X with its operators over the recent (7-day) window or
  * the full archive back to 2006, with an optional post-type filter.
  */
-export const searchPosts: ToolDefinition = {
+export const searchPosts = tool({
   name: 'search_posts',
   title: 'X: Search posts (recent or full archive)',
   description:
@@ -121,4 +121,4 @@ export const searchPosts: ToolDefinition = {
       },
     };
   },
-};
+});

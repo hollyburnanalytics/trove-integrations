@@ -1,4 +1,4 @@
-import { type ToolContext, type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
 import {
   type Company,
   edgarDocument,
@@ -121,7 +121,7 @@ function formatHoldingsText(opts: {
   );
 }
 
-export const getFundHoldings: ToolDefinition = {
+export const getFundHoldings = tool({
   name: 'get_fund_holdings',
   title: 'EDGAR: 13F fund holdings',
   description:
@@ -232,4 +232,4 @@ export const getFundHoldings: ToolDefinition = {
       },
     };
   },
-};
+});

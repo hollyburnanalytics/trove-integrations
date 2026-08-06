@@ -7,7 +7,7 @@
  * returns a bare JSON array of sequence records.
  */
 import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 const BASE_URL = 'https://oeis.org';
 
@@ -39,7 +39,7 @@ function normalizeId(id: string): string {
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_sequences',
       title: 'OEIS: Search integer sequences',
       description:
@@ -94,8 +94,8 @@ export default defineMcpServer({
           structured: { query, count: sequences.length, sequences },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_sequence',
       title: 'OEIS: Get a sequence',
       description:
@@ -143,6 +143,6 @@ export default defineMcpServer({
         const text = `${sequence.id} — ${sequence.name}\n  ${sequence.terms}${sequence.formula ? `\n\nFormula:\n${sequence.formula}` : ''}`;
         return { text, structured: sequence };
       },
-    },
+    }),
   ],
 });

@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { jonasGet } from '../client.ts';
 import { pageInput, str, uuid } from '../fields.ts';
 
@@ -6,7 +6,7 @@ import { pageInput, str, uuid } from '../fields.ts';
  * `search_vendors` — vendors (subs & suppliers) in one company, yielding the
  * apSubledgerId the AP invoice/payment tools require.
  */
-export const searchVendors: ToolDefinition = {
+export const searchVendors = tool({
   name: 'search_vendors',
   title: 'Premier: Search vendors',
   description:
@@ -78,4 +78,4 @@ export const searchVendors: ToolDefinition = {
       structured: { count: vendors.length, vendors },
     };
   },
-};
+});

@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 /**
  * Resend — a hosted MCP server that **sends email** via the Resend API
@@ -46,7 +46,7 @@ const SendResponse = z.object({ id: z.string().nullish() });
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'send_email',
       title: 'Resend: Send an email',
       description:
@@ -139,6 +139,6 @@ export default defineMcpServer({
           structured: { sent: true, id, to, subject },
         };
       },
-    },
+    }),
   ],
 });

@@ -1,9 +1,9 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { GUTENDEX, gutendexErrorMap, toBook } from '../client.ts';
 import { authorLabel } from '../format.ts';
 
 /** `search_books` — find public-domain books in the Project Gutenberg corpus. */
-export const searchBooks: ToolDefinition = {
+export const searchBooks = tool({
   name: 'search_books',
   title: 'Gutenberg: Search public-domain books',
   description:
@@ -111,4 +111,4 @@ export const searchBooks: ToolDefinition = {
       structured: { total, count: books.length, books },
     };
   },
-};
+});

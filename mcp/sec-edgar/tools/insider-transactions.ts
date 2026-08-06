@@ -1,4 +1,4 @@
-import { type ToolContext, type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
 import { edgarDocument, filingDirUrl, fmtMoney, requireCompany, resolveOwner } from '../client.ts';
 import { listFilingDocuments } from '../documents.ts';
 import {
@@ -96,13 +96,19 @@ function formatOpenMarketSummary(summary: InsiderSummary): string {
 /**
  * Resolve which CIK's filing feed to walk. The owner's own CIK indexes their
  * Form 4s too, so it is the subject when given (optionally filtered to one
- * issuer); otherwise the issuer company is the subject.
+ * issuer); otherwise the issuer company is the subject. `subjectRef` is
+ * whichever argument identified the subject, so a caller can label the result
+ * before the feed reveals a name.
+ *
+ * Both arguments are optional individually but at least one is required, and
+ * this is where that is enforced — the check lives next to the branch that
+ * needs it rather than at the call site, where the narrowing would be lost.
  */
 async function resolveSubject(
   ctx: ToolContext,
   company: string | undefined,
   owner: string | undefined,
-): Promise<{ subjectCik: string; issuerFilter: string | null }> {
+): Promise<{ subjectCik: string; subjectRef: string; issuerFilter: string | null }> {
   if (owner) {
     const ownerCik = await resolveOwner(ctx, owner);
     if (!ownerCik) {
@@ -113,9 +119,19 @@ async function resolveSubject(
       );
     }
     const issuerFilter = company ? (await requireCompany(ctx, company)).cik : null;
-    return { subjectCik: ownerCik, issuerFilter };
+    return { subjectCik: ownerCik, subjectRef: owner, issuerFilter };
   }
-  return { subjectCik: (await requireCompany(ctx, company as string)).cik, issuerFilter: null };
+  if (!company) {
+    throw new ToolError(
+      'Pass `company` (an issuer) and/or `owner` (an insider, as "Last First" or CIK).',
+      { retryable: false },
+    );
+  }
+  return {
+    subjectCik: (await requireCompany(ctx, company)).cik,
+    subjectRef: company,
+    issuerFilter: null,
+  };
 }
 
 const transactionShape = z.object({
@@ -134,7 +150,7 @@ const transactionShape = z.object({
   exercisePrice: z.number().nullable(),
 });
 
-export const insiderTransactions: ToolDefinition = {
+export const insiderTransactions = tool({
   name: 'insider_transactions',
   title: 'EDGAR: Insider transactions (Forms 3/4/5)',
   description:
@@ -212,14 +228,7 @@ export const insiderTransactions: ToolDefinition = {
   async handler(args, ctx) {
     const { company, owner, forms, limit } = args;
     ctx.log('insider_transactions', { company, owner, forms, limit });
-    if (!company && !owner) {
-      throw new ToolError(
-        'Pass `company` (an issuer) and/or `owner` (an insider, as "Last First" or CIK).',
-        { retryable: false },
-      );
-    }
-
-    const { subjectCik, issuerFilter } = await resolveSubject(ctx, company, owner);
+    const { subjectCik, subjectRef, issuerFilter } = await resolveSubject(ctx, company, owner);
 
     const wanted = new Set(
       forms
@@ -228,7 +237,7 @@ export const insiderTransactions: ToolDefinition = {
         .filter(Boolean),
     );
     const { name, filings: all } = await recentFilings(ctx, subjectCik);
-    const subject = name || owner || (company as string);
+    const subject = name || subjectRef;
     const targets = all.filter((f) => wanted.has(f.form.toUpperCase())).slice(0, limit);
 
     // Deliberately sequential: the shared egress client already throttles to
@@ -283,4 +292,4 @@ export const insiderTransactions: ToolDefinition = {
       },
     };
   },
-};
+});

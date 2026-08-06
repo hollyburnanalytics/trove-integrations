@@ -1,9 +1,9 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { authorLine, fetchPaper, fetchPaperHtml } from '../papers.ts';
 import { parseHtmlContent } from '../parse.ts';
 
 /** `get_paper_content` — read a paper's full text as labelled sections + refs. */
-export const getPaperContent: ToolDefinition = {
+export const getPaperContent = tool({
   name: 'get_paper_content',
   title: 'arXiv: Read full text',
   description:
@@ -129,4 +129,4 @@ export const getPaperContent: ToolDefinition = {
       },
     };
   },
-};
+});

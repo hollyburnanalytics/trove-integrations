@@ -25,6 +25,10 @@ import { z } from '@ontrove/mcp';
  */
 
 /** A number the API may serialise as a string (`"12500"`). */
+// NOTE: `z.unknown()` must say `.optional()` explicitly. Zod 3 treated it as
+// implicitly optional, so a missing key passed; Zod 4 requires it. Seats.aero
+// omits these fields routinely, so without this every affected response is
+// rejected as "an unexpected shape" — the tool fails, and the upstream is fine.
 const loose = z.union([z.number(), z.string()]).nullish();
 const text = z.string().nullish();
 
@@ -95,7 +99,7 @@ export const WireTrip = z.object({
   FareClasses: z.array(z.string()).nullish(),
   TotalSegmentDistance: loose,
   /** Co-brand card rates, `{ UACARD: { MileageCost, Filtered } }`. Undocumented. */
-  OptionalPrices: z.unknown(),
+  OptionalPrices: z.unknown().optional(),
   /** Live search only: the result was excluded by the dynamic-pricing filter. */
   Filtered: z.boolean().nullish(),
 });
@@ -122,7 +126,7 @@ export const WireAvailability = z
     /** Availability-level currency for every `*TotalTaxes` figure on the record. */
     TaxesCurrency: text,
     /** Co-brand card rates, cabin-prefixed (`{ UACARD: { Y, YDirect, … } }`). */
-    OptionalPricing: z.unknown(),
+    OptionalPricing: z.unknown().optional(),
   })
   .catchall(z.unknown());
 
@@ -151,7 +155,7 @@ export const WireBookingLink = z.object({
 export const WireTripsResponse = z.object({
   data: z.array(WireTrip).nullish(),
   booking_links: z.array(WireBookingLink).nullish(),
-  carriers: z.unknown(),
+  carriers: z.unknown().optional(),
 });
 
 /** `POST /live`. */

@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import {
   bookmarkOwnerCached,
   getBookmarkOwnerId,
@@ -14,7 +14,7 @@ import { indexMedia, indexUsers, mapTweet, tweetLine } from '../tweets.ts';
  * `get_bookmarks` — your own most-recent bookmarks via user-context OAuth (the
  * app-only Bearer cannot read them), with an optional client-side text filter.
  */
-export const getBookmarks: ToolDefinition = {
+export const getBookmarks = tool({
   name: 'get_bookmarks',
   title: 'X: Get your bookmarks',
   description:
@@ -112,4 +112,4 @@ export const getBookmarks: ToolDefinition = {
       structured: { bookmarks, next_token: nextToken, note },
     };
   },
-};
+});

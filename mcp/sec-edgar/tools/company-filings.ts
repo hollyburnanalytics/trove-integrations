@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { requireCompany } from '../client.ts';
 import {
   decodeItems,
@@ -12,7 +12,7 @@ import {
  * the older-history archives on demand (see `submissions.ts`).
  */
 
-export const companyFilings: ToolDefinition = {
+export const companyFilings = tool({
   name: 'company_filings',
   title: 'EDGAR: Company filings',
   description:
@@ -133,4 +133,4 @@ export const companyFilings: ToolDefinition = {
       },
     };
   },
-};
+});

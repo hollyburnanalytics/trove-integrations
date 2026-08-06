@@ -1,5 +1,5 @@
 import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 import { getJson } from '../lib/http.ts';
 
 /**
@@ -207,7 +207,7 @@ function parseCredentialSets(body: unknown): ReturnType<typeof mapCredential>[] 
 export default defineMcpServer({
   egress: ['orgbook.gov.bc.ca'],
   tools: [
-    {
+    tool({
       name: 'search_entities',
       title: 'OrgBook BC: Search entities',
       description:
@@ -250,8 +250,8 @@ export default defineMcpServer({
           structured: { total, count: entities.length, entities },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_entity',
       title: 'OrgBook BC: Get entity by registration number',
       description:
@@ -282,8 +282,8 @@ export default defineMcpServer({
           structured: entity,
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_entity_history',
       title: 'OrgBook BC: Get entity history',
       description:
@@ -361,6 +361,6 @@ export default defineMcpServer({
           structured,
         };
       },
-    },
+    }),
   ],
 });

@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { jonasGet } from '../client.ts';
 import { fmt, isoDate, num, str, sum, uuid } from '../fields.ts';
 
@@ -6,7 +6,7 @@ import { fmt, isoDate, num, str, sum, uuid } from '../fields.ts';
  * `get_subcontract_change_orders` — subcontract change orders (SCOs) for a
  * company; the approved-changes layer on top of `get_subcontracts`.
  */
-export const getSubcontractChangeOrders: ToolDefinition = {
+export const getSubcontractChangeOrders = tool({
   name: 'get_subcontract_change_orders',
   title: 'Premier: Get subcontract change orders',
   description:
@@ -128,4 +128,4 @@ export const getSubcontractChangeOrders: ToolDefinition = {
       structured: { count: changeOrders.length, totalAmount, changeOrders },
     };
   },
-};
+});

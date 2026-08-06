@@ -1,9 +1,9 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { fetchBook, fetchBookText } from '../client.ts';
 import { authorLabel } from '../format.ts';
 
 /** `get_book` — full metadata for one Project Gutenberg book by bookId. */
-export const getBook: ToolDefinition = {
+export const getBook = tool({
   name: 'get_book',
   title: 'Gutenberg: Get book details',
   description:
@@ -74,4 +74,4 @@ export const getBook: ToolDefinition = {
       },
     };
   },
-};
+});

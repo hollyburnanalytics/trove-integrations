@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 /**
  * Internet Archive — a no-auth hosted MCP server over the public archive.org
@@ -71,7 +71,7 @@ function normalizeYear(value: string | number | null | undefined): string | unde
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_archive',
       title: 'Internet Archive: Search',
       description:
@@ -180,8 +180,8 @@ export default defineMcpServer({
           structured: { count: results.length, page, results },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_item',
       title: 'Internet Archive: Get item',
       description:
@@ -300,6 +300,6 @@ export default defineMcpServer({
           },
         };
       },
-    },
+    }),
   ],
 });

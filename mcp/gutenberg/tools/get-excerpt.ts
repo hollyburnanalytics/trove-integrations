@@ -1,8 +1,8 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { fetchBook, fetchBookText } from '../client.ts';
 
 /** `get_excerpt` — read a windowed slice of a book's text by character offset. */
-export const getExcerpt: ToolDefinition = {
+export const getExcerpt = tool({
   name: 'get_excerpt',
   title: 'Gutenberg: Read an excerpt',
   description:
@@ -28,6 +28,10 @@ export const getExcerpt: ToolDefinition = {
       .default(2500)
       .describe('Characters to return (200–8000).'),
   }),
+  // The excerpt itself is the `text` of the result, not a `structured` field —
+  // duplicating up to 8000 characters into `structured` would cost real tokens
+  // on every call to satisfy a declaration. `structured` carries the paging
+  // metadata a caller needs to continue reading; the prose comes back once.
   output: z.object({
     bookId: z.number(),
     title: z.string(),
@@ -35,7 +39,6 @@ export const getExcerpt: ToolDefinition = {
     length: z.number(),
     totalLength: z.number(),
     nextOffset: z.number().nullable(),
-    text: z.string(),
   }),
   async handler(args, ctx) {
     const { bookId, offset, length } = args;
@@ -67,4 +70,4 @@ export const getExcerpt: ToolDefinition = {
       },
     };
   },
-};
+});

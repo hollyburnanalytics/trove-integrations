@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 import { buildSearchFilters, resolveCatalogId, ucpCall } from './catalog-client.ts';
 import { formatProduct, mapProduct, mapSearchPage, price } from './map.ts';
 
@@ -32,7 +32,7 @@ const contextInput = z
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_products',
       title: 'Shopify Global Catalog: Search products',
       description:
@@ -177,8 +177,8 @@ export default defineMcpServer({
             : structured.products.map(formatProduct).join('\n');
         return { structured, text };
       },
-    },
-    {
+    }),
+    tool({
       name: 'lookup_products',
       title: 'Shopify Global Catalog: Look up products by id or URL',
       description:
@@ -199,7 +199,7 @@ export default defineMcpServer({
       output: z.object({
         count: z.number(),
         notFound: z.array(z.string()),
-        products: z.array(z.record(z.unknown())),
+        products: z.array(z.record(z.string(), z.unknown())),
       }),
       async handler(args, ctx) {
         ctx.log('lookup_products', { count: args.ids.length });
@@ -223,8 +223,8 @@ export default defineMcpServer({
               (notFound.length > 0 ? `\nNot found: ${notFound.join(', ')}` : '');
         return { structured, text };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_product',
       title: 'Shopify Global Catalog: Get product detail',
       description:
@@ -242,9 +242,9 @@ export default defineMcpServer({
         context: contextInput,
       }),
       output: z.object({
-        product: z.record(z.unknown()).nullable(),
-        options: z.array(z.record(z.unknown())),
-        variants: z.array(z.record(z.unknown())),
+        product: z.record(z.string(), z.unknown()).nullable(),
+        options: z.array(z.record(z.string(), z.unknown())),
+        variants: z.array(z.record(z.string(), z.unknown())),
       }),
       async handler(args, ctx) {
         ctx.log('get_product', { id: args.id });
@@ -282,6 +282,6 @@ export default defineMcpServer({
           : `No product found for "${args.id}".`;
         return { structured, text };
       },
-    },
+    }),
   ],
 });

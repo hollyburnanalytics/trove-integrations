@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { uuidField } from '../fields.ts';
 import { commonSearchFields } from '../params.ts';
 import { renderEpisodeLine, renderFilters, renderList } from '../render.ts';
@@ -7,7 +7,7 @@ import { episodeSearchOutput, searchEpisodes } from '../search.ts';
 /**
  * `search_episodes` — keyword search over individual EPISODES.
  */
-export const searchEpisodesTool: ToolDefinition = {
+export const searchEpisodesTool = tool({
   name: 'search_episodes',
   title: 'Taddy: Search episodes',
   description:
@@ -66,4 +66,4 @@ export const searchEpisodesTool: ToolDefinition = {
       structured: result,
     };
   },
-};
+});

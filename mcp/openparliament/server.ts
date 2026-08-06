@@ -1,4 +1,4 @@
-import { defineMcpServer, type ToolContext, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
 import { getJson as sharedGetJson } from '../lib/http.ts';
 
 /**
@@ -100,7 +100,7 @@ async function resolveSlug(
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'find_mp',
       title: 'Parliament: Find MP',
       description:
@@ -163,8 +163,8 @@ export default defineMcpServer({
           structured: { query: name, count: members.length, members },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'mp_speeches',
       title: 'Parliament: MP statements',
       description:
@@ -231,8 +231,8 @@ export default defineMcpServer({
           },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'search_bills',
       title: 'Parliament: Search bills',
       description:
@@ -293,6 +293,6 @@ export default defineMcpServer({
           structured: { count: bills.length, bills },
         };
       },
-    },
+    }),
   ],
 });

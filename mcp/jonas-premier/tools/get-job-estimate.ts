@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { jonasGet } from '../client.ts';
 import { fmt, num, pageInput, str, sum } from '../fields.ts';
 
@@ -6,7 +6,7 @@ import { fmt, num, pageInput, str, sum } from '../fields.ts';
  * `get_job_estimate` — the original estimate (budget) lines for a job; pair with
  * `get_job_transactions` for budget-vs-actual.
  */
-export const getJobEstimate: ToolDefinition = {
+export const getJobEstimate = tool({
   name: 'get_job_estimate',
   title: 'Premier: Get original estimate',
   description:
@@ -95,4 +95,4 @@ export const getJobEstimate: ToolDefinition = {
       structured: { count: estimateLines.length, totalCost, totalRevenue, estimateLines },
     };
   },
-};
+});

@@ -7,7 +7,7 @@
  * A descriptive User-Agent is sent per Wikimedia's User-Agent policy.
  */
 import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 import { getJson } from '../lib/http.ts';
 
 const BASE_URL = 'https://www.wikidata.org';
@@ -147,7 +147,7 @@ async function resolveLabels(ids: string[], ctx: ToolContext): Promise<Map<strin
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_entities',
       title: 'Wikidata: Search entities',
       description:
@@ -203,8 +203,8 @@ export default defineMcpServer({
           structured: { query, count: entities.length, entities },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_entity',
       title: 'Wikidata: Get entity facts',
       description:
@@ -268,6 +268,6 @@ export default defineMcpServer({
         const text = `[${result.id}] ${result.label}${result.description ? ` — ${result.description}` : ''}\n${factLines}`;
         return { text, structured: result };
       },
-    },
+    }),
   ],
 });
