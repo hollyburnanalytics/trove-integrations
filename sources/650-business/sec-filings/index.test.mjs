@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
-import { extractFilingText, filterFilings, sync } from './index.mjs';
+import { filterFilings, sync } from './index.mjs';
 
 /**
  * A real `Response`, because the adapter fetches through the shared
@@ -160,58 +160,6 @@ describe('sec-filings source', () => {
     expect(result.documents).toEqual([]);
   });
 
-  it('handles filing fetch error and continues to next filing', async () => {
-    let htmlFetchCount = 0;
-    fetch.mockImplementation((url) => {
-      if (typeof url === 'string' && url.includes('company_tickers.json')) {
-        return jsonResponse(TICKER_MAP_RESPONSE);
-      }
-      if (typeof url === 'string' && url.includes('data.sec.gov/submissions')) {
-        return jsonResponse(SUBMISSIONS_RESPONSE);
-      }
-      if (typeof url === 'string' && url.includes('/Archives/edgar/') && url.endsWith('.htm')) {
-        htmlFetchCount++;
-        // First filing HTML fetch fails, rest succeed
-        if (htmlFetchCount === 1) {
-          return textResponse('', 500);
-        }
-        return textResponse(FILING_HTML);
-      }
-      return textResponse('', 404);
-    });
-
-    const context = makeContext(undefined, { tickers: ['TEST'] });
-    const result = await sync(context);
-
-    // First of 3 filings failed, so 2 should succeed
-    expect(result.documents).toHaveLength(2);
-    expect(context.log.warn).toHaveBeenCalled();
-  });
-
-  it('skips filings with too little extractable text', async () => {
-    mockFetchForSync({
-      submissions: {
-        name: 'Test Corp',
-        filings: {
-          recent: {
-            accessionNumber: ['0001234567-25-000001'],
-            filingDate: ['2025-11-15'],
-            reportDate: ['2025-09-30'],
-            form: ['10-Q'],
-            primaryDocument: ['test-20250930.htm'],
-          },
-        },
-      },
-      html: '<html><body><p>Hi</p></body></html>',
-    });
-
-    const context = makeContext(undefined, { tickers: ['TEST'] });
-    const result = await sync(context);
-
-    expect(result.documents).toHaveLength(0);
-    expect(context.log.warn).toHaveBeenCalledWith(expect.stringContaining('too little text'));
-  });
-
   it('warns when a filing has no HTML primary document', async () => {
     mockFetchForSync({
       submissions: {
@@ -358,73 +306,6 @@ describe('filterFilings', () => {
   });
 });
 
-describe('extractFilingText', () => {
-  it('extracts text from HTML paragraphs', () => {
-    const html = '<html><body><h1>Title</h1><p>Content here with details.</p></body></html>';
-    const text = extractFilingText(html);
-    expect(text).toContain('Title');
-    expect(text).toContain('Content here with details.');
-  });
-
-  it('strips script and style tags', () => {
-    const html =
-      '<html><head><style>.x{color:red}</style></head><body><script>alert(1)</script><p>Real content is here.</p></body></html>';
-    const text = extractFilingText(html);
-    expect(text).not.toContain('alert');
-    expect(text).not.toContain('color:red');
-    expect(text).toContain('Real content is here.');
-  });
-
-  it('skips parent elements that contain child paragraphs', () => {
-    const html =
-      '<html><body><div><p>Inner paragraph text here.</p></div><p>Standalone paragraph here.</p></body></html>';
-    const text = extractFilingText(html);
-    // Should contain the inner paragraph text, not duplicate from the div
-    expect(text).toContain('Inner paragraph text here.');
-    expect(text).toContain('Standalone paragraph here.');
-  });
-
-  it('truncates extremely long text', () => {
-    const longParagraph = `<p>${'A'.repeat(200_000)}</p>`;
-    const html = `<html><body>${longParagraph}</body></html>`;
-    const text = extractFilingText(html);
-    expect(text.length).toBeLessThanOrEqual(100_000 + 20); // +20 for [Truncated] suffix
-    expect(text).toContain('[Truncated]');
-  });
-
-  it('holds the cursor when one ticker fails (others still return filings)', async () => {
-    fetch.mockImplementation((url) => {
-      if (typeof url === 'string' && url.includes('company_tickers.json')) {
-        return jsonResponse(TICKER_MAP_RESPONSE);
-      }
-      if (typeof url === 'string' && url.includes('data.sec.gov/submissions')) {
-        // OTHER (cik 7654321) is down; TEST succeeds.
-        return url.includes('7654321') ? textResponse('', 500) : jsonResponse(SUBMISSIONS_RESPONSE);
-      }
-      if (typeof url === 'string' && url.includes('/Archives/edgar/') && url.endsWith('.htm')) {
-        return textResponse(FILING_HTML);
-      }
-      return textResponse('', 404);
-    });
-
-    const cursor = { type: 'date', value: '2020-01-01T00:00:00.000Z' };
-    const result = await sync(makeContext(cursor, { tickers: ['TEST', 'OTHER'] }));
-
-    expect(result.documents.length).toBeGreaterThan(0);
-    // The failed ticker's older filings must stay reachable next run.
-    expect(result.cursor).toEqual(cursor);
-  });
-
-  it('reuses the cached ticker resolution for duplicate tickers', async () => {
-    mockFetchForSync();
-
-    const result = await sync(makeContext(undefined, { tickers: ['TEST', 'test'] }));
-    // Second occurrence resolves from cache; the run still succeeds and
-    // documents are deduplicated by external id downstream.
-    expect(result.documents.length).toBeGreaterThan(0);
-  });
-});
-
 /**
  * The shipped extractor emitted every passage two or three times. Measured on a
  * real Shopify 10-K/A: 503 paragraphs of which 250 were distinct, one repeated
@@ -432,63 +313,66 @@ describe('extractFilingText', () => {
  * 100,000-character cap exactly, the duplicates pushed real content OUT of every
  * long filing. These hold the shape that caused it.
  */
-describe('extractFilingText emits each passage once', () => {
-  /** How filings are actually built: prose nested inside div inside div. */
-  const NESTED = `<html><body>
-    <div><div><span>Shopify Inc. is a commerce company.</span></div></div>
-  </body></html>`;
 
-  it('emits nested div/div/span once, not three times', () => {
-    const text = extractFilingText(NESTED);
-    const hits = text.split('Shopify Inc. is a commerce company.').length - 1;
-    expect(hits).toBe(1);
+/**
+ * The filing is handed over, not flattened here. Extraction in the adapter threw
+ * away the headings and tables the platform turns into Markdown, capped every
+ * document at 100,000 characters (a 10-K stopped mid-Part-II), kept no
+ * retrievable copy, and spent an EDGAR request per filing on work the server
+ * does anyway.
+ */
+describe('sec-filings hands over the filing as an artifact', () => {
+  beforeEach(() => {
+    globalThis.fetch = mock();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('carries the filing as an HTML artifact', async () => {
+    mockFetchForSync();
+    const result = await sync(makeContext(undefined, { tickers: ['TEST'] }));
+    const [document] = result.documents;
+    expect(document.file_url).toContain('/Archives/edgar/data/');
+    expect(document.mime_type).toBe('text/html');
   });
 
-  it('emits a paragraph wrapped in divs once', () => {
-    const html = '<html><body><div><div><p>Annual report text.</p></div></div></body></html>';
-    expect(extractFilingText(html).split('Annual report text.').length - 1).toBe(1);
+  it('carries only the header as text, leaving the body to extraction', async () => {
+    mockFetchForSync();
+    const result = await sync(makeContext(undefined, { tickers: ['TEST'] }));
+    const [document] = result.documents;
+    expect(document.text).toContain('Test Corp');
+    expect(document.text).toContain('Filed:');
+    // The body arrives from the artifact. Storing a flattened copy here would
+    // be the header and the body disagreeing about the same filing.
+    expect(document.text.length).toBeLessThan(200);
   });
 
-  it('keeps table cells apart instead of running them together', () => {
-    // The old output read "Canada001-3740098-0486686" — three facts welded into
-    // one unsearchable token.
-    const html = `<html><body><table><tr>
-      <td>Canada</td><td>001-37400</td><td>98-0486686</td>
-    </tr></table></body></html>`;
-    const text = extractFilingText(html);
-    expect(text).toContain('Canada | 001-37400 | 98-0486686');
-    expect(text).not.toContain('Canada001-37400');
+  it('no longer fetches each filing document itself', async () => {
+    mockFetchForSync();
+    await sync(makeContext(undefined, { tickers: ['TEST'] }));
+    const filingFetches = fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/Archives/edgar/'),
+    );
+    // EDGAR answers a generic client with 403 and throttles hard, so a request
+    // the server is going to make anyway is worth not making twice.
+    expect(filingFetches).toHaveLength(0);
   });
 
-  it('emits each table row once, not once per nesting level', () => {
-    const html = `<html><body><div><table><tr><td>Alpha</td><td>Beta</td></tr></table></div></body></html>`;
-    expect(extractFilingText(html).split('Alpha').length - 1).toBe(1);
-  });
-
-  it('drops the inline-XBRL header that opens every modern filing', () => {
-    // Real filings begin with a wall of digits and namespace tokens like
-    // "20240001594805TRUEFYiso4217:USDxbrli:shares…" — machine facts, never prose.
-    const html = `<html><body>
-      <ix:header><ix:hidden>0001594805TRUEFYiso4217:USDxbrli:shares</ix:hidden></ix:header>
-      <p>ANNUAL REPORT</p>
-    </body></html>`;
-    const text = extractFilingText(html);
-    expect(text).not.toContain('xbrli:shares');
-    expect(text).toContain('ANNUAL REPORT');
-  });
-
-  it('still reads the prose it is there for', () => {
-    const html =
-      '<html><body><div><p>Item 1. Business overview.</p><p>Item 7. MD&amp;A.</p></div></body></html>';
-    const text = extractFilingText(html);
-    expect(text).toContain('Item 1. Business overview.');
-    expect(text).toContain('Item 7. MD&A.');
-  });
-
-  it('drops script and style rather than indexing them', () => {
-    const html =
-      '<html><body><script>var x=1;</script><style>.a{}</style><p>Real text.</p></body></html>';
-    const text = extractFilingText(html);
-    expect(text).toBe('Real text.');
+  it('still skips a filing with no HTML primary document', async () => {
+    mockFetchForSync({
+      submissions: {
+        name: 'Test Corp',
+        filings: {
+          recent: {
+            accessionNumber: ['0001234567-25-000001'],
+            filingDate: ['2025-11-15'],
+            reportDate: ['2025-09-30'],
+            form: ['10-K'],
+            primaryDocument: ['test.txt'],
+          },
+        },
+      },
+    });
+    const result = await sync(makeContext(undefined, { tickers: ['TEST'] }));
+    expect(result.documents).toHaveLength(0);
   });
 });
