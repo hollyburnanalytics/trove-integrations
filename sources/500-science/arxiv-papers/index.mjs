@@ -27,13 +27,31 @@ function entryToDocument(entryXml) {
     ...entryXml.matchAll(/<author>[\s\S]*?<name>([^<]+)<\/name>[\s\S]*?<\/author>/g),
   ].map((m) => m[1].trim());
 
+  const paperId = id.split('/').pop();
+
   return {
-    documentId: `arxiv-${id.split('/').pop()}`,
+    documentId: `arxiv-${paperId}`,
     publishedMs: published ? new Date(published).getTime() : Number.NaN,
     doc: {
-      id: `arxiv-${id.split('/').pop()}`,
+      id: `arxiv-${paperId}`,
       title,
+      // Rides along as the extraction header — the abstract stays readable even
+      // before the body is extracted, and remains the whole body for a paper
+      // neither rendering covers.
       text: `${title}\n\n${summary}`,
+      // The paper itself, not just its abstract. HTML first and PDF second is
+      // not a preference about file formats: arXiv's LaTeXML HTML carries every
+      // formula's LaTeX in `alttext`, which the server's `to-text` turns into
+      // readable `$…$`. The same equation out of a PDF is glyph soup, and a
+      // two-column layout welds paragraphs together. For a paper the maths IS
+      // most of the meaning, so the better rendering is worth preferring and
+      // the PDF is worth keeping for the papers that predate it.
+      file_url: `https://arxiv.org/html/${paperId}`,
+      mime_type: 'text/html',
+      fallback: {
+        file_url: `https://arxiv.org/pdf/${paperId}`,
+        mime_type: 'application/pdf',
+      },
       url: id,
       author: authors.slice(0, 3).join(', ') + (authors.length > 3 ? ' et al.' : ''),
       date: safeDate(published),

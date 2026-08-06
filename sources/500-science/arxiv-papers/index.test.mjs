@@ -249,3 +249,44 @@ describe('arxiv-papers source', () => {
     expect(result.documents[0].text).not.toContain('&amp;');
   });
 });
+
+/** Sync one Atom entry and return the document it produced. */
+async function firstDocument(xml) {
+  globalThis.fetch = mock(async () => new Response(`<feed>${xml}</feed>`));
+  const result = await sync(makeContext(undefined, { queries: ['cat:cs.AI'] }));
+  return result.documents[0];
+}
+
+describe('arxiv stores the paper, not just its abstract', () => {
+  /** One Atom entry, the shape arXiv's API returns. */
+  const ENTRY = `<entry>
+    <id>http://arxiv.org/abs/2401.12345v1</id>
+    <title>A Paper About Things</title>
+    <summary>We show that things are indeed things.</summary>
+    <published>2026-01-15T00:00:00Z</published>
+    <author><name>Ada Lovelace</name></author>
+  </entry>`;
+
+  it('points at the LaTeXML HTML, whose maths survives as LaTeX', async () => {
+    const document = await firstDocument(ENTRY);
+    // A PDF turns an equation into glyph soup and welds two-column paragraphs;
+    // the HTML carries each formula's LaTeX in `alttext`, which the server
+    // renders as readable `$…$`.
+    expect(document?.file_url).toBe('https://arxiv.org/html/2401.12345v1');
+    expect(document?.mime_type).toBe('text/html');
+  });
+
+  it('falls back to the PDF for papers that predate LaTeXML', async () => {
+    const document = await firstDocument(ENTRY);
+    expect(document?.fallback).toEqual({
+      file_url: 'https://arxiv.org/pdf/2401.12345v1',
+      mime_type: 'application/pdf',
+    });
+  });
+
+  it('keeps the abstract as the body, so a paper neither covers still reads', async () => {
+    const document = await firstDocument(ENTRY);
+    expect(document?.text).toContain('We show that things are indeed things.');
+    expect(document?.title).toBe('A Paper About Things');
+  });
+});

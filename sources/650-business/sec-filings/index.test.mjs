@@ -424,3 +424,71 @@ describe('extractFilingText', () => {
     expect(result.documents.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * The shipped extractor emitted every passage two or three times. Measured on a
+ * real Shopify 10-K/A: 503 paragraphs of which 250 were distinct, one repeated
+ * twelve times, 42% of stored words redundant — and because the output hit the
+ * 100,000-character cap exactly, the duplicates pushed real content OUT of every
+ * long filing. These hold the shape that caused it.
+ */
+describe('extractFilingText emits each passage once', () => {
+  /** How filings are actually built: prose nested inside div inside div. */
+  const NESTED = `<html><body>
+    <div><div><span>Shopify Inc. is a commerce company.</span></div></div>
+  </body></html>`;
+
+  it('emits nested div/div/span once, not three times', () => {
+    const text = extractFilingText(NESTED);
+    const hits = text.split('Shopify Inc. is a commerce company.').length - 1;
+    expect(hits).toBe(1);
+  });
+
+  it('emits a paragraph wrapped in divs once', () => {
+    const html = '<html><body><div><div><p>Annual report text.</p></div></div></body></html>';
+    expect(extractFilingText(html).split('Annual report text.').length - 1).toBe(1);
+  });
+
+  it('keeps table cells apart instead of running them together', () => {
+    // The old output read "Canada001-3740098-0486686" — three facts welded into
+    // one unsearchable token.
+    const html = `<html><body><table><tr>
+      <td>Canada</td><td>001-37400</td><td>98-0486686</td>
+    </tr></table></body></html>`;
+    const text = extractFilingText(html);
+    expect(text).toContain('Canada | 001-37400 | 98-0486686');
+    expect(text).not.toContain('Canada001-37400');
+  });
+
+  it('emits each table row once, not once per nesting level', () => {
+    const html = `<html><body><div><table><tr><td>Alpha</td><td>Beta</td></tr></table></div></body></html>`;
+    expect(extractFilingText(html).split('Alpha').length - 1).toBe(1);
+  });
+
+  it('drops the inline-XBRL header that opens every modern filing', () => {
+    // Real filings begin with a wall of digits and namespace tokens like
+    // "20240001594805TRUEFYiso4217:USDxbrli:shares…" — machine facts, never prose.
+    const html = `<html><body>
+      <ix:header><ix:hidden>0001594805TRUEFYiso4217:USDxbrli:shares</ix:hidden></ix:header>
+      <p>ANNUAL REPORT</p>
+    </body></html>`;
+    const text = extractFilingText(html);
+    expect(text).not.toContain('xbrli:shares');
+    expect(text).toContain('ANNUAL REPORT');
+  });
+
+  it('still reads the prose it is there for', () => {
+    const html =
+      '<html><body><div><p>Item 1. Business overview.</p><p>Item 7. MD&amp;A.</p></div></body></html>';
+    const text = extractFilingText(html);
+    expect(text).toContain('Item 1. Business overview.');
+    expect(text).toContain('Item 7. MD&A.');
+  });
+
+  it('drops script and style rather than indexing them', () => {
+    const html =
+      '<html><body><script>var x=1;</script><style>.a{}</style><p>Real text.</p></body></html>';
+    const text = extractFilingText(html);
+    expect(text).toBe('Real text.');
+  });
+});
