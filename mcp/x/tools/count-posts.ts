@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { numOrNull, strOrNull, xGet } from '../client.ts';
 import { POST_READ_USD } from '../cost.ts';
 import { applyPostTypes, POST_TYPES } from '../post-types.ts';
@@ -7,7 +7,7 @@ import { applyPostTypes, POST_TYPES } from '../post-types.ts';
  * `count_posts` — how many posts match a query WITHOUT reading them, for a flat
  * per-request fee, so a `search_posts`/`get_user_tweets` pull can be priced first.
  */
-export const countPosts: ToolDefinition = {
+export const countPosts = tool({
   name: 'count_posts',
   title: 'X: Count posts (price a search before pulling)',
   description:
@@ -115,4 +115,4 @@ export const countPosts: ToolDefinition = {
       },
     };
   },
-};
+});

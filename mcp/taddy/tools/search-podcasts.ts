@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { commonSearchFields, dateField } from '../params.ts';
 import { renderFilters, renderList, renderPodcastLine } from '../render.ts';
 import { podcastSearchOutput, searchPodcasts } from '../search.ts';
@@ -6,7 +6,7 @@ import { podcastSearchOutput, searchPodcasts } from '../search.ts';
 /**
  * `search_podcasts` — keyword search over podcast SHOWS.
  */
-export const searchPodcastsTool: ToolDefinition = {
+export const searchPodcastsTool = tool({
   name: 'search_podcasts',
   title: 'Taddy: Search podcasts',
   description:
@@ -49,4 +49,4 @@ export const searchPodcastsTool: ToolDefinition = {
       structured: result,
     };
   },
-};
+});

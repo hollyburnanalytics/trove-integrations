@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { getLatestEpisodes, latestOutput } from '../discover.ts';
 import { uuidField } from '../fields.ts';
 import { renderEpisodeLine, renderList } from '../render.ts';
@@ -6,7 +6,7 @@ import { renderEpisodeLine, renderList } from '../render.ts';
 /**
  * `get_latest_episodes` — newest episodes across many shows at once.
  */
-export const getLatestEpisodesTool: ToolDefinition = {
+export const getLatestEpisodesTool = tool({
   name: 'get_latest_episodes',
   title: 'Taddy: Latest episodes across shows',
   description:
@@ -46,4 +46,4 @@ export const getLatestEpisodesTool: ToolDefinition = {
       structured: result,
     };
   },
-};
+});

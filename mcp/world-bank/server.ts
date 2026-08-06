@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 /**
  * World Bank Data — a no-auth hosted MCP server over the World Bank Indicators
@@ -179,7 +179,7 @@ async function getWb(
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_indicators',
       title: 'World Bank: Find indicator',
       description:
@@ -249,8 +249,8 @@ export default defineMcpServer({
           },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_indicator',
       title: 'World Bank: Get indicator',
       description:
@@ -369,6 +369,6 @@ export default defineMcpServer({
           },
         };
       },
-    },
+    }),
   ],
 });

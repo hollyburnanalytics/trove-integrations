@@ -1,4 +1,4 @@
-import { defineMcpServer, z } from '@ontrove/mcp';
+import { defineMcpServer, tool, z } from '@ontrove/mcp';
 import {
   apiKey,
   BOOKING_STATUS,
@@ -32,7 +32,7 @@ import {
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'list_event_types',
       title: 'Cal.com: List event types',
       description:
@@ -78,8 +78,8 @@ export default defineMcpServer({
           structured: { count: types.length, eventTypes: types },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_available_slots',
       title: 'Cal.com: Get available slots',
       description:
@@ -152,8 +152,8 @@ export default defineMcpServer({
           structured: { totalSlots: total, timeZone: time_zone ?? 'UTC', days },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'list_bookings',
       title: 'Cal.com: List bookings',
       description:
@@ -221,8 +221,8 @@ export default defineMcpServer({
           },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'create_booking',
       title: 'Cal.com: Create a booking',
       description:
@@ -298,8 +298,8 @@ export default defineMcpServer({
           },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'cancel_booking',
       title: 'Cal.com: Cancel a booking',
       description:
@@ -338,6 +338,6 @@ export default defineMcpServer({
           },
         };
       },
-    },
+    }),
   ],
 });

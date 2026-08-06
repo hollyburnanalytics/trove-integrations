@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { normalizeAccession, requireCompany } from '../client.ts';
 import {
   type FilingEntry,
@@ -16,7 +16,7 @@ import { recentFilings } from '../submissions.ts';
  * searchable plain text (see `documents.ts` for the HTML→text rules).
  */
 
-export const getFilingDocument: ToolDefinition = {
+export const getFilingDocument = tool({
   name: 'get_filing_document',
   title: 'EDGAR: Read a filing',
   description:
@@ -145,4 +145,4 @@ export const getFilingDocument: ToolDefinition = {
       },
     };
   },
-};
+});

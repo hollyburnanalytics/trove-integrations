@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 import { PAPER_FIELDS, paperSchema, type S2Paper, s2Fetch } from './client.ts';
 
 /**
@@ -48,7 +48,7 @@ function paperLine(p: z.infer<typeof paperSchema>): string {
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_papers',
       title: 'Semantic Scholar: Search papers',
       description:
@@ -125,8 +125,8 @@ export default defineMcpServer({
           structured: { total, count: papers.length, papers },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_paper',
       title: 'Semantic Scholar: Get paper',
       description:
@@ -170,8 +170,8 @@ export default defineMcpServer({
           structured: norm,
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_paper_citations',
       title: 'Semantic Scholar: Citations',
       description:
@@ -226,8 +226,8 @@ export default defineMcpServer({
           structured: { count: papers.length, papers },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_paper_references',
       title: 'Semantic Scholar: References',
       description:
@@ -282,6 +282,6 @@ export default defineMcpServer({
           structured: { count: papers.length, papers },
         };
       },
-    },
+    }),
   ],
 });

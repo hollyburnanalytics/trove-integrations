@@ -1,9 +1,9 @@
-import { type ToolContext, type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
 import { ar5ivHtmlUrl } from '../client.ts';
 import { fetchPaper, paperShape } from '../papers.ts';
 
 /** `save_paper` — ingest an arXiv paper into the Trove knowledge base. */
-export const savePaper: ToolDefinition = {
+export const savePaper = tool({
   name: 'save_paper',
   title: 'arXiv: Save to knowledge base',
   description:
@@ -115,7 +115,7 @@ export const savePaper: ToolDefinition = {
       },
     };
   },
-};
+});
 
 /**
  * Ingest, and surface the reason when it fails.

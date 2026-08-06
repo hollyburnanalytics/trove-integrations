@@ -1,4 +1,4 @@
-import { defineMcpServer, z } from '@ontrove/mcp';
+import { defineMcpServer, tool, z } from '@ontrove/mcp';
 import {
   dateRangeFor,
   fmtDuration,
@@ -6,7 +6,6 @@ import {
   hydrate,
   maskEmail,
   PERIODS,
-  type Period,
   type TogglEntry,
   type TogglMe,
   type TogglWorkspace,
@@ -43,7 +42,7 @@ function summarise(entries: HydratedEntry[]): { label: string; seconds: number }
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'check_auth',
       title: 'Toggl: Check authentication',
       description:
@@ -91,8 +90,8 @@ export default defineMcpServer({
           },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'list_workspaces',
       title: 'Toggl: List workspaces',
       description: 'List all Toggl workspaces the authenticated user can access.',
@@ -111,8 +110,8 @@ export default defineMcpServer({
           structured: { workspaces },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_time_entries',
       title: 'Toggl: Get time entries',
       description:
@@ -151,7 +150,7 @@ export default defineMcpServer({
         // should fail without a vault round-trip.
         const range =
           period || (!start_date && !end_date)
-            ? dateRangeFor((period ?? 'today') as Period, time_zone, new Date())
+            ? dateRangeFor(period ?? 'today', time_zone, new Date())
             : { start: start_date ?? '', end: end_date ?? '' };
 
         const token = await ctx.requireSecret('TOGGL_API_TOKEN');
@@ -208,6 +207,6 @@ export default defineMcpServer({
           },
         };
       },
-    },
+    }),
   ],
 });

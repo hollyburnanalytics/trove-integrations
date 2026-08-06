@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 /**
  * openFDA — a no-auth hosted MCP server over the FDA's open data API
@@ -64,7 +64,7 @@ function snippet(value: unknown, max = 240): string | null {
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_drug_labels',
       title: 'openFDA: Drug labels',
       description:
@@ -122,8 +122,8 @@ export default defineMcpServer({
           structured: { query: name, count: labels.length, labels },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'search_recalls',
       title: 'openFDA: Recalls',
       description:
@@ -187,6 +187,6 @@ export default defineMcpServer({
           structured: { category, query, count: recalls.length, recalls },
         };
       },
-    },
+    }),
   ],
 });

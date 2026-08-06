@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { uuidField } from '../fields.ts';
 import { renderTranscript } from '../render.ts';
 import { getTranscript, transcriptOutput } from '../transcript.ts';
@@ -6,7 +6,7 @@ import { getTranscript, transcriptOutput } from '../transcript.ts';
 /**
  * `get_transcript` — an episode transcript, paged, with on-demand transcription opt-in.
  */
-export const getTranscriptTool: ToolDefinition = {
+export const getTranscriptTool = tool({
   name: 'get_transcript',
   title: 'Taddy: Get episode transcript',
   description:
@@ -69,4 +69,4 @@ export const getTranscriptTool: ToolDefinition = {
       structured: result,
     };
   },
-};
+});

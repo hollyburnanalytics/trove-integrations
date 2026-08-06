@@ -1,5 +1,5 @@
 import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 /**
  * eBay — a hosted MCP server over eBay's Browse API (api.ebay.com), the
@@ -166,7 +166,7 @@ export default defineMcpServer({
     apiHost: 'api.ebay.com',
   },
   tools: [
-    {
+    tool({
       name: 'search_items',
       title: 'eBay: Search listings',
       description:
@@ -282,8 +282,8 @@ export default defineMcpServer({
           structured: { total, count: items.length, items },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_item',
       title: 'eBay: Get listing details',
       description:
@@ -329,6 +329,6 @@ export default defineMcpServer({
           structured: result,
         };
       },
-    },
+    }),
   ],
 });

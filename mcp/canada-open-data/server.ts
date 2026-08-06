@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 import { ckanGet, datasetFormats, en, englishHalf, landingUrl } from './ckan.ts';
 
 /**
@@ -22,7 +22,7 @@ import { ckanGet, datasetFormats, en, englishHalf, landingUrl } from './ckan.ts'
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_datasets',
       title: 'Canada Data: Search',
       description:
@@ -119,8 +119,8 @@ export default defineMcpServer({
           structured: { total, count: datasets.length, datasets },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_dataset',
       title: 'Canada Data: Get dataset',
       description:
@@ -182,8 +182,8 @@ export default defineMcpServer({
           },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'query_dataset',
       title: 'Canada Data: Query rows',
       description:
@@ -253,8 +253,8 @@ export default defineMcpServer({
           structured: { resourceId, total, fields, records },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'find_organizations',
       title: 'Canada Data: Find department',
       description:
@@ -296,6 +296,6 @@ export default defineMcpServer({
           structured: { query, count: organizations.length, organizations },
         };
       },
-    },
+    }),
   ],
 });

@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 /**
  * Public Holidays — a no-auth hosted MCP server over the Nager.Date API
@@ -68,7 +68,7 @@ function holidayResult(
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'public_holidays',
       title: 'Holidays: By year',
       description:
@@ -104,8 +104,8 @@ export default defineMcpServer({
         });
         return holidayResult(`${code} ${year}`, holidays, { year, country: code });
       },
-    },
-    {
+    }),
+    tool({
       name: 'next_holidays',
       title: 'Holidays: Upcoming',
       description:
@@ -137,6 +137,6 @@ export default defineMcpServer({
         });
         return holidayResult(`upcoming in ${code}`, holidays, { country: code });
       },
-    },
+    }),
   ],
 });

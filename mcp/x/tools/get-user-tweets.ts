@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import {
   MEDIA_EXPANSION,
   MEDIA_FIELDS,
@@ -18,7 +18,7 @@ import { cleanUsername, resolveTimelineUser } from '../users.ts';
  * an id (cached, billable once per warm isolate) and returns their timeline,
  * choosing originals/reposts/replies via `include`.
  */
-export const getUserTweets: ToolDefinition = {
+export const getUserTweets = tool({
   name: 'get_user_tweets',
   title: 'X: Get a user’s recent posts',
   description:
@@ -113,4 +113,4 @@ export const getUserTweets: ToolDefinition = {
       structured: { user, count: tweets.length, tweets, next_token: nextToken, note },
     };
   },
-};
+});

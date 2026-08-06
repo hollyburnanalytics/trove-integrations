@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { jonasGet } from '../client.ts';
 import { boolish, pageInput, str } from '../fields.ts';
 
@@ -6,7 +6,7 @@ import { boolish, pageInput, str } from '../fields.ts';
  * `list_companies` — the companies in the Premier tenant, the entry point that
  * yields the companyId almost every other tool needs.
  */
-export const listCompanies: ToolDefinition = {
+export const listCompanies = tool({
   name: 'list_companies',
   title: 'Premier: List companies',
   description:
@@ -66,4 +66,4 @@ export const listCompanies: ToolDefinition = {
       structured: { count: companies.length, companies },
     };
   },
-};
+});

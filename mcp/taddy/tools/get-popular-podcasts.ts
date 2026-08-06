@@ -1,11 +1,11 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { getPopular, popularOutput } from '../discover.ts';
 import { renderFilters, renderList, renderPodcastLine } from '../render.ts';
 
 /**
  * `get_popular_podcasts` — Taddy's own standing popularity ranking.
  */
-export const getPopularPodcastsTool: ToolDefinition = {
+export const getPopularPodcastsTool = tool({
   name: 'get_popular_podcasts',
   title: 'Taddy: Most popular podcasts',
   description:
@@ -41,4 +41,4 @@ export const getPopularPodcastsTool: ToolDefinition = {
       structured: result,
     };
   },
-};
+});

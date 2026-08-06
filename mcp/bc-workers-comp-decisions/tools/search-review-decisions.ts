@@ -1,10 +1,10 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { searchReview } from '../worksafebc.ts';
 
 /**
  * `search_review_decisions` — keyword search over the WorkSafeBC Review Division.
  */
-export const searchReviewDecisions: ToolDefinition = {
+export const searchReviewDecisions = tool({
   name: 'search_review_decisions',
   title: 'WorkSafeBC Review Division: Search decisions',
   description:
@@ -50,4 +50,4 @@ export const searchReviewDecisions: ToolDefinition = {
       structured: { keyword, count: decisions.length, total, truncated, decisions },
     };
   },
-};
+});

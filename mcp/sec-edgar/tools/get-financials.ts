@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { companyFactsUrl, edgarJson, fmtMoney, requireCompany } from '../client.ts';
 import { METRICS, type Statement } from '../metrics.ts';
 import { assembleFinancials, type StatementPeriod } from '../xbrl.ts';
@@ -131,7 +131,7 @@ function shapePeriod(period: StatementPeriod): z.infer<typeof statementPeriodSha
   };
 }
 
-export const getFinancials: ToolDefinition = {
+export const getFinancials = tool({
   name: 'get_financials',
   title: 'EDGAR: Company financials (XBRL)',
   description:
@@ -231,4 +231,4 @@ export const getFinancials: ToolDefinition = {
       },
     };
   },
-};
+});

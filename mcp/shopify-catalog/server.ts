@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 import { buildSearchFilters, resolveCatalogId, ucpCall } from './catalog-client.ts';
 import { formatProduct, mapProduct, mapSearchPage, price } from './map.ts';
 
@@ -32,7 +32,7 @@ const contextInput = z
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_products',
       title: 'Shopify Global Catalog: Search products',
       description:
@@ -177,8 +177,8 @@ export default defineMcpServer({
             : structured.products.map(formatProduct).join('\n');
         return { structured, text };
       },
-    },
-    {
+    }),
+    tool({
       name: 'lookup_products',
       title: 'Shopify Global Catalog: Look up products by id or URL',
       description:
@@ -223,8 +223,8 @@ export default defineMcpServer({
               (notFound.length > 0 ? `\nNot found: ${notFound.join(', ')}` : '');
         return { structured, text };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_product',
       title: 'Shopify Global Catalog: Get product detail',
       description:
@@ -282,6 +282,6 @@ export default defineMcpServer({
           : `No product found for "${args.id}".`;
         return { structured, text };
       },
-    },
+    }),
   ],
 });

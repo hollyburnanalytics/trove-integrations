@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { type Company, edgarJson, requireCompany, submissionsUrl } from '../client.ts';
 import { JURISDICTIONS } from '../jurisdictions.ts';
 
@@ -88,7 +88,7 @@ function formatCompanyProfile(p: CompanyProfile): string {
   return parts.join('\n');
 }
 
-export const getCompany: ToolDefinition = {
+export const getCompany = tool({
   name: 'get_company',
   title: 'EDGAR: Company profile',
   description:
@@ -127,4 +127,4 @@ export const getCompany: ToolDefinition = {
     const profile = parseCompanyProfile(body, resolved);
     return { text: formatCompanyProfile(profile), structured: profile };
   },
-};
+});

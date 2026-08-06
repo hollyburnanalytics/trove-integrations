@@ -1,11 +1,11 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { jonasGet } from '../client.ts';
 import { boolish, pageInput, str, uuid } from '../fields.ts';
 
 /**
  * `get_gl_accounts` — the chart-of-accounts lookup behind any GL-coded question.
  */
-export const getGlAccounts: ToolDefinition = {
+export const getGlAccounts = tool({
   name: 'get_gl_accounts',
   title: 'Premier: Get GL accounts',
   description:
@@ -80,4 +80,4 @@ export const getGlAccounts: ToolDefinition = {
       structured: { count: accounts.length, accounts },
     };
   },
-};
+});

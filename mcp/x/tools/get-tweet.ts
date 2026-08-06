@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { MEDIA_EXPANSION, MEDIA_FIELDS, TWEET_FIELDS, USER_FIELDS_BASIC, xGet } from '../client.ts';
 import { costNote } from '../cost.ts';
 import { tweetShape } from '../shapes.ts';
@@ -16,7 +16,7 @@ import {
  * `get_tweet` — expand one post by id or x.com URL, optionally resolving its
  * quoted/replied-to references.
  */
-export const getTweet: ToolDefinition = {
+export const getTweet = tool({
   name: 'get_tweet',
   title: 'X: Get one post',
   description:
@@ -81,4 +81,4 @@ export const getTweet: ToolDefinition = {
       structured: { tweet, referenced, note },
     };
   },
-};
+});

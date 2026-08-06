@@ -1,4 +1,4 @@
-import { type ToolContext, type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
 import {
   type Company,
   companyConceptUrl,
@@ -137,7 +137,7 @@ const conceptFactShape = z.object({
   frame: z.string().nullable(),
 });
 
-export const getXbrlConcept: ToolDefinition = {
+export const getXbrlConcept = tool({
   name: 'get_xbrl_concept',
   title: 'EDGAR: One XBRL concept over time',
   description:
@@ -205,16 +205,19 @@ export const getXbrlConcept: ToolDefinition = {
   async handler(args, ctx) {
     const { company, concept, search, taxonomy, period, limit } = args;
     ctx.log('get_xbrl_concept', { company, concept, search, taxonomy, period });
-    if (!concept && !search) {
-      throw new ToolError(
-        'Pass `concept` (an exact XBRL tag) or `search` (to discover available tags).',
-        { retryable: false },
-      );
+    // Discovery mode and concept mode are mutually exclusive, and one of them
+    // must be asked for: branching on `concept` first keeps `search` narrowed to
+    // a string in the discovery arm without an assertion.
+    if (concept === undefined) {
+      if (search === undefined) {
+        throw new ToolError(
+          'Pass `concept` (an exact XBRL tag) or `search` (to discover available tags).',
+          { retryable: false },
+        );
+      }
+      return discoverConcepts(ctx, await requireCompany(ctx, company), taxonomy, search, limit);
     }
     const resolved = await requireCompany(ctx, company);
-    if (!concept) {
-      return discoverConcepts(ctx, resolved, taxonomy, search as string, limit);
-    }
     const body = await edgarJson(
       ctx,
       companyConceptUrl(resolved.cik, taxonomy, concept),
@@ -277,4 +280,4 @@ export const getXbrlConcept: ToolDefinition = {
       },
     };
   },
-};
+});

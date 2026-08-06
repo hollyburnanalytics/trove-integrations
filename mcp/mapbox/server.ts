@@ -13,7 +13,7 @@
  * `properties.contour`, not array index.
  */
 import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 
 /** Mapbox API host. */
 const BASE_URL = 'https://api.mapbox.com';
@@ -51,7 +51,7 @@ async function getJson(url: string, ctx: ToolContext): Promise<Record<string, un
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'isochrone',
       title: 'Mapbox: Isochrone',
       description:
@@ -98,8 +98,8 @@ export default defineMcpServer({
           structured: { type: 'FeatureCollection' as const, features },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'geocode',
       title: 'Mapbox: Geocode',
       description:
@@ -171,8 +171,8 @@ export default defineMcpServer({
           structured: { query, count: results.length, results },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'directions',
       title: 'Mapbox: Directions',
       description:
@@ -257,6 +257,6 @@ export default defineMcpServer({
           structured,
         };
       },
-    },
+    }),
   ],
 });

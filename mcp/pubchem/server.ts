@@ -7,7 +7,7 @@
  * own terms. No key required.
  */
 import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 import { getJson } from '../lib/http.ts';
 
 const BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov/rest';
@@ -41,7 +41,7 @@ async function fetchDescription(cid: number, ctx: ToolContext): Promise<string |
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'get_compound',
       title: 'PubChem: Get a compound',
       description:
@@ -99,8 +99,8 @@ export default defineMcpServer({
           `${compound.description ? `\n  ${compound.description}` : ''}`;
         return { text, structured: compound };
       },
-    },
-    {
+    }),
+    tool({
       name: 'search_compounds',
       title: 'PubChem: Autocomplete compound names',
       description:
@@ -135,6 +135,6 @@ export default defineMcpServer({
           structured: { query, count: names.length, names },
         };
       },
-    },
+    }),
   ],
 });

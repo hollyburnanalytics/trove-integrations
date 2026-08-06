@@ -1,4 +1,4 @@
-import { defineMcpServer, z } from '@ontrove/mcp';
+import { defineMcpServer, tool, z } from '@ontrove/mcp';
 import { dataOutput, getChartData } from './chart.ts';
 import { GRAPHER, searchCharts, searchIndicators } from './client.ts';
 import { getIndicatorData, indicatorOutput } from './indicator.ts';
@@ -43,7 +43,7 @@ const TIME_PATTERN = new RegExp(`^${TIME_POINT}(?:\\.\\.${TIME_POINT})?$`);
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'search_charts',
       title: 'Our World in Data: Search charts',
       description:
@@ -129,8 +129,8 @@ export default defineMcpServer({
           structured,
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'search_indicators',
       title: 'Our World in Data: Search indicators',
       description:
@@ -207,8 +207,8 @@ export default defineMcpServer({
           structured,
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_chart_data',
       title: 'Our World in Data: Get chart data',
       description:
@@ -259,8 +259,8 @@ export default defineMcpServer({
         const data = await getChartData(ctx, { slug, countries, time, maxRows: max_rows });
         return { text: renderData(data), structured: data };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_indicator_data',
       title: 'Our World in Data: Get indicator data',
       description:
@@ -306,8 +306,8 @@ export default defineMcpServer({
         });
         return { text: renderIndicator(result), structured: result };
       },
-    },
-    {
+    }),
+    tool({
       name: 'get_chart_metadata',
       title: 'Our World in Data: Get chart metadata',
       description:
@@ -334,6 +334,6 @@ export default defineMcpServer({
         const result = await collectMetadata(ctx, slug, max_indicators);
         return { text: renderMetadata(result), structured: result };
       },
-    },
+    }),
   ],
 });

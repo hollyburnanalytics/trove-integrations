@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
 import {
   AIR_QUALITY_URL,
   ARCHIVE_URL,
@@ -28,7 +28,7 @@ import {
 
 export default defineMcpServer({
   tools: [
-    {
+    tool({
       name: 'geocode_place',
       title: 'Weather: Find place',
       description:
@@ -93,8 +93,8 @@ export default defineMcpServer({
           structured: { query: name, count: places.length, places },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'forecast',
       title: 'Weather: Forecast',
       description:
@@ -191,8 +191,8 @@ export default defineMcpServer({
           },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'air_quality',
       title: 'Weather: Air quality',
       description:
@@ -230,8 +230,8 @@ export default defineMcpServer({
           structured: { latitude, longitude, usAqi, pm2_5: pm25, pm10 },
         };
       },
-    },
-    {
+    }),
+    tool({
       name: 'historical',
       title: 'Weather: Historical',
       description:
@@ -348,6 +348,6 @@ export default defineMcpServer({
           structured: { latitude, longitude, units: u, summary, daily: rows },
         };
       },
-    },
+    }),
   ],
 });

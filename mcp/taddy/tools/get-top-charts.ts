@@ -1,11 +1,11 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { chartsOutput, getTopCharts } from '../discover.ts';
 import { renderEpisodeLine, renderList, renderPodcastLine } from '../render.ts';
 
 /**
  * `get_top_charts` — the Apple Podcasts chart, by country and/or genre.
  */
-export const getTopChartsTool: ToolDefinition = {
+export const getTopChartsTool = tool({
   name: 'get_top_charts',
   title: 'Taddy: Apple Podcasts top charts',
   description:
@@ -46,4 +46,4 @@ export const getTopChartsTool: ToolDefinition = {
         : `Apple Podcasts top ${result.type === 'PODCASTSERIES' ? 'shows' : 'episodes'} — ${result.scope} (page ${String(result.page)}):`;
     return { text: renderList(heading, lines), structured: result };
   },
-};
+});

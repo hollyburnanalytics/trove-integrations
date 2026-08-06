@@ -1,10 +1,10 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { collectWcatDecisions, wcatLine } from '../wcat.ts';
 
 /**
  * `get_wcat_decision` — look up a single WCAT decision by its exact number.
  */
-export const getWcatDecision: ToolDefinition = {
+export const getWcatDecision = tool({
   name: 'get_wcat_decision',
   title: 'WCAT: Look up a decision by number',
   description:
@@ -46,4 +46,4 @@ export const getWcatDecision: ToolDefinition = {
       structured: { found: true, decision: match },
     };
   },
-};
+});

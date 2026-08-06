@@ -1,11 +1,11 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { WCAT_APPLICATION_TYPES, WCAT_CLASSIFICATIONS, WCAT_DOCUMENT_TYPES } from '../shapes.ts';
 import { collectWcatDecisions, wcatLine } from '../wcat.ts';
 
 /**
  * `search_wcat_decisions` — keyword/facet search over WCAT's published decisions.
  */
-export const searchWcatDecisions: ToolDefinition = {
+export const searchWcatDecisions = tool({
   name: 'search_wcat_decisions',
   title: 'WCAT: Search decisions',
   description:
@@ -69,4 +69,4 @@ export const searchWcatDecisions: ToolDefinition = {
       structured: { count: decisions.length, decisions },
     };
   },
-};
+});

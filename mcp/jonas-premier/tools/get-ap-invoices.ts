@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { jonasGet } from '../client.ts';
 import { fmt, isoDate, num, pageInput, str, sum, uuid } from '../fields.ts';
 
@@ -6,7 +6,7 @@ import { fmt, isoDate, num, pageInput, str, sum, uuid } from '../fields.ts';
  * `get_ap_invoices` — AP invoices for a company + AP subledger; the "what do we
  * owe, and on which job" query.
  */
-export const getApInvoices: ToolDefinition = {
+export const getApInvoices = tool({
   name: 'get_ap_invoices',
   title: 'Premier: Get AP invoices',
   description:
@@ -112,4 +112,4 @@ export const getApInvoices: ToolDefinition = {
       structured: { count: invoices.length, totalAmount, invoices },
     };
   },
-};
+});

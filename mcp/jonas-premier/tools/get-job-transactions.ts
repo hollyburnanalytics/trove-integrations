@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { jonasGet } from '../client.ts';
 import { fmt, isoDate, num, pageInput, str, sum } from '../fields.ts';
 
@@ -6,7 +6,7 @@ import { fmt, isoDate, num, pageInput, str, sum } from '../fields.ts';
  * `get_job_transactions` — job-cost ledger lines (actuals) for a company over a
  * required updated-date range; the core "what did we actually spend on job X".
  */
-export const getJobTransactions: ToolDefinition = {
+export const getJobTransactions = tool({
   name: 'get_job_transactions',
   title: 'Premier: Get job-cost transactions',
   description:
@@ -111,4 +111,4 @@ export const getJobTransactions: ToolDefinition = {
       structured: { count: transactions.length, totalCost, transactions },
     };
   },
-};
+});
