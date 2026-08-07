@@ -14,6 +14,7 @@
   "location": "cloud",
   "schedule": "every 6 hours",
   "status": "implemented",
+  "fanOut": "queries",
   "config": {
     "queries": {
       "label": "Search Queries",

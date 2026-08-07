@@ -16,11 +16,14 @@
   "available": true,
   "needs_browser": false,
   "live": false,
+  "fanOut": "tickers",
   "config": {
     "tickers": {
       "label": "Company Tickers",
-      "type": "array",
+      "type": "text[]",
       "default": [],
+      "pattern": "^[A-Za-z][A-Za-z.-]{0,9}$",
+      "hint": "a ticker symbol such as SHOP or BRK-B, not a company name — search by name in the picker and it fills the symbol in",
       "directory": {
         "provider": "companies",
         "mode": "search",
