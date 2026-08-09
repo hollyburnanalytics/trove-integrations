@@ -23,12 +23,16 @@
       "type": "text[]",
       "default": [],
       "pattern": "^[A-Za-z][A-Za-z.-]{0,9}$",
-      "hint": "a ticker symbol such as SHOP or BRK-B, not a company name — search by name in the picker and it fills the symbol in",
+      "hint": "a ticker symbol such as SHOP or BRK-B, not a company name \u2014 search by name in the picker and it fills the symbol in",
       "directory": {
         "provider": "companies",
         "mode": "search",
         "placeholder": "Search companies by name"
       }
     }
+  },
+  "historyReach": {
+    "kind": "window",
+    "note": "EDGAR's submissions endpoint returns only a company's recent filings \u2014 roughly the last thousand. Older filings live in separate archives this source does not read."
   }
 }

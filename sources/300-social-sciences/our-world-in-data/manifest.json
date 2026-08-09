@@ -2,7 +2,7 @@
   "id": "our-world-in-data",
   "name": "Our World in Data",
   "description": "Research and data on how the world is changing, across health, poverty, energy and more (CC-BY)",
-  "icon": "🌍",
+  "icon": "\ud83c\udf0d",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "300-social-sciences",
@@ -15,5 +15,9 @@
   "status": "implemented",
   "config": {},
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "historyReach": {
+    "kind": "window",
+    "note": "This source reads an index page, so it reaches back as far as that page lists and no further."
+  }
 }

@@ -2,7 +2,7 @@
   "id": "bits-about-money",
   "name": "Bits about Money",
   "description": "Patrick McKenzie (patio11) on how money and banking actually work",
-  "icon": "🏦",
+  "icon": "\ud83c\udfe6",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "650-business",
@@ -15,5 +15,9 @@
   "status": "implemented",
   "config": {},
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "historyReach": {
+    "kind": "window",
+    "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+  }
 }

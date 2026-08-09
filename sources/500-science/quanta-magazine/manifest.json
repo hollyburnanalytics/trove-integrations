@@ -2,7 +2,7 @@
   "id": "quanta-magazine",
   "name": "Quanta Magazine",
   "description": "In-depth journalism on math, physics, biology and computer science (CC-BY-NC-ND)",
-  "icon": "🔬",
+  "icon": "\ud83d\udd2c",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "500-science",
@@ -15,5 +15,9 @@
   "status": "implemented",
   "config": {},
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "historyReach": {
+    "kind": "window",
+    "note": "This source reads an index page, so it reaches back as far as that page lists and no further."
+  }
 }

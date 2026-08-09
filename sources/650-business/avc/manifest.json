@@ -2,7 +2,7 @@
   "id": "avc",
   "name": "AVC (Fred Wilson)",
   "description": "Fred Wilson on venture capital and startups",
-  "icon": "💵",
+  "icon": "\ud83d\udcb5",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "650-business",
@@ -15,5 +15,9 @@
   "status": "implemented",
   "config": {},
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "historyReach": {
+    "kind": "window",
+    "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+  }
 }
