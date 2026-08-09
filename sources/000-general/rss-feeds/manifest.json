@@ -28,5 +28,9 @@
   },
   "fanOut": "feeds",
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "historyReach": {
+    "kind": "window",
+    "note": "How far back an RSS feed goes is the publisher's choice \u2014 some carry years, many carry only the last few dozen posts."
+  }
 }

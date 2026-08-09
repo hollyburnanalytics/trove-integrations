@@ -2,7 +2,7 @@
   "id": "podcast-feeds",
   "name": "Podcasts",
   "description": "Subscribe to any podcast by feed URL. Trove downloads each new episode and transcribes it, so the whole show becomes searchable text.",
-  "icon": "🎧",
+  "icon": "\ud83c\udfa7",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "000-general",
@@ -27,5 +27,9 @@
   },
   "fanOut": "feeds",
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "historyReach": {
+    "kind": "window",
+    "note": "Most podcast feeds carry the full back catalogue, but some publishers truncate theirs to recent episodes. How far back you get is the publisher's choice."
+  }
 }

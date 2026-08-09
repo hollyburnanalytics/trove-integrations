@@ -27,5 +27,9 @@
     }
   },
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "historyReach": {
+    "kind": "full",
+    "note": "arXiv answers any date range. A run fetches up to 500 papers per query and the next run carries on, so a deep backfill arrives over several syncs rather than all at once."
+  }
 }

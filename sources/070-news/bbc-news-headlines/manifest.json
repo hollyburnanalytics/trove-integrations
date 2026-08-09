@@ -2,7 +2,7 @@
   "id": "bbc-news-headlines",
   "name": "BBC News Headlines",
   "description": "Headlines and summaries from BBC News via RSS (no full article text)",
-  "icon": "📻",
+  "icon": "\ud83d\udcfb",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "070-news",
@@ -27,5 +27,9 @@
         "business"
       ]
     }
+  },
+  "historyReach": {
+    "kind": "recent-only",
+    "note": "A news feed carries only what is on the front page now \u2014 typically the last day or two. Older stories are not in the feed and cannot be fetched."
   }
 }
