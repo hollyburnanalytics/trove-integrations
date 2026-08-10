@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-06T00:46:53.964Z",
+  "updated_at": "2026-08-10T21:33:29.425Z",
   "source_count": 26,
   "categories": [
     "000-general",
@@ -64,7 +64,12 @@
           }
         }
       },
-      "formatting": "verbatim"
+      "formatting": "verbatim",
+      "fanOut": "queries",
+      "historyReach": {
+        "kind": "full",
+        "note": "arXiv answers any date range. A run fetches up to 500 papers per query and the next run carries on, so a deep backfill arrives over several syncs rather than all at once."
+      }
     },
     {
       "id": "avc",
@@ -85,7 +90,11 @@
       "path": "sources/650-business/avc",
       "has_code": true,
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "bbc-news-headlines",
@@ -118,7 +127,11 @@
       "transport": "feed",
       "watermark": "date",
       "documentSemantics": "append",
-      "location": "cloud"
+      "location": "cloud",
+      "historyReach": {
+        "kind": "recent-only",
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
+      }
     },
     {
       "id": "benedict-evans",
@@ -139,7 +152,11 @@
       "path": "sources/600-technology/benedict-evans",
       "has_code": true,
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "benn-stancil",
@@ -160,7 +177,11 @@
       "path": "sources/600-technology/benn-stancil",
       "has_code": true,
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "bits-about-money",
@@ -181,7 +202,11 @@
       "path": "sources/650-business/bits-about-money",
       "has_code": true,
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "daring-fireball",
@@ -202,7 +227,11 @@
       "watermark": "date",
       "documentSemantics": "append",
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "dnv-council-minutes",
@@ -257,7 +286,11 @@
       "transport": "feed",
       "watermark": "date",
       "documentSemantics": "append",
-      "location": "cloud"
+      "location": "cloud",
+      "historyReach": {
+        "kind": "recent-only",
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
+      }
     },
     {
       "id": "guardian-headlines",
@@ -289,6 +322,10 @@
             "business"
           ]
         }
+      },
+      "historyReach": {
+        "kind": "recent-only",
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
       }
     },
     {
@@ -331,7 +368,11 @@
       "path": "sources/650-business/lennys-newsletter",
       "has_code": true,
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "marginal-revolution",
@@ -352,7 +393,11 @@
       "path": "sources/330-economics/marginal-revolution",
       "has_code": true,
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "not-boring",
@@ -373,7 +418,11 @@
       "path": "sources/650-business/not-boring",
       "has_code": true,
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "nytimes-headlines",
@@ -402,6 +451,10 @@
             "HomePage"
           ]
         }
+      },
+      "historyReach": {
+        "kind": "recent-only",
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
       }
     },
     {
@@ -444,7 +497,11 @@
       "path": "sources/300-social-sciences/our-world-in-data",
       "has_code": true,
       "location": "client",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "This source reads an index page, so it reaches back as far as that page lists and no further."
+      }
     },
     {
       "id": "podcast-feeds",
@@ -477,7 +534,11 @@
       "needs_browser": false,
       "live": false,
       "path": "sources/000-general/podcast-feeds",
-      "has_code": true
+      "has_code": true,
+      "historyReach": {
+        "kind": "window",
+        "note": "Most podcast feeds carry the full back catalogue, but some publishers truncate theirs to recent episodes. How far back you get is the publisher's choice."
+      }
     },
     {
       "id": "quanta-magazine",
@@ -498,7 +559,11 @@
       "path": "sources/500-science/quanta-magazine",
       "has_code": true,
       "location": "client",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "This source reads an index page, so it reaches back as far as that page lists and no further."
+      }
     },
     {
       "id": "rss-feeds",
@@ -532,7 +597,11 @@
         }
       },
       "fanOut": "feeds",
-      "formatting": "reformat"
+      "formatting": "reformat",
+      "historyReach": {
+        "kind": "window",
+        "note": "How far back an RSS feed goes is the publisher's choice — some carry years, many carry only the last few dozen posts."
+      }
     },
     {
       "id": "sec-filings",
@@ -549,8 +618,10 @@
       "config": {
         "tickers": {
           "label": "Company Tickers",
-          "type": "array",
+          "type": "text[]",
           "default": [],
+          "pattern": "^[A-Za-z][A-Za-z.-]{0,9}$",
+          "hint": "a ticker symbol such as SHOP or BRK-B, not a company name — search by name in the picker and it fills the symbol in",
           "directory": {
             "provider": "companies",
             "mode": "search",
@@ -565,7 +636,12 @@
       "watermark": "date",
       "documentSemantics": "append",
       "available": true,
-      "location": "cloud"
+      "location": "cloud",
+      "fanOut": "tickers",
+      "historyReach": {
+        "kind": "window",
+        "note": "EDGAR's submissions endpoint returns only a company's recent filings — roughly the last thousand. Older filings live in separate archives this source does not read."
+      }
     },
     {
       "id": "simon-willison",
@@ -587,7 +663,11 @@
       "documentSemantics": "append",
       "location": "cloud",
       "config": {},
-      "formatting": "verbatim"
+      "formatting": "verbatim",
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "stratechery",
@@ -608,7 +688,11 @@
       "path": "sources/650-business/stratechery",
       "has_code": true,
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "window",
+        "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+      }
     },
     {
       "id": "the-conversation",
@@ -629,7 +713,11 @@
       "path": "sources/070-news/the-conversation",
       "has_code": true,
       "location": "cloud",
-      "config": {}
+      "config": {},
+      "historyReach": {
+        "kind": "recent-only",
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
+      }
     },
     {
       "id": "x-bookmarks",

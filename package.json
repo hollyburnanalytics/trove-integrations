@@ -27,10 +27,11 @@
     "typecheck:sources": "tsc -p tsconfig.sources.json",
     "source": "bun bin/run-source.mjs",
     "audit:dates": "bun scripts/audit-dates.mjs",
-    "check": "bun run lint && bun run lint:sonar && bun run lint:baseline && bun run test:coverage && bun run typecheck && bun run validate",
+    "check": "bun run lint && bun run lint:sonar && bun run lint:baseline && bun run test:coverage && bun run typecheck && bun run validate && bun run validate:schemas",
     "validate": "bun scripts/validate-registry.mjs",
     "lint:sonar": "eslint .",
-    "lint:baseline": "node scripts/lint-baseline.mjs"
+    "lint:baseline": "node scripts/lint-baseline.mjs",
+    "validate:schemas": "bun scripts/orphan-fields.mjs"
   },
   "dependencies": {
     "fast-xml-parser": "^5.10.1",
