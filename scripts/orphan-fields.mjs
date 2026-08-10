@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 /**
  * Fail the build on a declared tool input field that nothing reads.
  *
@@ -33,7 +34,7 @@
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import path from 'node:path';
 import tsModule from 'typescript';
 
 // typescript ships CJS; under bun the namespace can arrive wrapped in .default.
@@ -42,12 +43,12 @@ const ts = tsModule.ScriptTarget ? tsModule : tsModule.default;
 /** Every file under `root` matching `pred`, recursively. */
 function filesUnder(root, pred = () => true) {
   const out = [];
-  (function walk(dir) {
-    for (const entry of readdirSync(dir)) {
+  (function walk(directory) {
+    for (const entry of readdirSync(directory)) {
       if (entry === 'node_modules' || entry.startsWith('.')) continue;
-      const path = join(dir, entry);
-      if (statSync(path).isDirectory()) walk(path);
-      else if (pred(path)) out.push(path);
+      const child = path.join(directory, entry);
+      if (statSync(child).isDirectory()) walk(child);
+      else if (pred(child)) out.push(child);
     }
   })(root);
   return out;
@@ -58,50 +59,79 @@ function filesUnder(root, pred = () => true) {
  * Falls back to the file's own directory for a toolkit still without one.
  */
 function toolkitRoot(file, roots) {
-  let dir = dirname(file);
-  for (let i = 0; i < 6; i++) {
+  let directory = path.dirname(file);
+  for (let index = 0; index < 6; index++) {
     try {
-      if (readdirSync(dir).includes('manifest.json')) return dir;
+      if (readdirSync(directory).includes('manifest.json')) return directory;
     } catch {
       // Unreadable — keep walking up.
     }
-    const parent = dirname(dir);
-    if (parent === dir || roots.some((r) => dir === r)) break;
-    dir = parent;
+    const parent = path.dirname(directory);
+    if (parent === directory || roots.includes(directory)) break;
+    directory = parent;
   }
-  return dirname(file);
+  return path.dirname(file);
 }
 
 /** Unwrap `z.object({...})` / `.extend({...})` through any chained modifiers. */
 function zodObjectLiteral(node) {
-  let cur = node;
-  for (let i = 0; i < 12 && cur; i++) {
-    if (ts.isCallExpression(cur)) {
-      const callee = cur.expression;
+  let current = node;
+  for (let index = 0; index < 12 && current; index++) {
+    if (ts.isCallExpression(current)) {
+      const callee = current.expression;
       if (
         ts.isPropertyAccessExpression(callee) &&
         (callee.name.text === 'object' || callee.name.text === 'extend') &&
-        cur.arguments.length > 0 &&
-        ts.isObjectLiteralExpression(cur.arguments[0])
+        current.arguments.length > 0 &&
+        ts.isObjectLiteralExpression(current.arguments[0])
       ) {
-        return cur.arguments[0];
+        return current.arguments[0];
       }
-      cur = callee;
+      current = callee;
       continue;
     }
-    if (ts.isPropertyAccessExpression(cur)) {
-      cur = cur.expression;
+    if (ts.isPropertyAccessExpression(current)) {
+      current = current.expression;
       continue;
     }
     break;
   }
-  return null;
+  // Not a literal object — the caller reports it rather than assuming empty.
 }
 
 /** Does `field` appear anywhere in `text` in a position that READS it? */
 function isRead(field, text) {
-  const name = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const name = field.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
   return new RegExp(`\\.${name}\\b|\\{[^}]*\\b${name}\\b[^{]*\\}|['"\`]${name}['"\`]`).test(text);
+}
+
+/** The name of a property, when it has a readable one. */
+function propertyName(property) {
+  const n = property.name;
+  return n && (ts.isIdentifier(n) || ts.isStringLiteral(n)) ? n.text : undefined;
+}
+
+/** A `tool({...})` call's name and input node, or null if this isn't one. */
+function toolSpec(node) {
+  if (
+    !ts.isCallExpression(node) ||
+    !ts.isIdentifier(node.expression) ||
+    node.expression.text !== 'tool' ||
+    node.arguments.length === 0 ||
+    !ts.isObjectLiteralExpression(node.arguments[0])
+  ) {
+    return;
+  }
+  let toolName = '(unnamed)';
+  let inputNode;
+  for (const property of node.arguments[0].properties) {
+    const key = propertyName(property);
+    if (!ts.isPropertyAssignment(property)) continue;
+    if (key === 'name' && ts.isStringLiteral(property.initializer))
+      toolName = property.initializer.text;
+    if (key === 'input') inputNode = property.initializer;
+  }
+  return inputNode ? { toolName, inputNode } : undefined;
 }
 
 const roots = process.argv.slice(2);
@@ -121,52 +151,34 @@ for (const root of searchRoots) {
       .map((p) => readFileSync(p, 'utf8'))
       .join('\n');
 
-    (function visit(node) {
-      if (
-        ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === 'tool' &&
-        node.arguments.length > 0 &&
-        ts.isObjectLiteralExpression(node.arguments[0])
-      ) {
-        const spec = node.arguments[0];
-        let toolName = '(unnamed)';
-        let inputNode = null;
-        for (const prop of spec.properties) {
-          const key = prop.name && ts.isIdentifier(prop.name) ? prop.name.text : null;
-          if (
-            key === 'name' &&
-            ts.isPropertyAssignment(prop) &&
-            ts.isStringLiteral(prop.initializer)
-          ) {
-            toolName = prop.initializer.text;
-          }
-          if (key === 'input' && ts.isPropertyAssignment(prop)) inputNode = prop.initializer;
-        }
-        if (inputNode) {
-          const lit = zodObjectLiteral(inputNode);
-          if (!lit) {
-            unparsed.push({ file, tool: toolName });
-          } else {
-            for (const prop of lit.properties) {
-              const n = prop.name;
-              if (!n || !(ts.isIdentifier(n) || ts.isStringLiteral(n))) continue;
-              const field = n.text;
-              checked++;
-              const own = text.slice(0, prop.getStart(sf)) + text.slice(prop.getEnd());
-              if (!isRead(field, own) && !isRead(field, kitText)) {
-                orphans.push({ file, tool: toolName, field });
-              }
-            }
-          }
+    /** Check one tool's declared input fields against the toolkit. */
+    const auditTool = ({ toolName, inputNode }) => {
+      const lit = zodObjectLiteral(inputNode);
+      if (!lit) {
+        unparsed.push({ file, tool: toolName });
+        return;
+      }
+      for (const property of lit.properties) {
+        const field = propertyName(property);
+        if (!field) continue;
+        checked++;
+        // The field's own declaration cannot vouch for itself.
+        const own = text.slice(0, property.getStart(sf)) + text.slice(property.getEnd());
+        if (!isRead(field, own) && !isRead(field, kitText)) {
+          orphans.push({ file, tool: toolName, field });
         }
       }
+    };
+
+    (function visit(node) {
+      const spec = toolSpec(node);
+      if (spec) auditTool(spec);
       ts.forEachChild(node, visit);
     })(sf);
   }
 }
 
-const where = (f) => relative(process.cwd(), f);
+const where = (f) => path.relative(process.cwd(), f);
 
 if (orphans.length === 0 && unparsed.length === 0) {
   console.log(`orphan-fields: ${checked} declared input fields, all read.`);
@@ -179,7 +191,9 @@ for (const o of orphans) {
   );
 }
 for (const u of unparsed) {
-  console.error(`${where(u.file)}: ${u.tool} has an input this check cannot parse — read it by eye.`);
+  console.error(
+    `${where(u.file)}: ${u.tool} has an input this check cannot parse — read it by eye.`,
+  );
 }
 console.error(
   `\norphan-fields: ${orphans.length} orphaned field(s), ${unparsed.length} unparsed, out of ${checked} checked.` +
