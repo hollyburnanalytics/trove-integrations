@@ -65,7 +65,7 @@ function toEntry(feed) {
     ...(subtitle !== '' && { subtitle }),
     ...(description !== '' && { description }),
     ...(imageUrl !== '' && { imageUrl }),
-    ...(itemCount !== undefined && { itemCount }),
+    ...(itemCount !== undefined && { itemCount, itemNoun: 'episode' }),
     ...(latestAt !== undefined && { latestAt }),
   };
 }
