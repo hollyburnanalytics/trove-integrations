@@ -105,12 +105,15 @@ describe('x-bookmarks source', () => {
     expect(result.documents[1].author).toBe('@chefjack');
 
     expect(result.cursor.type).toBe('idSet');
-    expect(result.cursor.value).toEqual(['1900000000000000100', '1900000000000000101']);
+    expect(result.cursor.values).toEqual(['1900000000000000100', '1900000000000000101']);
     expect(result.stats.fetched).toBe(2);
     expect(result.stats.skipped).toBe(0);
   });
 
-  it('stops at the first already-seen id and ingests only the new ones', async () => {
+  // The cursor this source wrote before the shape was corrected: the set under
+  // `value` rather than `values`. Still read, for one release, so upgrading does
+  // not throw away a Mac user's position and re-fetch every bookmark.
+  it('still resumes from a LEGACY `value` cursor', async () => {
     const cursor = { type: 'idSet', value: ['1900000000000000100', '1900000000000000101'] };
     installFetch({
       pages: [
@@ -137,11 +140,41 @@ describe('x-bookmarks source', () => {
     // The seen head + the one after it on the page are counted as skipped.
     expect(result.stats.skipped).toBe(2);
     // Newest-first, prior set appended, deduped.
-    expect(result.cursor.value).toEqual([
+    expect(result.cursor.values).toEqual([
       '1900000000000000102',
       '1900000000000000100',
       '1900000000000000101',
     ]);
+  });
+
+  it('resumes from the corrected `values` cursor', async () => {
+    // The shape the platform can actually parse. `parseWatermark` requires
+    // `values`, so the old cursor read as null in the cloud — this source would
+    // have re-fetched every bookmark on every run the moment it left the Mac.
+    const cursor = {
+      type: 'idSet',
+      values: ['1900000000000000100', '1900000000000000101'],
+      max: 1000,
+    };
+    installFetch({
+      pages: [
+        {
+          data: [
+            tweet('1900000000000000102', 'Brand new bookmark', '44196397'),
+            tweet('1900000000000000100', 'A thread about databases', '44196397'),
+          ],
+          includes: USERS,
+        },
+      ],
+    });
+
+    const result = await sync(makeContext(cursor));
+
+    expect(result.documents).toHaveLength(1);
+    expect(result.cursor.values[0]).toBe('1900000000000000102');
+    // The cap travels with the set, which is what lets a reader say whether the
+    // set is full and therefore evicting.
+    expect(result.cursor.max).toBe(1000);
   });
 
   it('throws a token-free error when the refresh grant is rejected', async () => {

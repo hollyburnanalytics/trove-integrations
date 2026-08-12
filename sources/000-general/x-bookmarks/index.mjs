@@ -46,12 +46,26 @@ function authHeaders(accessToken) {
 
 /**
  * Read the previous `idSet` watermark as a (newest-first) array of tweet ids.
- * This source stores the set under `value` (an array), matching the
- * bookmarks contract — distinct from `lib/watermark.mjs`'s `{ values, max }`
- * payload used by other sources.
+ *
+ * Reads BOTH shapes on purpose. This source used to store the set under
+ * `value`, deliberately unlike `lib/watermark.mjs`'s `{ values, max }`, and the
+ * deviation was invisible because the reader and the writer agreed with each
+ * other. It was not invisible to the platform: Trove's `parseWatermark` requires
+ * `values`, so a `value` cursor parses to null — the feed would resume from
+ * nothing on every run and re-fetch every bookmark, and its watermark could not
+ * be displayed at all.
+ *
+ * Harmless only because this source is Mac-located, where the raw cursor is
+ * handed back untouched. It would have started silently re-fetching the moment
+ * anyone moved it to the cloud.
+ *
+ * The legacy branch stays for one release so an existing Mac cursor is not
+ * discarded on upgrade; new cursors are always written as `values`.
  */
 function readSeenIds(cursor) {
-  return cursor?.type === 'idSet' && Array.isArray(cursor.value) ? cursor.value : [];
+  if (cursor?.type !== 'idSet') return [];
+  if (Array.isArray(cursor.values)) return cursor.values;
+  return Array.isArray(cursor.value) ? cursor.value : [];
 }
 
 /**
@@ -224,7 +238,9 @@ export async function sync(context) {
   context.log.info(`Fetched ${documents.length} new bookmark(s)`);
   return {
     documents,
-    cursor: { type: 'idSet', value: boundedIds },
+    // `values` + `max`, the shape the platform parses. See readSeenIds above
+    // for why this is not `value`.
+    cursor: { type: 'idSet', values: boundedIds, max: MAX_SEEN_IDS },
     stats: { fetched: documents.length, skipped },
   };
 }

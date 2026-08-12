@@ -130,8 +130,26 @@ export async function sync(context) {
     (book) => versions.has(book.cnxId) && (wanted.size === 0 || wanted.has(book.slug)),
   );
 
-  const done = new Set(context.cursor?.value?.done);
-  const resume = context.cursor?.value?.partial; // { key, next } — a book left mid-sync
+  // This source's resume state is NOT an idSet, whatever the manifest says: it
+  // is `{ done: string[], partial?: { key, next } }` — which books are finished
+  // plus one left mid-sync. Trove's `parseWatermark` models three shapes and
+  // this is a fourth, so in the cloud it would parse to null and every run
+  // would restart from zero books. That is survivable here ONLY because this
+  // source is `location: client`, where the Mac hands the raw cursor back
+  // untouched.
+  //
+  // Said out loud rather than left implicit, because the failure is silent: a
+  // full re-sync looks exactly like a first sync.
+  const stored = context.cursor?.value;
+  if (context.cursor && stored === undefined) {
+    context.log.warn(
+      'Resume state was not readable, so this run starts from the first book. ' +
+        'This source keeps a custom checkpoint the platform cannot parse, and only ' +
+        'works where the raw cursor is preserved (location: client).',
+    );
+  }
+  const done = new Set(stored?.done);
+  const resume = stored?.partial; // { key, next } — a book left mid-sync
   const documents = [];
   let skipped = 0;
   let partial;
