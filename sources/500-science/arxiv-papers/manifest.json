@@ -2,7 +2,7 @@
   "id": "arxiv-papers",
   "name": "arXiv Papers",
   "description": "ML and CS paper abstracts matching your search queries",
-  "icon": "\ud83d\udcc4",
+  "icon": "📄",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "500-science",
@@ -27,7 +27,6 @@
     }
   },
   "needs_browser": false,
-  "live": false,
   "historyReach": {
     "kind": "full",
     "note": "arXiv answers any date range. A run fetches up to 500 papers per query and the next run carries on, so a deep backfill arrives over several syncs rather than all at once."

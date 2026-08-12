@@ -13,10 +13,13 @@
   "location": "client",
   "schedule": "every 6 hours",
   "status": "implemented",
+  "secrets": [
+    "X_OAUTH_CLIENT_ID",
+    "X_OAUTH_CLIENT_SECRET",
+    "X_OAUTH_REFRESH_TOKEN"
+  ],
   "available": false,
-  "config": {},
   "needs_browser": false,
-  "live": false,
   "egress": [
     "api.x.com"
   ],

@@ -2,7 +2,7 @@
   "id": "stratechery",
   "name": "Stratechery",
   "description": "Ben Thompson on tech strategy and business models",
-  "icon": "\ud83d\udcca",
+  "icon": "📊",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "650-business",
@@ -13,9 +13,7 @@
   "location": "cloud",
   "schedule": "daily",
   "status": "implemented",
-  "config": {},
   "needs_browser": false,
-  "live": false,
   "historyReach": {
     "kind": "window",
     "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."

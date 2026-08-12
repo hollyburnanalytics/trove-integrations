@@ -14,9 +14,7 @@
   "location": "cloud",
   "schedule": "daily",
   "status": "implemented",
-  "config": {},
   "needs_browser": false,
-  "live": false,
   "egress": [
     "app.dnv.org"
   ],

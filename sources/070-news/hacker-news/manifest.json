@@ -13,9 +13,7 @@
   "location": "client",
   "schedule": "every 1 hour",
   "status": "implemented",
-  "config": {},
   "needs_browser": false,
-  "live": false,
   "egress": [
     "hn.algolia.com"
   ],

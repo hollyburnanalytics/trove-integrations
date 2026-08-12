@@ -13,9 +13,7 @@
   "location": "client",
   "schedule": "every 6 hours",
   "status": "implemented",
-  "config": {},
   "needs_browser": false,
-  "live": false,
   "egress": [],
   "egressNote": "Reads the macOS Podcasts app's local SQLite library and makes no request of its own; the enclosure URLs it emits are downloaded later by Trove's transcription workflow, not by this adapter."
 }

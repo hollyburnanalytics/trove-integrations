@@ -1,8 +1,8 @@
 {
   "id": "rss-feeds",
   "name": "RSS Feeds",
-  "description": "Subscribe to any blog or news feed \u2014 RSS, Atom, or JSON Feed. Paste feed URLs (or just the site URL) and Trove stores the full text of every post.",
-  "icon": "\ud83d\udce1",
+  "description": "Subscribe to any blog or news feed — RSS, Atom, or JSON Feed. Paste feed URLs (or just the site URL) and Trove stores the full text of every post.",
+  "icon": "📡",
   "version": "0.2.0",
   "author": "Hollyburn Analytics Inc.",
   "category": "000-general",
@@ -28,10 +28,9 @@
   },
   "fanOut": "feeds",
   "needs_browser": false,
-  "live": false,
   "historyReach": {
     "kind": "window",
-    "note": "How far back an RSS feed goes is the publisher's choice \u2014 some carry years, many carry only the last few dozen posts."
+    "note": "How far back an RSS feed goes is the publisher's choice — some carry years, many carry only the last few dozen posts."
   },
   "egress": [
     "config:feeds"

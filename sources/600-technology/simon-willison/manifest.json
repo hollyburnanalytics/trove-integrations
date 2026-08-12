@@ -2,7 +2,7 @@
   "id": "simon-willison",
   "name": "Simon Willison",
   "description": "All posts from simonwillison.net (2002-present)",
-  "icon": "\u270d\ufe0f",
+  "icon": "✍️",
   "version": "0.1.1",
   "author": "Hollyburn Analytics Inc.",
   "category": "600-technology",
@@ -14,9 +14,7 @@
   "location": "cloud",
   "schedule": "daily",
   "status": "implemented",
-  "config": {},
   "needs_browser": false,
-  "live": false,
   "historyReach": {
     "kind": "window",
     "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."

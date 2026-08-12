@@ -13,9 +13,7 @@
   "location": "client",
   "schedule": "monthly",
   "status": "implemented",
-  "config": {},
   "needs_browser": false,
-  "live": false,
   "egress": [
     "openstax.org"
   ],
