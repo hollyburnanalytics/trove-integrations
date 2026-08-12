@@ -76,7 +76,32 @@ export function warnIfUndated(context, documents, origin) {
  * other. Callers drop these instead (see {@link identifiedItems}).
  */
 export function itemIdentity(item) {
-  return item.guid || item.link || item.title || '';
+  return withoutFragment(item.guid || item.link || item.title || '');
+}
+
+/**
+ * Drop a URL's `#fragment`, which is a position inside a document and never
+ * part of what the document IS.
+ *
+ * BBC's guids are the reason. They look like
+ * `https://www.bbc.co.uk/news/articles/czjlwlkw1m4o#4`, where the number is the
+ * item's index IN THAT FEED — so one article is `#0` in top_stories and `#4` in
+ * uk, and its number changes again every time the running order shifts. Keeping
+ * the fragment made identity churn: the same article was stored once per
+ * section it appeared in, and stored AGAIN whenever it moved. 233 duplicates
+ * had accumulated in one library from this alone, and it does not converge —
+ * every re-ordering mints another copy.
+ *
+ * Applied only to things that parse as URLs, so a guid that is an opaque string
+ * containing `#` keeps every character of it.
+ *
+ * @param {string} value - A guid, link or title.
+ * @returns {string} The value with any URL fragment removed.
+ */
+function withoutFragment(value) {
+  if (!/^https?:\/\//i.test(value)) return value;
+  const hash = value.indexOf('#');
+  return hash === -1 ? value : value.slice(0, hash);
 }
 
 /**

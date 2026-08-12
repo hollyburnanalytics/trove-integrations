@@ -76,7 +76,11 @@ export function discoverFeedUrl(html, baseUrl) {
 export function feedItemDocument(idPrefix, item, { defaultAuthor, tags, fullText = false } = {}) {
   const body = fullText ? item.bodyHtml || item.description : item.description;
   const document = {
-    id: stableId(idPrefix, item.guid || item.link),
+    // itemIdentity, NOT a second hand-rolled `guid || link`. The dedupe key and
+    // the stored id have to be the same string or an item can be judged unseen
+    // and then written under an id that already exists — and this copy was
+    // already subtly different, having no title fallback.
+    id: stableId(idPrefix, itemIdentity(item)),
     title: decodeHtmlEntities(item.title || 'Untitled'),
     text: [decodeHtmlEntities(item.title || ''), htmlToText(body || '')]
       .filter(Boolean)

@@ -5,6 +5,7 @@ import {
   fetchArticleText,
   fetchPage,
   htmlToText,
+  itemIdentity,
   parseRSS,
   safeDate,
   stableId,
@@ -882,5 +883,44 @@ describe('syncFeedArticles', () => {
     const result = await syncFeedArticles(context, options);
     expect(result.documents).toHaveLength(0);
     expect(result.stats.remaining).toBeGreaterThan(0);
+  });
+});
+
+describe('itemIdentity and URL fragments', () => {
+  // BBC guids carry the item's INDEX IN THAT FEED as a fragment:
+  // .../articles/czjlwlkw1m4o#4. So one article is #0 in top_stories and #4 in
+  // uk, and its number changes again whenever the running order shifts. With
+  // the fragment in the identity, the same article was stored once per section
+  // AND again on every re-ordering — 233 duplicates in one library, and it
+  // never converges.
+
+  it('treats one article as one item across sections', () => {
+    expect(itemIdentity({ guid: 'https://www.bbc.co.uk/news/articles/czjlwlkw1m4o#0' })).toBe(
+      itemIdentity({ guid: 'https://www.bbc.co.uk/news/articles/czjlwlkw1m4o#4' }),
+    );
+  });
+
+  it('keeps two genuinely different articles apart', () => {
+    expect(itemIdentity({ guid: 'https://www.bbc.co.uk/news/articles/aaaa#0' })).not.toBe(
+      itemIdentity({ guid: 'https://www.bbc.co.uk/news/articles/bbbb#0' }),
+    );
+  });
+
+  it('leaves a non-URL guid completely alone', () => {
+    // An opaque guid may contain '#' as an ordinary character, and truncating
+    // it there would collide unrelated items onto one document.
+    expect(itemIdentity({ guid: 'tag:example.com,2026:post#42' })).toBe(
+      'tag:example.com,2026:post#42',
+    );
+  });
+
+  it('strips the fragment from a link fallback too', () => {
+    expect(itemIdentity({ link: 'https://example.com/a#section-2' })).toBe(
+      'https://example.com/a',
+    );
+  });
+
+  it('still reports no identity when the item has none', () => {
+    expect(itemIdentity({})).toBe('');
   });
 });
