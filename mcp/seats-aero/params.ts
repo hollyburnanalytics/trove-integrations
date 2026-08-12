@@ -1,4 +1,4 @@
-import { ToolError } from '@ontrove/mcp';
+import { ToolError, type ToolContext } from '@ontrove/mcp';
 import { type Cabin, cabinCoverageNotes, type Region, resolveSources } from './programs.ts';
 import type { Cursor } from './wire.ts';
 
@@ -16,6 +16,25 @@ import type { Cursor } from './wire.ts';
  */
 
 const AIRPORT = /^[A-Z]{3}$/;
+
+/**
+ * The caller's stored `home_airports` setting, as the manifest declares it.
+ *
+ * Read defensively rather than trusted: `ctx.config` is user-entered data that
+ * reached us through storage, and a tool that assumed its own setting's shape
+ * would be the one place in this file that trusts an input. Anything that is
+ * not a list of strings reads as "not set", landing on the same error a caller
+ * gets for omitting the argument with nothing stored — a stated requirement,
+ * never a silent search of everywhere.
+ *
+ * The codes are NOT validated here. `airportList` already names a bad one
+ * precisely, and doing it twice means two messages for one mistake.
+ */
+export function homeAirports(ctx: ToolContext): string[] {
+  const stored = ctx.config?.home_airports;
+  if (!Array.isArray(stored)) return [];
+  return stored.filter((value): value is string => typeof value === 'string');
+}
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -144,7 +163,7 @@ function put(params: URLSearchParams, name: string, value: string | undefined): 
 
 /** The `search_awards` input surface, in snake_case as the tool receives it. */
 export interface SearchInput {
-  origin_airport: string[];
+  origin_airport?: string[];
   destination_airport: string[];
   start_date?: string;
   end_date?: string;
@@ -163,15 +182,28 @@ export interface SearchInput {
 
 /**
  * Build the `GET /search` query, validating every caller-supplied value first.
+ *
+ * `homeAirports` is the user's stored setting, used only when the caller named
+ * no origin. A default, not an override: a model that says where to fly from
+ * always wins, because the setting exists to save a person from repeating
+ * themselves, not to overrule them.
  * Returns the notes validation produced so the handler can carry them into the
  * result instead of letting an empty page speak for itself.
  */
 export function searchQuery(
   input: SearchInput,
   now: Date,
+  homeAirports: readonly string[] = [],
 ): { params: URLSearchParams; notes: string[] } {
   const params = new URLSearchParams();
-  params.set('origin_airport', airportList(input.origin_airport, 'origin_airport'));
+  const origins = input.origin_airport?.length ? input.origin_airport : homeAirports;
+  if (origins.length === 0) {
+    throw new ToolError(
+      'origin_airport: give at least one 3-letter IATA airport code, e.g. SFO — or set your home airports in this toolkit\u2019s settings and omit it.',
+      { retryable: false },
+    );
+  }
+  params.set('origin_airport', airportList(origins, 'origin_airport'));
   params.set('destination_airport', airportList(input.destination_airport, 'destination_airport'));
 
   const window = departureWindow(input.start_date, input.end_date, now);

@@ -8,7 +8,7 @@ import {
   pageOutput,
   quotaOutput,
 } from '../fields.ts';
-import { searchQuery } from '../params.ts';
+import { homeAirports, searchQuery } from '../params.ts';
 import { PROGRAMS } from '../programs.ts';
 import { renderPage, toPage } from '../render.ts';
 import { WireAvailabilityPage } from '../wire.ts';
@@ -37,7 +37,12 @@ export const searchAwards: ToolDefinition = {
     origin_airport: z
       .array(z.string())
       .min(1)
-      .describe('Origin IATA airport codes, e.g. ["SFO","OAK"]. Airports only — not cities.'),
+      .optional()
+      .describe(
+        'Origin IATA airport codes, e.g. ["SFO","OAK"]. Airports only — not cities. ' +
+          'Omit to use the home airports set in this toolkit\u2019s settings; omitting it ' +
+          'with none set is an error rather than a search of everywhere.',
+      ),
     destination_airport: z
       .array(z.string())
       .min(1)
@@ -88,7 +93,9 @@ export const searchAwards: ToolDefinition = {
     results: z.array(availabilityOutput),
   }),
   async handler(args, ctx) {
-    const { params, notes } = searchQuery(args, new Date());
+    // Read fresh on every call, so a preference changed in the dashboard
+    // applies to the next question rather than the next session.
+    const { params, notes } = searchQuery(args, new Date(), homeAirports(ctx));
     const key = await apiKey(ctx);
     ctx.log('search_awards', {
       origin: params.get('origin_airport'),

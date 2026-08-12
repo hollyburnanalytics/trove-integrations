@@ -10,6 +10,7 @@ import {
   airportList,
   carrierList,
   departureWindow,
+  homeAirports,
   sameAirportNotes,
   searchQuery,
 } from './params.ts';
@@ -207,6 +208,58 @@ describe('seats-aero MCP server', () => {
         new Date(),
       );
       expect(notes.join(' ')).toContain('minify_trips was ignored');
+    });
+
+    describe('home airports', () => {
+      /** The `search_awards` input minus the origin, which is what these vary. */
+      const rest = {
+        destination_airport: ['LHR'],
+        only_direct_flights: false,
+        include_trips: false,
+        minify_trips: false,
+        include_filtered: false,
+        take: 100,
+        skip: 0,
+      };
+
+      it('falls back to the stored setting when the caller named no origin', () => {
+        // The whole point of the setting: somebody who always flies from the
+        // same two airports should not retype them, and the model should not
+        // have to guess them from conversation.
+        const { params } = searchQuery({ ...rest }, new Date(), ['YVR', 'SEA']);
+        expect(params.get('origin_airport')).toBe('YVR,SEA');
+      });
+
+      it('lets an explicit origin win over the setting', () => {
+        // A default, not an override. Someone asking about a trip from JFK
+        // means JFK, whatever their home airport says.
+        const { params } = searchQuery({ ...rest, origin_airport: ['JFK'] }, new Date(), ['YVR']);
+        expect(params.get('origin_airport')).toBe('JFK');
+      });
+
+      it('refuses rather than searching from everywhere', () => {
+        // Seats.aero answers an impossible query with an empty 200, which reads
+        // as "no award space" — so an unstated origin has to be an error here or
+        // it becomes a wrong answer downstream.
+        expect(() => searchQuery({ ...rest }, new Date())).toThrow(/origin_airport/);
+        expect(() => searchQuery({ ...rest }, new Date())).toThrow(/settings/);
+      });
+    });
+
+    describe('homeAirports', () => {
+      it('reads the declared setting', () => {
+        expect(homeAirports({ config: { home_airports: ['YVR'] } })).toEqual(['YVR']);
+      });
+
+      it('treats anything that is not a list of codes as unset', () => {
+        // `ctx.config` is user-entered data that arrived through storage. A tool
+        // that trusted its own setting's shape would be the one place in this
+        // file that trusts an input.
+        expect(homeAirports({ config: { home_airports: 'YVR' } })).toEqual([]);
+        expect(homeAirports({ config: { home_airports: [1, 'YVR'] } })).toEqual(['YVR']);
+        expect(homeAirports({ config: {} })).toEqual([]);
+        expect(homeAirports({})).toEqual([]);
+      });
     });
   });
 
