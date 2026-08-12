@@ -16,5 +16,9 @@
   "status": "implemented",
   "config": {},
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "egress": [
+    "app.dnv.org"
+  ],
+  "egressNote": "The council search API and the meeting PDFs it points at are both on app.dnv.org."
 }

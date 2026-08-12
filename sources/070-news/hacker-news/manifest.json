@@ -15,5 +15,12 @@
   "status": "implemented",
   "config": {},
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "egress": [
+    "hn.algolia.com"
+  ],
+  "egressNotFetched": [
+    "news.ycombinator.com"
+  ],
+  "egressNote": "The Algolia HN search API only; news.ycombinator.com appears as a story's stored URL when the submission links nowhere else, and is never fetched."
 }

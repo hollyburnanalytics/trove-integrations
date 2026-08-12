@@ -34,5 +34,10 @@
   "historyReach": {
     "kind": "window",
     "note": "EDGAR's submissions endpoint returns only a company's recent filings \u2014 roughly the last thousand. Older filings live in separate archives this source does not read."
-  }
+  },
+  "egress": [
+    "www.sec.gov",
+    "data.sec.gov"
+  ],
+  "egressNote": "The ticker→CIK map and each filing's EDGAR archive document are on www.sec.gov; the company submissions index is on data.sec.gov."
 }

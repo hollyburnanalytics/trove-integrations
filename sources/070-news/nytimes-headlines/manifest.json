@@ -27,5 +27,8 @@
   "historyReach": {
     "kind": "recent-only",
     "note": "A news feed carries only what is on the front page now \u2014 typically the last day or two. Older stories are not in the feed and cannot be fetched."
-  }
+  },
+  "egress": [
+    "rss.nytimes.com"
+  ]
 }

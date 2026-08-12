@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-10T21:33:29.425Z",
+  "updated_at": "2026-08-12T04:27:42.007Z",
   "source_count": 26,
   "categories": [
     "000-general",
@@ -32,7 +32,9 @@
       "watermark": "date",
       "documentSemantics": "append",
       "location": "client",
-      "config": {}
+      "config": {},
+      "egress": [],
+      "egressNote": "Reads the macOS Podcasts app's local SQLite library and makes no request of its own; the enclosure URLs it emits are downloaded later by Trove's transcription workflow, not by this adapter."
     },
     {
       "id": "arxiv-papers",
@@ -69,7 +71,14 @@
       "historyReach": {
         "kind": "full",
         "note": "arXiv answers any date range. A run fetches up to 500 papers per query and the next run carries on, so a deep backfill arrives over several syncs rather than all at once."
-      }
+      },
+      "egress": [
+        "export.arxiv.org"
+      ],
+      "egressNotFetched": [
+        "arxiv.org"
+      ],
+      "egressNote": "The adapter queries the arXiv API on export.arxiv.org. arxiv.org appears only as the paper's HTML/PDF `file_url`, which Trove's ingest fetches when it captures the artifact."
     },
     {
       "id": "avc",
@@ -94,7 +103,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "avc.com"
+      ]
     },
     {
       "id": "bbc-news-headlines",
@@ -131,7 +143,10 @@
       "historyReach": {
         "kind": "recent-only",
         "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
-      }
+      },
+      "egress": [
+        "feeds.bbci.co.uk"
+      ]
     },
     {
       "id": "benedict-evans",
@@ -156,7 +171,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "www.ben-evans.com"
+      ]
     },
     {
       "id": "benn-stancil",
@@ -181,7 +199,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "benn.substack.com"
+      ]
     },
     {
       "id": "bits-about-money",
@@ -206,7 +227,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "www.bitsaboutmoney.com"
+      ]
     },
     {
       "id": "daring-fireball",
@@ -231,7 +255,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "daringfireball.net"
+      ]
     },
     {
       "id": "dnv-council-minutes",
@@ -253,7 +280,11 @@
       "needs_browser": false,
       "live": false,
       "path": "sources/350-public-administration/dnv-council-minutes",
-      "has_code": true
+      "has_code": true,
+      "egress": [
+        "app.dnv.org"
+      ],
+      "egressNote": "The council search API and the meeting PDFs it points at are both on app.dnv.org."
     },
     {
       "id": "financial-times-headlines",
@@ -290,7 +321,10 @@
       "historyReach": {
         "kind": "recent-only",
         "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
-      }
+      },
+      "egress": [
+        "www.ft.com"
+      ]
     },
     {
       "id": "guardian-headlines",
@@ -326,7 +360,10 @@
       "historyReach": {
         "kind": "recent-only",
         "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
-      }
+      },
+      "egress": [
+        "www.theguardian.com"
+      ]
     },
     {
       "id": "hacker-news",
@@ -347,7 +384,14 @@
       "watermark": "none",
       "documentSemantics": "append",
       "location": "client",
-      "config": {}
+      "config": {},
+      "egress": [
+        "hn.algolia.com"
+      ],
+      "egressNotFetched": [
+        "news.ycombinator.com"
+      ],
+      "egressNote": "The Algolia HN search API only; news.ycombinator.com appears as a story's stored URL when the submission links nowhere else, and is never fetched."
     },
     {
       "id": "lennys-newsletter",
@@ -372,7 +416,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "www.lennysnewsletter.com"
+      ]
     },
     {
       "id": "marginal-revolution",
@@ -397,7 +444,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "marginalrevolution.com"
+      ]
     },
     {
       "id": "not-boring",
@@ -422,7 +472,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "www.notboring.co"
+      ]
     },
     {
       "id": "nytimes-headlines",
@@ -455,7 +508,10 @@
       "historyReach": {
         "kind": "recent-only",
         "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
-      }
+      },
+      "egress": [
+        "rss.nytimes.com"
+      ]
     },
     {
       "id": "openstax",
@@ -476,7 +532,11 @@
       "watermark": "idSet",
       "documentSemantics": "append",
       "location": "client",
-      "config": {}
+      "config": {},
+      "egress": [
+        "openstax.org"
+      ],
+      "egressNote": "The REX release manifest, the CMS book catalogue and the content archive are all paths on openstax.org."
     },
     {
       "id": "our-world-in-data",
@@ -501,7 +561,11 @@
       "historyReach": {
         "kind": "window",
         "note": "This source reads an index page, so it reaches back as far as that page lists and no further."
-      }
+      },
+      "egress": [
+        "ourworldindata.org"
+      ],
+      "egressNote": "The Atom feed and every article page it links are on ourworldindata.org — this source fetches the page, not just the feed entry."
     },
     {
       "id": "podcast-feeds",
@@ -538,7 +602,11 @@
       "historyReach": {
         "kind": "window",
         "note": "Most podcast feeds carry the full back catalogue, but some publishers truncate theirs to recent episodes. How far back you get is the publisher's choice."
-      }
+      },
+      "egress": [
+        "config:feeds"
+      ],
+      "egressNote": "Fetches the podcast feed URLs the user configures, so the reachable hosts are theirs and cannot be listed here; the audio enclosures those feeds point at are downloaded by Trove's transcription workflow, not by this adapter."
     },
     {
       "id": "quanta-magazine",
@@ -563,7 +631,11 @@
       "historyReach": {
         "kind": "window",
         "note": "This source reads an index page, so it reaches back as far as that page lists and no further."
-      }
+      },
+      "egress": [
+        "www.quantamagazine.org"
+      ],
+      "egressNote": "The feed and every article page it links are on www.quantamagazine.org — this source fetches the page, not just the feed entry."
     },
     {
       "id": "rss-feeds",
@@ -601,7 +673,11 @@
       "historyReach": {
         "kind": "window",
         "note": "How far back an RSS feed goes is the publisher's choice — some carry years, many carry only the last few dozen posts."
-      }
+      },
+      "egress": [
+        "config:feeds"
+      ],
+      "egressNote": "Fetches the feed or site URLs the user configures, so the reachable hosts are theirs and cannot be listed here; a pasted site URL is followed once more to the feed that page advertises."
     },
     {
       "id": "sec-filings",
@@ -641,7 +717,12 @@
       "historyReach": {
         "kind": "window",
         "note": "EDGAR's submissions endpoint returns only a company's recent filings — roughly the last thousand. Older filings live in separate archives this source does not read."
-      }
+      },
+      "egress": [
+        "www.sec.gov",
+        "data.sec.gov"
+      ],
+      "egressNote": "The ticker→CIK map and each filing's EDGAR archive document are on www.sec.gov; the company submissions index is on data.sec.gov."
     },
     {
       "id": "simon-willison",
@@ -667,7 +748,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "simonwillison.net"
+      ]
     },
     {
       "id": "stratechery",
@@ -692,7 +776,10 @@
       "historyReach": {
         "kind": "window",
         "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
-      }
+      },
+      "egress": [
+        "stratechery.com"
+      ]
     },
     {
       "id": "the-conversation",
@@ -717,7 +804,10 @@
       "historyReach": {
         "kind": "recent-only",
         "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
-      }
+      },
+      "egress": [
+        "theconversation.com"
+      ]
     },
     {
       "id": "x-bookmarks",
@@ -739,7 +829,14 @@
       "path": "sources/000-general/x-bookmarks",
       "has_code": true,
       "location": "client",
-      "config": {}
+      "config": {},
+      "egress": [
+        "api.x.com"
+      ],
+      "egressNotFetched": [
+        "x.com"
+      ],
+      "egressNote": "The X API v2 only. x.com appears in stored document URLs but is never fetched."
     }
   ]
 }

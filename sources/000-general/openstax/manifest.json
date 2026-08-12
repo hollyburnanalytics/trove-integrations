@@ -15,5 +15,9 @@
   "status": "implemented",
   "config": {},
   "needs_browser": false,
-  "live": false
+  "live": false,
+  "egress": [
+    "openstax.org"
+  ],
+  "egressNote": "The REX release manifest, the CMS book catalogue and the content archive are all paths on openstax.org."
 }

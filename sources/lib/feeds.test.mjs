@@ -915,9 +915,7 @@ describe('itemIdentity and URL fragments', () => {
   });
 
   it('strips the fragment from a link fallback too', () => {
-    expect(itemIdentity({ link: 'https://example.com/a#section-2' })).toBe(
-      'https://example.com/a',
-    );
+    expect(itemIdentity({ link: 'https://example.com/a#section-2' })).toBe('https://example.com/a');
   });
 
   it('still reports no identity when the item has none', () => {

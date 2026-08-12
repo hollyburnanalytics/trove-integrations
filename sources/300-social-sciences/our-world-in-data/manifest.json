@@ -19,5 +19,9 @@
   "historyReach": {
     "kind": "window",
     "note": "This source reads an index page, so it reaches back as far as that page lists and no further."
-  }
+  },
+  "egress": [
+    "ourworldindata.org"
+  ],
+  "egressNote": "The Atom feed and every article page it links are on ourworldindata.org — this source fetches the page, not just the feed entry."
 }

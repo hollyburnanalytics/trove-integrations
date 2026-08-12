@@ -31,5 +31,12 @@
   "historyReach": {
     "kind": "full",
     "note": "arXiv answers any date range. A run fetches up to 500 papers per query and the next run carries on, so a deep backfill arrives over several syncs rather than all at once."
-  }
+  },
+  "egress": [
+    "export.arxiv.org"
+  ],
+  "egressNotFetched": [
+    "arxiv.org"
+  ],
+  "egressNote": "The adapter queries the arXiv API on export.arxiv.org. arxiv.org appears only as the paper's HTML/PDF `file_url`, which Trove's ingest fetches when it captures the artifact."
 }
