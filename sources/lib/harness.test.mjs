@@ -1,5 +1,5 @@
-import { describe, expect, it, mock } from 'bun:test';
 import path from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 
 /** A real `null` value derived without a `null` literal (unicorn/no-null). */
 const NULL = JSON.parse('null');
@@ -60,7 +60,7 @@ describe('buildContext', () => {
   });
 
   it('routes log levels to onLog, coercing the message to a string', () => {
-    const onLog = mock();
+    const onLog = vi.fn();
     const context = buildContext({ onLog });
     context.log.info('hi');
     context.log.warn('careful');
@@ -73,7 +73,7 @@ describe('buildContext', () => {
   });
 
   it('routes progress to onProgress, coercing a missing message to ""', () => {
-    const onProgress = mock();
+    const onProgress = vi.fn();
     const context = buildContext({ onProgress });
     context.progress(3, 'scraping');
     context.progress(4);
@@ -186,8 +186,8 @@ describe('runSource', () => {
   });
 
   it('forwards onLog and onProgress to the source', async () => {
-    const onLog = mock();
-    const onProgress = mock();
+    const onLog = vi.fn();
+    const onProgress = vi.fn();
     await runSource({ sourcePath: fixture('echo'), onLog, onProgress });
     expect(onLog).toHaveBeenCalledWith('info', 'echo: starting');
     expect(onProgress).toHaveBeenCalledWith(0, 'echo: working');

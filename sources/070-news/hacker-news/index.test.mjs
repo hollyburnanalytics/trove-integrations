@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sync } from './index.mjs';
 
 function makeContext() {
   return {
-    log: { info: mock(), warn: mock() },
-    progress: mock(),
+    log: { info: vi.fn(), warn: vi.fn() },
+    progress: vi.fn(),
     config: {},
     cursor: undefined,
   };
@@ -27,10 +27,10 @@ const HN_RESPONSE = {
 
 describe('hacker-news source', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
 
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
 
   it('fetches and maps HN stories', async () => {
     fetch.mockResolvedValue({

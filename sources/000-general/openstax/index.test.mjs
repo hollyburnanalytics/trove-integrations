@@ -1,9 +1,9 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // The REAL converter, imported from the module that defines it so this mock
 // cannot shadow it. See the note on `htmlToText` below.
 import { htmlToText } from '../../lib/html-markdown.mjs';
 
-afterAll(() => mock.restore());
+afterAll(() => vi.restoreAllMocks());
 
 import { okResponse } from '../../lib/feed-fixtures.mjs';
 
@@ -14,49 +14,56 @@ const ORIGINAL_FETCH = globalThis.fetch;
  * note below on how far a `mock.module` of this barrel reaches. Routing stays
  * exactly as these tests wrote it; only the seam moved to `fetch`.
  */
-const fetchPage = mock();
+const fetchPage = vi.fn();
 
 function installFetch() {
-  globalThis.fetch = mock(async (url) => okResponse(await fetchPage(String(url))));
+  globalThis.fetch = vi.fn(async (url) => okResponse(await fetchPage(String(url))));
 }
 
 // Faithful by default: this registry entry is process-global, so a hard-coded
 // `false` would silently disable deadline handling in every other suite that
 // reaches `deadlineReached` through this specifier. Tests override explicitly.
-const deadlineReached = mock((context) => realFeeds.deadlineReached(context));
 
 // Spread the real module first — anything omitted here becomes `undefined` for
 // every OTHER source importing this specifier, not just for this suite.
-import * as realFeeds from '../../lib/feeds.mjs';
+//
+// The spy delegates to the real implementation resolved INSIDE the factory:
+// `vi.mock` is hoisted above the imports, so a module-scope binding would not
+// exist yet when this runs.
+vi.mock('../../lib/feeds.mjs', async (importOriginal) => {
+  const real = await importOriginal();
+  return {
+    ...real,
+    deadlineReached: vi.fn((context) => real.deadlineReached(context)),
+    // The REAL implementation, not a stand-in.
+    //
+    // This was a tag-stripper — `parse(html).textContent` — and it broke the
+    // hacker-news suite on Linux CI while passing on macOS, for two days of
+    // apparent flakiness. Bun's module mocks leak across test files and the file
+    // execution order differs by platform, so whenever this file happened to run
+    // first, every later suite got a converter that silently discarded links.
+    //
+    // The stripper agreed with the real function while the real one also
+    // discarded links; the moment the converter started keeping them, the lie
+    // became a failure — in a different directory, on one platform only. A mock
+    // of shared infrastructure has to be faithful or it is a time bomb with a
+    // delay measured in refactors.
+    htmlToText,
+    // Faithful to the real safeDate: undefined for missing AND invalid dates.
+    // (`new Date(invalid).toISOString()` throws — and module mocks can leak
+    // across test files, so an unfaithful mock here breaks other suites.)
+    safeDate: (value) => {
+      if (!value) return;
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+    },
+    stableId: (prefix, input) => `${prefix}-${input}`,
+  };
+});
 
-mock.module('../../lib/feeds.mjs', () => ({
-  ...realFeeds,
-  deadlineReached,
-  // The REAL implementation, not a stand-in.
-  //
-  // This was a tag-stripper — `parse(html).textContent` — and it broke the
-  // hacker-news suite on Linux CI while passing on macOS, for two days of
-  // apparent flakiness. Bun's module mocks leak across test files and the file
-  // execution order differs by platform, so whenever this file happened to run
-  // first, every later suite got a converter that silently discarded links.
-  //
-  // The stripper agreed with the real function while the real one also
-  // discarded links; the moment the converter started keeping them, the lie
-  // became a failure — in a different directory, on one platform only. A mock
-  // of shared infrastructure has to be faithful or it is a time bomb with a
-  // delay measured in refactors.
-  htmlToText,
-  // Faithful to the real safeDate: undefined for missing AND invalid dates.
-  // (`new Date(invalid).toISOString()` throws — and module mocks can leak
-  // across test files, so an unfaithful mock here breaks other suites.)
-  safeDate: (value) => {
-    if (!value) return;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
-  },
-  stableId: (prefix, input) => `${prefix}-${input}`,
-}));
-
+// The spy lives in the mocked module now — `vi.mock` is hoisted, so it cannot
+// be a module-scope binding declared beside it.
+const { deadlineReached } = await import('../../lib/feeds.mjs');
 const { sync } = await import('./index.mjs');
 
 const RELEASE = {
@@ -132,8 +139,8 @@ function route(map) {
 }
 
 const context = (overrides = {}) => ({
-  log: { info: jest.fn(), warn: jest.fn() },
-  progress: jest.fn(),
+  log: { info: vi.fn(), warn: vi.fn() },
+  progress: vi.fn(),
   config: {},
   cursor: undefined,
   ...overrides,
@@ -141,14 +148,14 @@ const context = (overrides = {}) => ({
 
 describe('openstax source', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     installFetch();
-    deadlineReached.mockReturnValue(false);
+    vi.mocked(deadlineReached).mockReturnValue(false);
     route({});
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('syncs a book into one document per section, skipping stubs and fetch failures', async () => {
@@ -191,7 +198,7 @@ describe('openstax source', () => {
   });
 
   it('stops before any book when the deadline has already passed', async () => {
-    deadlineReached.mockReturnValue(true);
+    vi.mocked(deadlineReached).mockReturnValue(true);
     const result = await sync(context());
     expect(result.documents).toHaveLength(0);
     expect(result.cursor.value.partial).toBeUndefined();
@@ -199,7 +206,10 @@ describe('openstax source', () => {
 
   it('records a page-level partial cursor when the deadline interrupts a book', async () => {
     // false (sync pre-book), false (page 0), true (page 1 → interrupt)
-    deadlineReached.mockReturnValueOnce(false).mockReturnValueOnce(false).mockReturnValueOnce(true);
+    vi.mocked(deadlineReached)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
     const result = await sync(context());
     expect(result.documents).toHaveLength(1); // only P1 before the interrupt
     expect(result.cursor.value.partial).toEqual({ key: 'book-one@v1', next: 1 });

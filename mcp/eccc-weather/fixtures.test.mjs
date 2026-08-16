@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'bun:test';
+import { readFile } from 'node:fs/promises';
+import { describe, expect, it } from 'vitest';
 import { callTool } from '../lib/test-harness.mjs';
 import server from './server.ts';
 
@@ -12,9 +13,8 @@ import server from './server.ts';
  */
 
 const load = async (name) =>
-  JSON.parse(await Bun.file(new URL(`fixtures/${name}`, import.meta.url)).text());
-const loadText = async (name) =>
-  await Bun.file(new URL(`fixtures/${name}`, import.meta.url)).text();
+  JSON.parse(await readFile(new URL(`fixtures/${name}`, import.meta.url), 'utf8'));
+const loadText = async (name) => readFile(new URL(`fixtures/${name}`, import.meta.url), 'utf8');
 
 const SITE = await load('citypage-bc99.json');
 const SEARCH = await load('citypage-search-west-vancouver.json');

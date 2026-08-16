@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { normalizeAccession, xmlBlocks, xmlFlag, xmlNumber, xmlValue } from './client.ts';
 import { filingHtmlToText, findInText, pickPrimaryDocument } from './documents.ts';
 import { parseOwnershipXml, summarizeOpenMarket } from './ownership.ts';

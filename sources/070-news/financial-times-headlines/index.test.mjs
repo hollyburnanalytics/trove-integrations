@@ -1,15 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchedUrls, okResponse, rssFeedXml, rssItemXml } from '../../lib/feed-fixtures.mjs';
 import { sync } from './index.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
 function makeContext(config = {}) {
-  return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor: undefined };
+  return { log: { info: vi.fn(), warn: vi.fn() }, progress: vi.fn(), config, cursor: undefined };
 }
 
 function respondWith(xml) {
-  globalThis.fetch = mock(() => Promise.resolve(okResponse(xml)));
+  globalThis.fetch = vi.fn(() => Promise.resolve(okResponse(xml)));
 }
 
 const STORY = rssFeedXml([
@@ -18,7 +18,7 @@ const STORY = rssFeedXml([
 
 describe('financial-times source', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;

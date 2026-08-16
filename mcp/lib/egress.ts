@@ -199,7 +199,22 @@ const DEFAULT_MAX_QUEUE_MS = 8_000;
  */
 const DEFAULT_OVERALL_TIMEOUT_MS = 20_000;
 
-const inTestRuntime = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
+/**
+ * Whether this is a test run, where the min-interval throttle would only spend
+ * wall clock.
+ *
+ * Read from the RUNNER, not from the JS runtime. This used to sniff for
+ * `globalThis.Bun`, which was true under `bun test` and false everywhere else —
+ * so the day the suite moved to vitest every throttled test began queueing for
+ * a real three-second slot and timing out, in a dozen files at once, with
+ * nothing about the failure naming a throttle.
+ *
+ * A deployed toolkit has neither `Bun` nor `process`, so production is
+ * unaffected either way: it throttles, which is the point.
+ */
+const inTestRuntime = Boolean(
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.VITEST,
+);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

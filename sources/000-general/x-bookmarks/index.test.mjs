@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sync } from './index.mjs';
 
 /**
@@ -9,8 +9,8 @@ import { sync } from './index.mjs';
 
 function makeContext(cursor) {
   return {
-    log: { info: mock(), warn: mock() },
-    progress: mock(),
+    log: { info: vi.fn(), warn: vi.fn() },
+    progress: vi.fn(),
     config: {},
     credentials: {
       X_OAUTH_CLIENT_ID: 'client-id-123',
@@ -55,7 +55,7 @@ function jsonResponse(body, ok = true, status = 200) {
 function installFetch({ tokenOk = true, tokenStatus = 200, pages = [] } = {}) {
   const calls = [];
   let pageIndex = 0;
-  globalThis.fetch = mock((url) => {
+  globalThis.fetch = vi.fn((url) => {
     calls.push(url);
     if (url.includes('/2/oauth2/token')) return jsonResponse(TOKEN_BODY, tokenOk, tokenStatus);
     if (url.includes('/bookmarks')) {
@@ -71,9 +71,9 @@ function installFetch({ tokenOk = true, tokenStatus = 200, pages = [] } = {}) {
 
 describe('x-bookmarks source', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
 
   it('refreshes OAuth, ingests bookmarks and sets the idSet cursor on first sync', async () => {
     const calls = installFetch({

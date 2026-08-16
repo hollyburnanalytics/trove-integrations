@@ -1,8 +1,11 @@
-import { Database } from 'bun:sqlite';
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+// node:sqlite, not bun:sqlite — the suite runs under vitest/Node now, and the
+// two have the same exec/prepare/run surface this fixture uses.
+
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stableId } from '../../lib/feeds.mjs';
 import { sync } from './index.mjs';
 
@@ -26,7 +29,7 @@ function daysAgoIso(days) {
  */
 function makeLibrary(root, { podcasts = [], episodes = [] } = {}) {
   mkdirSync(path.join(root, 'Documents'), { recursive: true });
-  const database = new Database(path.join(root, 'Documents', 'MTLibrary.sqlite'));
+  const database = new DatabaseSync(path.join(root, 'Documents', 'MTLibrary.sqlite'));
   database.exec(`
     CREATE TABLE ZMTPODCAST (Z_PK INTEGER PRIMARY KEY, ZSUBSCRIBED INTEGER, ZTITLE TEXT);
     CREATE TABLE ZMTEPISODE (
@@ -65,8 +68,8 @@ describe('apple-podcasts source', () => {
 
   function makeContext(overrides = {}) {
     return {
-      log: { info: mock(), warn: mock(), error: mock() },
-      progress: mock(),
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      progress: vi.fn(),
       config: { libraryRoot: root },
       credentials: {},
       cursor: undefined,
@@ -84,7 +87,7 @@ describe('apple-podcasts source', () => {
     rmSync(root, { recursive: true, force: true });
     if (originalHome === undefined) Reflect.deleteProperty(process.env, 'HOME');
     else process.env.HOME = originalHome;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('emits recent episodes of subscribed shows as audio documents', async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { parseRSS, xmlText } from './rss-parse.mjs';
 
 describe('xmlText', () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import {
   advanceDateWatermark,
   DEFAULT_ID_SET_MAX,

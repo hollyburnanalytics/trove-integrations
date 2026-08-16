@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { callTool } from '../lib/test-harness.mjs';
 import { formatGenre, formatRole, resolveCountry, resolveGenre, resolveLanguage } from './enums.ts';
 import server from './server.ts';

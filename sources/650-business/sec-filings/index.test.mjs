@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { filterFilings, sync } from './index.mjs';
 
 /**
@@ -16,7 +16,7 @@ function textResponse(body, status = 200) {
 }
 
 function makeContext(cursor, config = {}) {
-  return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor };
+  return { log: { info: vi.fn(), warn: vi.fn() }, progress: vi.fn(), config, cursor };
 }
 
 // Mock SEC ticker map response
@@ -73,10 +73,10 @@ function mockFetchForSync({ submissions = SUBMISSIONS_RESPONSE, html = FILING_HT
 
 describe('sec-filings source', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
 
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
 
   it('warns when no tickers configured', async () => {
     const context = makeContext(undefined, {});
@@ -323,9 +323,9 @@ describe('filterFilings', () => {
  */
 describe('sec-filings hands over the filing as an artifact', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
 
   it('carries the filing as an HTML artifact', async () => {
     mockFetchForSync();

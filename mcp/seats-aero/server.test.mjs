@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { callTool, withSecret } from '../lib/test-harness.mjs';
 import { authorization, isAccessToken, quotaNote, readQuota, untilReset } from './client.ts';
 import SEARCH from './fixtures/search.json' with { type: 'json' };

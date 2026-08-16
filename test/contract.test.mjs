@@ -9,10 +9,10 @@
  * exports `async function sync`. No network or fetch mocking is involved.
  */
 
-import { describe, expect, it } from 'bun:test';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
 import { VALID_SCHEDULES, validateManifest } from '../sources/lib/constants.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));

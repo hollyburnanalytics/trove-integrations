@@ -1,30 +1,29 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-afterAll(() => mock.restore());
+afterAll(() => vi.restoreAllMocks());
 
 // Spread the real module: replacing it wholesale would strip stableId/safeDate/
 // decodeHtmlEntities for every OTHER test file too — Bun's module mock registry is
 // process-global and keyed by specifier string.
-import * as realFeeds from '../../lib/feeds.mjs';
 
-mock.module('../../lib/feeds.mjs', () => ({
-  ...realFeeds,
-  syncFeedArticles: mock(),
+vi.mock('../../lib/feeds.mjs', async (importOriginal) => ({
+  ...(await importOriginal()),
+  syncFeedArticles: vi.fn(),
 }));
 
 import { syncFeedArticles } from '../../lib/feeds.mjs';
 import { sync } from './index.mjs';
 
 describe('quanta-magazine source', () => {
-  beforeEach(() => jest.clearAllMocks());
-  afterEach(() => jest.restoreAllMocks());
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.restoreAllMocks());
 
   it('calls syncFeedArticles with correct config', async () => {
     const expected = { documents: [], cursor: undefined, stats: { fetched: 0 } };
     syncFeedArticles.mockResolvedValue(expected);
     const context = {
-      log: { info: mock(), warn: mock() },
-      progress: mock(),
+      log: { info: vi.fn(), warn: vi.fn() },
+      progress: vi.fn(),
       config: {},
       cursor: undefined,
     };

@@ -1,9 +1,12 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import { lookup, query } from './podcasts.mjs';
 
 /** A directory context whose fetch returns a canned response. */
 function contextReturning(response) {
-  return { fetch: mock(async () => response), log: { info: mock(), warn: mock(), error: mock() } };
+  return {
+    fetch: vi.fn(async () => response),
+    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
 }
 
 /** A JSON Response with the given status. */

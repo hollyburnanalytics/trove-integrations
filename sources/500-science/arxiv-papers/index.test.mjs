@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { okResponse } from '../../lib/feed-fixtures.mjs';
 import { PAGE_SIZE, sync } from './index.mjs';
 
@@ -16,14 +16,14 @@ const ORIGINAL_FETCH = globalThis.fetch;
  * `.mockResolvedValue`/`.mockImplementation`, assert with `.toHaveBeenCalled*`
  * and `.mock.calls[i][0]` (the requested URL).
  */
-const fetchPage = mock();
+const fetchPage = vi.fn();
 
 function installFetch() {
-  globalThis.fetch = mock(async (url) => okResponse(await fetchPage(String(url))));
+  globalThis.fetch = vi.fn(async (url) => okResponse(await fetchPage(String(url))));
 }
 
 function makeContext(config = {}, cursor) {
-  return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor };
+  return { log: { info: vi.fn(), warn: vi.fn() }, progress: vi.fn(), config, cursor };
 }
 
 function entryXml(id, publishedIso, title = `Paper ${id}`) {
@@ -53,12 +53,12 @@ const ARXIV_RESPONSE = `<feed>
 
 describe('arxiv-papers source', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     installFetch();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('fetches papers with default queries', async () => {
@@ -252,7 +252,7 @@ describe('arxiv-papers source', () => {
 
 /** Sync one Atom entry and return the document it produced. */
 async function firstDocument(xml) {
-  globalThis.fetch = mock(async () => new Response(`<feed>${xml}</feed>`));
+  globalThis.fetch = vi.fn(async () => new Response(`<feed>${xml}</feed>`));
   const result = await sync(makeContext(undefined, { queries: ['cat:cs.AI'] }));
   return result.documents[0];
 }

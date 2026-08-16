@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { callTool } from '../lib/test-harness.mjs';
 import { METRICS } from './metrics.ts';
 import server from './server.ts';

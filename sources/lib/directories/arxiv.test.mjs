@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import { parseCategories, query, specToCategory } from './arxiv.mjs';
 
 /** A ListSets response containing the given `[spec, name]` pairs. */
@@ -13,8 +13,8 @@ function listSets(...pairs) {
 
 function contextReturning(body, ok = true, status = 200) {
   return {
-    fetch: mock(async () => ({ ok, status, text: async () => body })),
-    log: { info: mock(), warn: mock(), error: mock() },
+    fetch: vi.fn(async () => ({ ok, status, text: async () => body })),
+    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 }
 

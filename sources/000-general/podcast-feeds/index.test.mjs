@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validateResult } from '../../lib/harness.mjs';
 import { episodeDocument, sync } from './index.mjs';
 
@@ -15,7 +15,7 @@ const ORIGINAL_FETCH = globalThis.fetch;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function makeContext(config = {}, cursor) {
-  return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor };
+  return { log: { info: vi.fn(), warn: vi.fn() }, progress: vi.fn(), config, cursor };
 }
 
 /** A minimal `fetch` Response that `fetchPage` can stream. */
@@ -61,7 +61,7 @@ function episode({
 }
 
 async function run(xml, { config = { feeds: ['https://a.test/rss'] }, cursor, context } = {}) {
-  globalThis.fetch = mock(() => Promise.resolve(ok(xml)));
+  globalThis.fetch = vi.fn(() => Promise.resolve(ok(xml)));
   const base = context ?? makeContext(config, cursor);
   const result = await sync({ ...base, cursor: cursor ?? base.cursor });
   validateResult(result);
@@ -70,14 +70,14 @@ async function run(xml, { config = { feeds: ['https://a.test/rss'] }, cursor, co
 
 describe('podcast-feeds configuration', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
   });
 
   it('fetches every configured feed', async () => {
-    globalThis.fetch = mock(() => Promise.resolve(ok(feed([episode()]))));
+    globalThis.fetch = vi.fn(() => Promise.resolve(ok(feed([episode()]))));
     await sync(makeContext({ feeds: ['https://a.test/rss', 'https://b.test/rss'] }));
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
@@ -128,7 +128,7 @@ describe('podcast-feeds configuration', () => {
     // Real podcast feeds carry the whole archive: The Daily's is 17.6 MB.
     const response = ok(feed([episode()]));
     response.headers = new Headers({ 'content-length': String(17 * 1024 * 1024) });
-    globalThis.fetch = mock(() => Promise.resolve(response));
+    globalThis.fetch = vi.fn(() => Promise.resolve(response));
     const result = await sync(makeContext({ feeds: ['https://a.test/rss'] }));
     expect(result.stats.fetched).toBe(1);
   });
@@ -136,7 +136,7 @@ describe('podcast-feeds configuration', () => {
 
 describe('podcast-feeds against adversarial feeds', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
@@ -211,7 +211,7 @@ describe('podcast-feeds against adversarial feeds', () => {
   });
 
   it('fails loudly when the URL is not a feed at all', async () => {
-    globalThis.fetch = mock(() => Promise.resolve(ok('<html><body>hi</body></html>')));
+    globalThis.fetch = vi.fn(() => Promise.resolve(ok('<html><body>hi</body></html>')));
     await expect(sync(makeContext({ feeds: ['https://a.test/rss'] }))).rejects.toThrow();
   });
 
@@ -230,7 +230,7 @@ describe('podcast-feeds against adversarial feeds', () => {
     );
     const xml = feed(items);
     const context = makeContext({ feeds: ['https://a.test/rss'] });
-    globalThis.fetch = mock(() => Promise.resolve(ok(xml)));
+    globalThis.fetch = vi.fn(() => Promise.resolve(ok(xml)));
 
     const seen = new Set();
     let cursor;

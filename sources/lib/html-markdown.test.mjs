@@ -13,7 +13,7 @@
  * eight hand-written fixtures agree with whatever the code already does.
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { htmlToText } from './html-markdown.mjs';
 
 describe('htmlToText — list structure', () => {

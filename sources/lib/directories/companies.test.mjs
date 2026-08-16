@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import { matchRank, parseRegistry, query } from './companies.mjs';
 
 /** EDGAR's registry shape: an object keyed by row number, not an array. */
@@ -12,8 +12,8 @@ const REGISTRY = {
 
 function contextReturning(payload, ok = true, status = 200) {
   return {
-    fetch: mock(async () => ({ ok, status, json: async () => payload })),
-    log: { info: mock(), warn: mock(), error: mock() },
+    fetch: vi.fn(async () => ({ ok, status, json: async () => payload })),
+    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 }
 

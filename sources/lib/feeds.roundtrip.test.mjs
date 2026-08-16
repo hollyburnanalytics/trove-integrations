@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stableId, syncRSS } from './feeds.mjs';
 
 // Multi-run / watermark round-trip tests.
@@ -48,15 +48,15 @@ function respond(map) {
 }
 
 function makeContext(cursor) {
-  return { log: { info: mock(), warn: mock() }, progress: mock(), config: {}, cursor };
+  return { log: { info: vi.fn(), warn: vi.fn() }, progress: vi.fn(), config: {}, cursor };
 }
 
 beforeEach(() => {
-  globalThis.fetch = mock();
+  globalThis.fetch = vi.fn();
 });
 
 afterEach(() => {
-  jest.restoreAllMocks();
+  vi.restoreAllMocks();
 });
 
 // --- RSS feeds ---

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { okResponse } from '../../lib/feed-fixtures.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -12,18 +12,18 @@ const ORIGINAL_FETCH = globalThis.fetch;
  * The `fetchPage`-shaped API is unchanged: configure with `.mockResolvedValue`
  * / `.mockRejectedValue`, assert with `.toHaveBeenCalled*` and `.mock.calls`.
  */
-const fetchPage = mock();
+const fetchPage = vi.fn();
 
 function installFetch() {
-  globalThis.fetch = mock(async (url) => okResponse(await fetchPage(String(url))));
+  globalThis.fetch = vi.fn(async (url) => okResponse(await fetchPage(String(url))));
 }
 
 const { sync } = await import('./index.mjs');
 
 function makeContext(overrides = {}) {
   return {
-    log: { info: jest.fn(), warn: jest.fn() },
-    progress: jest.fn(),
+    log: { info: vi.fn(), warn: vi.fn() },
+    progress: vi.fn(),
     config: {},
     cursor: undefined,
     ...overrides,
@@ -51,7 +51,7 @@ function meeting(overrides = {}) {
 
 describe('dnv-council-minutes source', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     installFetch();
   });
 

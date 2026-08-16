@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   dayToLocalNoonIso,
   decodeHtmlEntities,
@@ -38,8 +38,8 @@ function mockFetch(xml) {
 
 function makeContext(cursor) {
   return {
-    log: { info: mock(), warn: mock() },
-    progress: mock(),
+    log: { info: vi.fn(), warn: vi.fn() },
+    progress: vi.fn(),
     config: {},
     cursor,
   };
@@ -331,11 +331,11 @@ describe('parseRSS', () => {
 
 describe('fetchPage', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('fetches and returns text content', async () => {
@@ -355,7 +355,7 @@ describe('fetchPage', () => {
               done = true;
               return Promise.resolve({ done: false, value: encoded });
             },
-            cancel: mock(),
+            cancel: vi.fn(),
           };
         },
       },
@@ -412,7 +412,7 @@ describe('fetchPage', () => {
               done = true;
               return Promise.resolve({ done: false, value: bigChunk });
             },
-            cancel: mock(),
+            cancel: vi.fn(),
           };
         },
       },
@@ -438,11 +438,11 @@ describe('fetchPage', () => {
 
 describe('syncRSS', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('decodes entity-encoded titles and converts descriptions (lenny regression)', async () => {
@@ -817,9 +817,9 @@ const ARTICLE_FEED = `<rss><channel>
 
 describe('fetchArticleText', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
 
   it('extracts only the selected container, dropping chrome', async () => {
     mockFetchByUrl({ 'x.test': ARTICLE_HTML });
@@ -838,9 +838,9 @@ describe('fetchArticleText', () => {
 
 describe('syncFeedArticles', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
 
   const options = {
     feedUrl: 'https://site/feed',

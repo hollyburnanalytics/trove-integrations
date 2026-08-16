@@ -1,4 +1,4 @@
-import { mock } from 'bun:test';
+import { vi } from 'vitest';
 
 /**
  * Test helpers for the hosted MCP servers.
@@ -20,7 +20,7 @@ import { mock } from 'bun:test';
  * @returns {import('bun:test').Mock} The mocked fetch.
  */
 export function fetchMock(responder) {
-  return mock((url, init) => {
+  return vi.fn((url, init) => {
     const target = typeof url === 'string' ? url : String(url);
     const spec = typeof responder === 'function' ? responder(target, init) : responder;
     if (spec instanceof Response) return Promise.resolve(spec);

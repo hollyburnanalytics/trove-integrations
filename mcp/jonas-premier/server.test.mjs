@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { callTool } from '../lib/test-harness.mjs';
 import server, { __resetTokenCache } from './server.ts';
 

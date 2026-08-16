@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { discoverFeedUrl, feedItemDocument, syncFeeds } from './feed-sync.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
 function makeContext(cursor, config = {}) {
-  return { log: { info: mock(), warn: mock() }, progress: mock(), config, cursor };
+  return { log: { info: vi.fn(), warn: vi.fn() }, progress: vi.fn(), config, cursor };
 }
 
 function rssItem({ title, link, description = 'Body', date = 'Mon, 15 Jan 2024 10:00:00 GMT' }) {
@@ -121,12 +121,12 @@ describe('feedItemDocument', () => {
 
 describe('syncFeeds', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    globalThis.fetch = mock();
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('warns and returns empty when no feeds and an emptyWarning is set', async () => {
@@ -296,7 +296,7 @@ describe('discoverFeedUrl', () => {
 
 describe('syncFeeds feed autodiscovery', () => {
   beforeEach(() => {
-    globalThis.fetch = mock();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
@@ -331,12 +331,12 @@ describe('syncFeeds feed autodiscovery', () => {
 
 describe('syncFeeds item rejection', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    globalThis.fetch = mock();
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('counts an item as skipped when toDocument returns undefined', async () => {
@@ -385,12 +385,12 @@ describe('syncFeeds maxDocuments and firstRunLookbackMs', () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    globalThis.fetch = mock();
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   /** `count` items dated one day apart, newest first — the order real feeds use. */
@@ -510,12 +510,12 @@ describe('syncFeeds maxDocuments and firstRunLookbackMs', () => {
 
 describe('syncFeeds dedupe keys on identity, not link', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    globalThis.fetch = mock();
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('keeps every episode when a feed points them all at one page', async () => {
@@ -550,12 +550,12 @@ describe('syncFeeds dedupe keys on identity, not link', () => {
 
 describe('syncFeeds oversized-feed handling', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    globalThis.fetch = mock();
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('raises the cap when feedMaxBytes is set', async () => {
@@ -627,12 +627,12 @@ describe('syncFeeds oversized-feed handling', () => {
 
 describe('syncFeeds concurrency and the soft deadline', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    globalThis.fetch = mock();
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('collects in feed order even when responses land out of order', async () => {
@@ -734,12 +734,12 @@ function titledRss(title, ...items) {
 
 describe('syncFeeds reports what the feed calls itself (trove docs/39 D10)', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    globalThis.fetch = mock();
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('reports the channel title for a single-feed round', async () => {
@@ -818,12 +818,12 @@ function movedRss(newUrl, ...items) {
 
 describe('syncFeeds follows a feed that says it has moved', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    globalThis.fetch = mock();
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('reports the new address a single feed advertises', async () => {
@@ -897,12 +897,12 @@ function moved(status, location) {
 
 describe('syncFeeds treats a permanent redirect as a move', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    globalThis.fetch = mock();
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn();
   });
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('reports a 301 target as the feed’s new address', async () => {

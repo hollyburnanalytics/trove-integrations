@@ -1,4 +1,4 @@
-import { ToolError, type ToolContext } from '@ontrove/mcp';
+import { type ToolContext, ToolError } from '@ontrove/mcp';
 import { type Cabin, cabinCoverageNotes, type Region, resolveSources } from './programs.ts';
 import type { Cursor } from './wire.ts';
 
@@ -225,6 +225,22 @@ export function searchQuery(
   if (input.carriers?.length) params.set('carriers', carrierList(input.carriers));
 
   params.set('take', String(sizing.take));
+  notes.push(...putPaging(params, input));
+  return { params, notes };
+}
+
+/**
+ * The flags that only pass through: paging, ordering, and the trip options.
+ *
+ * Split out of {@link searchQuery} to keep it under the complexity gate. They
+ * belong together anyway — none of them changes what is searched, only how the
+ * page is cut and rendered.
+ *
+ * @param params - The query being built, mutated in place.
+ * @param input - The tool arguments.
+ * @returns Any note the caller should show, when a flag was ignored.
+ */
+function putPaging(params: URLSearchParams, input: SearchInput): string[] {
   if (input.skip > 0) params.set('skip', String(input.skip));
   if (input.cursor !== undefined) params.set('cursor', String(input.cursor));
   if (input.only_direct_flights) params.set('only_direct_flights', 'true');
@@ -233,10 +249,11 @@ export function searchQuery(
   if (input.include_trips) {
     params.set('include_trips', 'true');
     if (input.minify_trips) params.set('minify_trips', 'true');
-  } else if (input.minify_trips) {
-    notes.push('minify_trips was ignored — it only applies when include_trips is on.');
+    return [];
   }
-  return { params, notes };
+  return input.minify_trips
+    ? ['minify_trips was ignored — it only applies when include_trips is on.']
+    : [];
 }
 
 /**
