@@ -24,18 +24,32 @@ import { escapeText } from './markdown-emit.mjs';
  * position-dependent — `#` opening a line is a heading and must be escaped, `#`
  * mid-sentence is a `#` and must not be — and a plain `parts.push()` cannot tell
  * the difference without re-scanning everything already emitted.
+ *
+ * @param {string} [seed] - What to treat as already emitted, so the first
+ *   fragment escapes as though it opened a line.
+ * @returns {import('./types.d.ts').MarkdownSink} The sink.
  */
 export function createSink(seed = '\n') {
+  /** @type {string[]} */
   const parts = [];
+  /** @type {string | undefined} */
   let last = seed;
   return {
-    /** Emit already-rendered Markdown verbatim. */
+    /**
+     * Emit already-rendered Markdown verbatim.
+     *
+     * @param {string} value - The fragment.
+     */
     raw(value) {
       if (!value) return;
       parts.push(value);
       last = value.at(-1);
     },
-    /** Emit source text, escaped for its position. */
+    /**
+     * Emit source text, escaped for its position.
+     *
+     * @param {string} value - The text.
+     */
     text(value) {
       if (!value) return;
       // Collapse a space that follows a space or a line break. Each whitespace
@@ -50,7 +64,11 @@ export function createSink(seed = '\n') {
       parts.push(escapeText(collapsed, last === '\n'));
       last = collapsed.at(-1);
     },
-    /** Whether the next emit would begin a line. */
+    /**
+     * Whether the next emit would begin a line.
+     *
+     * @returns {boolean} True at the start of a line.
+     */
     atLineStart() {
       return last === '\n';
     },
@@ -80,6 +98,11 @@ export function createSink(seed = '\n') {
       last = before.at(-1);
       return true;
     },
+    /**
+     * Everything emitted so far, joined.
+     *
+     * @returns {string} The rendered Markdown.
+     */
     toString() {
       return parts.join('');
     },

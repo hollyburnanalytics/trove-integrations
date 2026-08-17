@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import {
   fetchGrid,
   getSession,
@@ -10,7 +10,7 @@ import { partnerCertifiedEmployerShape } from '../shapes.ts';
 import { pageNote } from '../text.ts';
 
 /** List the industry safety associations that issue CORs in BC. */
-export const listCertifyingPartners: ToolDefinition = {
+export const listCertifyingPartners = tool({
   name: 'list_certifying_partners',
   title: 'WorkSafeBC COR: List certifying partners',
   description:
@@ -41,10 +41,10 @@ export const listCertifyingPartners: ToolDefinition = {
       structured: { count: partners.length, partners },
     };
   },
-};
+});
 
 /** List every employer one certifying partner has certified. */
-export const listCertifiedEmployers: ToolDefinition = {
+export const listCertifiedEmployers = tool({
   name: 'list_certified_employers',
   title: 'WorkSafeBC COR: List a partner’s certified employers',
   description:
@@ -143,4 +143,4 @@ export const listCertifiedEmployers: ToolDefinition = {
       structured,
     };
   },
-};
+});

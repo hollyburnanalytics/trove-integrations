@@ -18,7 +18,12 @@ const MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB
 // fast and is retried next run.
 const FETCH_TIMEOUT_MS = 20_000;
 
-/** IPv4/IPv6 hosts in private, loopback, or link-local ranges (SSRF guard). */
+/**
+ * IPv4/IPv6 hosts in private, loopback, or link-local ranges (SSRF guard).
+ *
+ * @param {string} host - The hostname, lowercased and unbracketed.
+ * @returns {boolean} True when it must not be fetched.
+ */
 function isPrivateHost(host) {
   if (
     host === '::1' ||
@@ -32,7 +37,9 @@ function isPrivateHost(host) {
   if (octets.length !== 4) return false;
   const numbers = octets.map(Number);
   if (numbers.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
-  const [first, second] = numbers;
+  // Defaults that match nothing below: the length check above already
+  // guarantees four octets, and destructuring cannot see that.
+  const [first = -1, second = -1] = numbers;
   return (
     first === 0 ||
     first === 10 ||
@@ -49,6 +56,9 @@ function isPrivateHost(host) {
  * not us, so a hostile or compromised feed could aim them at localhost, a cloud
  * metadata endpoint, or an internal IP. We only ever want public web pages, so
  * require http(s) and reject private/loopback/link-local hosts.
+ *
+ * @param {string} target - The address about to be fetched.
+ * @returns {void} Nothing; it throws when the target is not a public web page.
  */
 function assertPublicHttpUrl(target) {
   let parsed;
@@ -78,7 +88,12 @@ function assertPublicHttpUrl(target) {
  */
 const TOO_LARGE_CODE = 'ERESPONSETOOLARGE';
 
-/** Whether an error from {@link fetchPage}/{@link fetchBytes} was a size-cap rejection. */
+/**
+ * Whether an error from {@link fetchPage}/{@link fetchBytes} was a size-cap rejection.
+ *
+ * @param {unknown} [error] - Whatever was thrown.
+ * @returns {boolean} True for the permanent "too large" condition.
+ */
 export function isTooLargeError(error) {
   return /** @type {{ code?: string }} */ (error)?.code === TOO_LARGE_CODE;
 }
@@ -112,6 +127,7 @@ const REDIRECTS = new Set([301, 302, 303, 307, 308]);
  *
  * @param {string} url - The starting address.
  * @param {AbortSignal} signal
+ * @param {Record<string, string>} [extraHeaders] - Merged over the defaults.
  * @returns {Promise<{response: Response, url: string, movedPermanentlyTo?: string}>}
  */
 async function fetchFollowing(url, signal, extraHeaders) {
@@ -120,6 +136,7 @@ async function fetchFollowing(url, signal, extraHeaders) {
   const headers = extraHeaders ? { ...HEADERS, ...extraHeaders } : HEADERS;
   let current = url;
   let permanentSoFar = true;
+  /** @type {string | undefined} */
   let movedPermanentlyTo;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -157,6 +174,7 @@ async function fetchFollowing(url, signal, extraHeaders) {
  * @param {string} url
  * @param {number} maxBytes
  * @param {AbortSignal} signal
+ * @param {Record<string, string>} [headers] - Extra headers, merged over the defaults.
  * @returns {Promise<{bytes: Uint8Array, movedPermanentlyTo?: string}>}
  */
 async function fetchCappedBytes(url, maxBytes, signal, headers) {
@@ -168,7 +186,13 @@ async function fetchCappedBytes(url, maxBytes, signal, headers) {
     throw tooLargeError(`Response too large (${contentLength} bytes) for ${url}`);
   }
 
+  // A 200 with no body at all is not something to stream: `getReader()` on it
+  // throws a bare "cannot read properties of null", naming neither the URL nor
+  // the condition.
+  if (!response.body) throw new Error(`HTTP ${response.status} with no body fetching ${url}`);
+
   const reader = response.body.getReader();
+  /** @type {Uint8Array[]} */
   const chunks = [];
   let totalBytes = 0;
   while (true) {
@@ -193,6 +217,11 @@ async function fetchCappedBytes(url, maxBytes, signal, headers) {
  * published, so The Daily's is 17.6 MB against the 10 MB default. A rejection
  * throws an error {@link isTooLargeError} recognizes, so callers can treat it
  * as permanent rather than retry it forever.
+ *
+ * @param {string} url - The address to fetch.
+ * @param {{ maxBytes?: number, headers?: Record<string, string> }} [options] - Cap
+ *   override and extra request headers.
+ * @returns {Promise<string>} The decoded body.
  */
 export async function fetchPage(url, options = {}) {
   const { text } = await fetchPageWithMeta(url, options);

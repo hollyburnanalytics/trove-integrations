@@ -13,7 +13,12 @@ import {
   validateResult,
 } from './harness.mjs';
 
-/** Absolute path to a fixture source directory. */
+/**
+ * Absolute path to a fixture source directory.
+ *
+ * @param {string} name - The fixture's directory name.
+ * @returns {string} Its absolute path.
+ */
 function fixture(name) {
   return path.resolve(import.meta.dirname, '../../test/fixtures/sources', name);
 }
@@ -64,7 +69,7 @@ describe('buildContext', () => {
     const context = buildContext({ onLog });
     context.log.info('hi');
     context.log.warn('careful');
-    context.log.error(123);
+    context.log.error(String(123));
     expect(onLog.mock.calls).toEqual([
       ['info', 'hi'],
       ['warn', 'careful'],
@@ -76,7 +81,7 @@ describe('buildContext', () => {
     const onProgress = vi.fn();
     const context = buildContext({ onProgress });
     context.progress(3, 'scraping');
-    context.progress(4);
+    context.progress(4, '');
     expect(onProgress.mock.calls).toEqual([
       [3, 'scraping'],
       [4, ''],
@@ -169,8 +174,8 @@ describe('runSource', () => {
     const result = await runSource({ sourcePath: fixture('echo') });
     expect(result.documents).toHaveLength(2);
     expect(result.cursor).toBe('echo-cursor');
-    expect(result.stats.fetched).toBe(2);
-    expect(typeof result.stats.duration_ms).toBe('number');
+    expect(result.stats?.fetched).toBe(2);
+    expect(typeof result.stats?.duration_ms).toBe('number');
   });
 
   it('resolves a cwd-relative source path', async () => {
@@ -182,7 +187,7 @@ describe('runSource', () => {
     const result = await runSource({ sourcePath: fixture('echo'), method: 'query' });
     expect(result.documents).toHaveLength(1);
     expect(result.cursor).toBeUndefined();
-    expect(result.stats.fetched).toBe(1);
+    expect(result.stats?.fetched).toBe(1);
   });
 
   it('forwards onLog and onProgress to the source', async () => {
@@ -227,6 +232,6 @@ describe('runSource', () => {
     const context = buildContext({ timeoutMs: 1000, now: Date.now() - 10_000 });
     const result = await sync(context);
     expect(result.documents).toHaveLength(0);
-    expect(result.stats.remaining).toBe(1);
+    expect(result.stats?.remaining).toBe(1);
   });
 });

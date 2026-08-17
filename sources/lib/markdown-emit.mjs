@@ -60,6 +60,9 @@ const ZERO_WIDTH = new Set([
  * trips the linter's `noControlCharactersInRegex` — which would then need a
  * suppression to say "the control characters are the point". Naming the ranges
  * costs three lines and needs no such excuse.
+ *
+ * @param {number} code - The code point to judge.
+ * @returns {boolean} True when it must not reach the stored body.
  */
 function isRemovable(code) {
   if (code === 9 || code === 10) return false; // tab and newline are content
@@ -68,11 +71,18 @@ function isRemovable(code) {
   return ZERO_WIDTH.has(code);
 }
 
-/** Strip characters that are invisible in a browser but fatal at the ingest gate. */
+/**
+ * Strip characters that are invisible in a browser but fatal at the ingest gate.
+ *
+ * @param {string} value - The text to clean.
+ * @returns {string} The same text without the invisible characters.
+ */
 export function stripControlCharacters(value) {
   let out = '';
   for (const character of value) {
-    if (!isRemovable(character.codePointAt(0))) out += character;
+    const code = character.codePointAt(0);
+    if (code !== undefined && isRemovable(code)) continue;
+    out += character;
   }
   return out;
 }
@@ -82,10 +92,13 @@ export function stripControlCharacters(value) {
  *
  * Scheme-relative (`//host/path`) and site-relative (`/path`, `./path`) URLs have
  * no scheme to check and are allowed through.
+ *
+ * @param {string} href - The destination the source markup carried.
+ * @returns {boolean} True when it may be emitted as a link target.
  */
 export function isSafeUrl(href) {
-  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href);
-  return scheme ? SAFE_SCHEMES.has(scheme[1].toLowerCase()) : true;
+  const [, scheme] = /^([a-z][a-z0-9+.-]*):/i.exec(href) ?? [];
+  return scheme ? SAFE_SCHEMES.has(scheme.toLowerCase()) : true;
 }
 
 /**
@@ -127,6 +140,11 @@ export function escapeLinkPart(value, isUrl) {
  * `<` is escaped whenever it looks like a tag, because the backend rejects a body
  * containing raw HTML outright — text discussing `<div>` reads to that gate as a
  * converter that failed to do its job.
+ *
+ * @param {string} value - The source text.
+ * @param {boolean} atLineStart - Whether it will open a line, which decides
+ *   whether the block markers need escaping too.
+ * @returns {string} The escaped text.
  */
 export function escapeText(value, atLineStart) {
   const inline = value
@@ -144,6 +162,9 @@ export function escapeText(value, atLineStart) {
  * mostly, and each one closed its span early and left the rest of the line as
  * prose. CommonMark's own rule is a fence longer than the longest inner run, plus
  * a space of padding when the content itself starts or ends with a backtick.
+ *
+ * @param {string} body - The code to wrap.
+ * @returns {string} The code span, or `''` for empty code.
  */
 export function codeSpan(body) {
   if (!body) return '';
@@ -187,6 +208,9 @@ export function quoteLines(body) {
  * literally it produces `[#### Title](url)`, which parses as a link whose text
  * happens to start with hashes — not a heading, not what the source meant, and
  * impossible to correct downstream.
+ *
+ * @param {string} body - The rendered children.
+ * @returns {string} The same content as one inline run.
  */
 export function flattenInline(body) {
   return (
@@ -204,7 +228,12 @@ export function flattenInline(body) {
   );
 }
 
-/** One table cell, flattened and pipe-escaped, never empty. */
+/**
+ * One table cell, flattened and pipe-escaped, never empty.
+ *
+ * @param {string} value - The cell's rendered content.
+ * @returns {string} The cell, safe to sit between pipes.
+ */
 function tableCell(value) {
   // A pipe inside a cell would open a column the header row never declared, so
   // the row's width stops matching and the whole table degrades to prose.
@@ -223,14 +252,17 @@ function tableCell(value) {
  * exactly that before this existed — `<td>Launch date</td><td>September 2026</td>`
  * arrived in the corpus as `Launch dateSeptember 2026`, which is not a formatting
  * loss but a fabricated string that never appeared in the source.
+ *
+ * @param {string[][]} rows - The cells, already rendered inline.
+ * @returns {string | undefined} The table, or nothing when no row has cells.
  */
 export function renderTable(rows) {
-  const usable = rows.filter((row) => row.length > 0);
-  if (usable.length === 0) return;
-  const width = Math.max(...usable.map((row) => row.length));
+  const [header, ...body] = rows.filter((row) => row.length > 0);
+  if (header === undefined) return;
+  const width = Math.max(header.length, ...body.map((row) => row.length));
+  /** @type {(row: string[]) => string} */
   const line = (row) =>
     `| ${Array.from({ length: width }, (_, index) => tableCell(row[index] ?? '')).join(' | ')} |`;
-  const [header, ...body] = usable;
   const divider = `| ${Array.from({ length: width }, () => '---').join(' | ')} |`;
   return [line(header), divider, ...body.map((row) => line(row))].join('\n');
 }

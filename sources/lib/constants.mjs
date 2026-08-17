@@ -139,10 +139,11 @@ export function validateSourceTypeFields(manifest, { implemented }) {
       errors.push(`invalid ${field} "${value}" (allowed: ${allowed.join(', ')})`);
       continue;
     }
-    if (implemented && !mvpByField[field].includes(value)) {
-      errors.push(
-        `implemented source uses non-MVP ${field} "${value}" (MVP: ${mvpByField[field].join(', ')})`,
-      );
+    // `SOURCE_TYPE_FIELDS` and `mvpByField` are keyed identically by
+    // construction, which is what makes this lookup total.
+    const mvp = mvpByField[/** @type {keyof typeof mvpByField} */ (field)];
+    if (implemented && !mvp.includes(/** @type {string} */ (value))) {
+      errors.push(`implemented source uses non-MVP ${field} "${value}" (MVP: ${mvp.join(', ')})`);
     }
   }
   return errors;
@@ -297,4 +298,22 @@ export function validateDirectories(manifest, providerExists = () => true) {
     }
   }
   return errors;
+}
+
+/**
+ * A config field read as a list of strings.
+ *
+ * Config is USER INPUT: a `url[]` field can arrive as a bare string (one feed
+ * pasted into a list field), as null, or as a list with blanks in it. Every
+ * fan-out source did `(context.config.feeds || []).map(...)`, which throws
+ * `.map is not a function` mid-sync on the first of those — a whole round lost,
+ * cursor included, to a shape the field schema never promised.
+ *
+ * @param {unknown} value - The raw config value.
+ * @returns {string[]} Its non-empty entries, or `[]`.
+ */
+export function stringList(value) {
+  if (value === undefined || value === null) return [];
+  const entries = Array.isArray(value) ? value : [value];
+  return entries.map((entry) => String(entry).trim()).filter(Boolean);
 }

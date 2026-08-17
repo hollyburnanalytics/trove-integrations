@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { apiKey, quotaNote, seatsJson } from '../client.ts';
 import { bookingLinkOutput, quotaOutput, tripOutput } from '../fields.ts';
 import { bookingLinkLines, type Trip, toBookingLinks, toTrip, tripLines } from '../trips.ts';
@@ -50,7 +50,7 @@ export function summarise(sorted: readonly Trip[], limit: number): Trip[] {
     );
 }
 
-export const getTrips: ToolDefinition = {
+export const getTrips = tool({
   name: 'get_trips',
   title: 'Seats.aero: Get flights for an availability',
   description:
@@ -150,4 +150,4 @@ export const getTrips: ToolDefinition = {
       },
     };
   },
-};
+});

@@ -1,6 +1,7 @@
 /**
  * Fixture source: emits two documents, exercising ctx.log and ctx.progress.
- * Used by the harness contract tests; not a real source.
+ * Used by the harness contract tests; not a real source. *
+ * @param {import('../../../../sources/lib/types.d.ts').SyncContext} context - The harness context.
  */
 export async function sync(context) {
   context.log.info('echo: starting');
@@ -13,7 +14,10 @@ export async function sync(context) {
   return { documents, cursor: 'echo-cursor', stats: { fetched: documents.length } };
 }
 
-/** Query method, so the harness `method: 'query'` path is covered. */
+/**
+ * Query method, so the harness `method: 'query'` path is covered. *
+ * @param {import('../../../../sources/lib/types.d.ts').SyncContext} context - The harness context.
+ */
 export async function query(context) {
   context.progress(0, 'echo: query');
   return { documents: [{ id: 'q-1', title: 'Q', text: 'queried' }] };

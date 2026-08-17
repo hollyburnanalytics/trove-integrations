@@ -30,7 +30,7 @@ export const auth = 'sec-edgar';
  * Rows from the registry payload, which is an object keyed by row number
  * rather than an array.
  *
- * @param {unknown} payload - The parsed `company_tickers.json`.
+ * @param {unknown} [payload] - The parsed `company_tickers.json`.
  * @returns {Array<{ticker: string, name: string}>}
  */
 export function parseRegistry(payload) {
@@ -73,9 +73,9 @@ export function matchRank(row, term) {
  * companies in registry order is not a browse, and EDGAR publishes no notion of
  * a notable one. This field is searched, not browsed.
  *
- * @param {{query?: string, limit: number}} input
- * @param {object} context - The directory context (signing fetch + log).
- * @returns {Promise<object[]>} Company entries whose value is the ticker.
+ * @param {import('../types.d.ts').DirectoryQuery} input
+ * @param {import('../types.d.ts').DirectoryContext} context - The directory context (signing fetch + log).
+ * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Company entries whose value is the ticker.
  */
 export async function query(input, context) {
   const term = (input.query ?? '').trim().toLowerCase();

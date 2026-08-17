@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import {
   BASE_URL,
   fetchEmployerDetails,
@@ -22,7 +22,7 @@ import { accountNumber, pageNote } from '../text.ts';
 const MIN_NAME_LENGTH = 4;
 
 /** Search COR-certified employers by legal or trade name. */
-export const searchEmployers: ToolDefinition = {
+export const searchEmployers = tool({
   name: 'search_employers',
   title: 'WorkSafeBC COR: Search certified employers',
   description:
@@ -119,4 +119,4 @@ export const searchEmployers: ToolDefinition = {
       structured,
     };
   },
-};
+});

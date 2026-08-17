@@ -42,54 +42,54 @@ const { join } = path;
 const ROOT = new URL('..', import.meta.url).pathname;
 const REGISTRY_PATH = join(ROOT, 'registry.json');
 const CATALOG_PATH = join(ROOT, 'sources', 'catalog.json');
-// Dewey-style subject classification (folder name = manifest `category`).
-const CATEGORIES = [
-  '000-general',
-  '070-news',
-  '300-social-sciences',
-  '330-economics',
-  '350-public-administration',
-  '500-science',
-  '600-technology',
-  '650-business',
-];
 
 const fix = process.argv.includes('--fix');
+/** @type {string[]} */
 const issues = [];
+/** @type {string[]} */
 const info = [];
 
+/**
+ * Record a problem.
+ *
+ * @param {string} message - What is wrong.
+ */
 function warn(message) {
   issues.push(message);
 }
+/**
+ * Record something worth printing that is not a problem.
+ *
+ * @param {string} message - What held.
+ */
 function ok(message) {
   info.push(message);
 }
 
 // --- Discover all sources from filesystem ---
+// One directory per source, directly under `sources/`. There is no subject
+// folder above it: a source's only names are its id and its catalog.
 function discoverSources() {
+  /** @type {{ manifest: Record<string, any>, hasCode: boolean, path: string, directory: string }[]} */
   const sources = [];
-  for (const category of CATEGORIES) {
-    const categoryDirectory = join(ROOT, 'sources', category);
-    if (!existsSync(categoryDirectory)) continue;
+  for (const name of readdirSync(join(ROOT, 'sources'))) {
+    if (name === 'lib') continue;
+    const directory = join(ROOT, 'sources', name);
+    if (!statSync(directory).isDirectory()) continue;
 
-    for (const name of readdirSync(categoryDirectory)) {
-      const directory = join(categoryDirectory, name);
-      if (!statSync(directory).isDirectory()) continue;
+    const manifestPath = join(directory, 'manifest.json');
+    if (!existsSync(manifestPath)) continue;
 
-      const manifestPath = join(directory, 'manifest.json');
-      if (!existsSync(manifestPath)) continue;
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const hasCode = existsSync(join(directory, 'index.mjs'));
 
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-      const hasCode = existsSync(join(directory, 'index.mjs'));
-      const path = `sources/${category}/${name}`;
-
-      sources.push({ manifest, hasCode, path, directory });
-    }
+    sources.push({ manifest, hasCode, path: `sources/${name}`, directory });
   }
   return sources;
 }
 
 // --- Load registry ---
+/** @type {{ sources: Record<string, any>[], categories?: unknown, source_count?: number, updated_at?: string }} */
 const registry = JSON.parse(readFileSync(REGISTRY_PATH, 'utf8'));
 const registryById = new Map(registry.sources.map((c) => [c.id, c]));
 
@@ -98,10 +98,9 @@ const fsSources = discoverSources();
 const fsById = new Map(fsSources.map((c) => [c.manifest.id, c]));
 
 // --- Check 0: catalog identity ---
-// A source's cloud identity is `{catalog.id}/{source.id}` (category is
-// NOT part of identity), so the catalog must declare a stable id and every
-// source id must be unique across the whole catalog — not just within its
-// category. See docs/source-adapter-taxonomy.md.
+// A source's cloud identity is `{catalog.id}/{source.id}`, so the catalog must
+// declare a stable id and every source id must be unique across the whole
+// catalog. See docs/source-adapter-taxonomy.md.
 if (existsSync(CATALOG_PATH)) {
   const catalog = JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
   if (typeof catalog.id === 'string' && catalog.id.trim() !== '') {
@@ -201,6 +200,7 @@ for (const [id, regEntry] of registryById) {
   const fsEntry = fsById.get(id);
   if (!fsEntry) continue;
 
+  /** @type {Record<string, unknown>} */
   const desired = { ...fsEntry.manifest, path: fsEntry.path };
   for (const key of DERIVED_KEYS) delete desired[key];
 
@@ -234,19 +234,18 @@ for (const [id, fsEntry] of fsById) {
   }
 }
 
-// --- Check 6b: categories list matches sources actually present ---
-const actualCategories = [...new Set(registry.sources.map((c) => c.category))].toSorted();
-if (JSON.stringify(registry.categories) !== JSON.stringify(actualCategories)) {
-  const phantom = (registry.categories ?? []).filter((c) => !actualCategories.includes(c));
-  const suffix = phantom.length > 0 ? ` (phantom: ${phantom.join(', ')})` : '';
-  warn(`categories list is out of sync${suffix}`);
-  if (fix) registry.categories = actualCategories;
+// --- Check 6b: the registry declares no grouping of its own ---
+// Sources are a flat set. A `categories` list here would be a second taxonomy
+// with nothing on disk to keep it honest.
+if ('categories' in registry) {
+  warn('registry has a "categories" list; sources are a flat set');
+  if (fix) Reflect.deleteProperty(registry, 'categories');
 }
 
 // --- Check 6: source_count ---
 if (fix) {
   // Sort sources alphabetically by id
-  registry.sources.sort((a, b) => a.id.localeCompare(b.id));
+  registry.sources.sort((a, b) => String(a.id).localeCompare(String(b.id)));
   registry.source_count = registry.sources.length;
   registry.updated_at = new Date().toISOString();
 }

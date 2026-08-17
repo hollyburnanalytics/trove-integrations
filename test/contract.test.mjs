@@ -4,9 +4,9 @@
  * A data-driven sweep over every source in `sources/`. Unlike the per-source
  * unit tests (which mock `fetch` and exercise behavior), these assert the
  * invariants that must hold for ALL sources: a well-formed manifest, type-system
- * fields within the allowed sets, an `id`/`category` that match the directory, a
- * registry entry, and — for implemented sources — an importable module that
- * exports `async function sync`. No network or fetch mocking is involved.
+ * fields within the allowed sets, an `id` that matches the directory, a registry
+ * entry, and — for implemented sources — an importable module that exports
+ * `async function sync`. No network or fetch mocking is involved.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -19,37 +19,30 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(here, '..');
 const sourcesDirectory = path.join(repoRoot, 'sources');
 
-/** Discover every source directory: sources/{category}/{id}/manifest.json. */
+/** Discover every source directory: sources/{id}/manifest.json. */
 function discoverSources() {
   const sources = [];
-  const categories = readdirSync(sourcesDirectory, { withFileTypes: true })
+  const ids = readdirSync(sourcesDirectory, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name !== 'lib')
     .map((entry) => entry.name);
 
-  for (const category of categories) {
-    const categoryDirectory = path.join(sourcesDirectory, category);
-    const ids = readdirSync(categoryDirectory, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-
-    for (const id of ids) {
-      const directory = path.join(categoryDirectory, id);
-      const manifestPath = path.join(directory, 'manifest.json');
-      if (!existsSync(manifestPath)) continue;
-      const indexPath = path.join(directory, 'index.mjs');
-      sources.push({
-        id,
-        category,
-        indexPath,
-        implemented: existsSync(indexPath),
-        manifest: JSON.parse(readFileSync(manifestPath, 'utf8')),
-      });
-    }
+  for (const id of ids) {
+    const directory = path.join(sourcesDirectory, id);
+    const manifestPath = path.join(directory, 'manifest.json');
+    if (!existsSync(manifestPath)) continue;
+    const indexPath = path.join(directory, 'index.mjs');
+    sources.push({
+      id,
+      indexPath,
+      implemented: existsSync(indexPath),
+      manifest: JSON.parse(readFileSync(manifestPath, 'utf8')),
+    });
   }
   return sources;
 }
 
 const sources = discoverSources();
+/** @type {{ sources: Array<{ id: string }> }} */
 const registry = JSON.parse(readFileSync(path.join(repoRoot, 'registry.json'), 'utf8'));
 const registryIds = new Set(registry.sources.map((entry) => entry.id));
 
@@ -58,10 +51,9 @@ describe('source contract', () => {
     expect(sources.length).toBeGreaterThanOrEqual(15);
   });
 
-  describe.each(sources)('$category/$id', ({ id, category, manifest, implemented, indexPath }) => {
-    it('manifest id and category match the directory', () => {
+  describe.each(sources)('$id', ({ id, manifest, implemented, indexPath }) => {
+    it('manifest id matches the directory', () => {
       expect(manifest.id).toBe(id);
-      expect(manifest.category).toBe(category);
     });
 
     it('manifest has the required identity fields', () => {

@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { BASE_URL, fetchEmployerDetails } from '../corcp.ts';
 import { type Certificate, certificateShape } from '../shapes.ts';
 import { accountNumber } from '../text.ts';
@@ -9,7 +9,7 @@ const certificateLine = (c: Certificate): string =>
   `expires ${c.expiryDate ?? '?'}${c.expired === true ? ' (EXPIRED)' : ''}`;
 
 /** Read one employer's certificates and the classification units they cover. */
-export const getEmployerCertificates: ToolDefinition = {
+export const getEmployerCertificates = tool({
   name: 'get_employer_certificates',
   title: 'WorkSafeBC COR: Get an employer’s certificates',
   description:
@@ -70,4 +70,4 @@ export const getEmployerCertificates: ToolDefinition = {
       structured,
     };
   },
-};
+});

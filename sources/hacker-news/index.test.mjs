@@ -1,0 +1,163 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { at, fetchMock, makeSyncContext, setFetch } from '../lib/feed-fixtures.mjs';
+import { sync } from './index.mjs';
+
+const makeContext = () => makeSyncContext();
+
+const HN_RESPONSE = {
+  hits: [
+    {
+      objectID: '123',
+      title: 'Test HN Story',
+      url: 'https://example.com/story',
+      points: 100,
+      num_comments: 50,
+      author: 'testuser',
+      created_at: '2024-01-15T00:00:00.000Z',
+      story_text: '',
+    },
+  ],
+};
+
+describe('hacker-news source', () => {
+  beforeEach(() => {
+    setFetch();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('fetches and maps HN stories', async () => {
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(HN_RESPONSE),
+    });
+
+    const result = await sync(makeContext());
+    expect(result.documents).toHaveLength(1);
+    expect(at(result.documents, 0).id).toBe('hn-123');
+    expect(at(result.documents, 0).title).toBe('Test HN Story');
+    expect(at(result.documents, 0).author).toBe('testuser');
+    expect(at(result.documents, 0).url).toBe('https://example.com/story');
+    expect(at(result.documents, 0).text).toContain('Points: 100');
+    expect(at(result.documents, 0).text).toContain('Comments: 50');
+  });
+
+  it('uses HN URL when story has no external URL', async () => {
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          hits: [
+            {
+              objectID: '456',
+              title: 'Ask HN',
+              url: undefined,
+              points: 10,
+              num_comments: 5,
+              author: 'user',
+              created_at: '2024-01-15T00:00:00.000Z',
+              story_text: 'Question text',
+            },
+          ],
+        }),
+    });
+
+    const result = await sync(makeContext());
+    expect(at(result.documents, 0).url).toBe('https://news.ycombinator.com/item?id=456');
+    expect(at(result.documents, 0).text).toContain('Question text');
+  });
+
+  it('throws on API error', async () => {
+    fetchMock().mockResolvedValue({ ok: false, status: 500, statusText: 'Internal Server Error' });
+    await expect(sync(makeContext())).rejects.toThrow('HN API returned 500');
+  });
+
+  it('handles missing title gracefully', async () => {
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          hits: [
+            {
+              objectID: '789',
+              title: undefined,
+              url: 'https://example.com',
+              points: 1,
+              num_comments: 0,
+              author: 'u',
+              created_at: '2024-01-15T00:00:00.000Z',
+              story_text: '',
+            },
+          ],
+        }),
+    });
+
+    const result = await sync(makeContext());
+    expect(at(result.documents, 0).title).toBe('Untitled');
+  });
+
+  it('returns null cursor and correct stats', async () => {
+    fetchMock().mockResolvedValue({ ok: true, json: () => Promise.resolve(HN_RESPONSE) });
+
+    const result = await sync(makeContext());
+    expect(result.cursor).toBeUndefined();
+    expect(result.stats?.fetched).toBe(1);
+  });
+
+  it('handles missing points and comments', async () => {
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          hits: [
+            {
+              objectID: '1',
+              title: 'T',
+              url: 'https://x.com',
+              points: undefined,
+              num_comments: undefined,
+              author: 'u',
+              created_at: '2024-01-15T00:00:00.000Z',
+              story_text: undefined,
+            },
+          ],
+        }),
+    });
+
+    const result = await sync(makeContext());
+    expect(at(result.documents, 0).text).toContain('Points: 0');
+    expect(at(result.documents, 0).text).toContain('Comments: 0');
+  });
+
+  it('reduces entity-encoded story_text HTML to plain text (no raw markup)', async () => {
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          hits: [
+            {
+              objectID: '1',
+              title: 'Ask HN: Something',
+              url: '',
+              points: 10,
+              num_comments: 2,
+              author: 'user',
+              created_at: '2024-01-15T00:00:00Z',
+              story_text:
+                'See <a href="https:&#x2F;&#x2F;example.com&#x2F;archive">the archive</a> for details',
+            },
+          ],
+        }),
+    });
+
+    const result = await sync(makeContext());
+    const text = at(result.documents, 0).text;
+    // The link SURVIVES, as Markdown, with its entity-encoded href decoded.
+    // The two negatives below are the point of this test and still hold: raw
+    // HTML must never reach the document (the ingest gate rejects it outright,
+    // which holds the feed's cursor), and entities must be decoded.
+    expect(text).toContain('See [the archive](https://example.com/archive) for details');
+    expect(text).not.toContain('<a href');
+    expect(text).not.toContain('&#x2F;');
+  });
+});

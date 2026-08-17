@@ -43,10 +43,13 @@ function biomeWarnCounts() {
     process.stderr.write(
       'biome reported error-level diagnostics — fix `bun run lint` first (this tool governs only ratcheted warnings).\n',
     );
-    process.stderr.write(String(error.stdout ?? '').slice(0, 400));
+    const stdout = /** @type {{ stdout?: unknown }} */ (error).stdout;
+    process.stderr.write(String(stdout ?? '').slice(0, 400));
     process.exit(2);
   }
+  /** @type {{ severity?: string, category?: string }[]} */
   const diagnostics = JSON.parse(raw).diagnostics ?? [];
+  /** @type {Record<string, number>} */
   const counts = {};
   for (const diagnostic of diagnostics) {
     if (diagnostic.severity !== 'warning') continue;
@@ -67,7 +70,12 @@ function suppressionCount() {
   return Number(out) || 0;
 }
 
-/** Sort object keys for a stable, diff-friendly baseline file. */
+/**
+ * Sort object keys for a stable, diff-friendly baseline file.
+ *
+ * @param {Record<string, number>} object - The counts to sort.
+ * @returns {Record<string, number>} The same counts, key-sorted.
+ */
 function sorted(object) {
   return Object.fromEntries(Object.entries(object).toSorted(([a], [b]) => a.localeCompare(b)));
 }
@@ -75,6 +83,7 @@ function sorted(object) {
 const current = biomeWarnCounts();
 current['suppressions/biome-ignore'] = suppressionCount();
 
+/** @type {Record<string, number>} */
 const baseline = existsSync(BASELINE_PATH) ? JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) : {};
 
 if (update) {
@@ -83,12 +92,13 @@ if (update) {
   // manual, committed, reviewed action — that (not a Math.min clamp) is what keeps
   // a ceiling from rising by accident: a reviewer sees the number go up in the
   // diff. A rule now at 0 is dropped entirely, locking it clean.
+  /** @type {Record<string, number>} */
   const next = {};
   for (const [key, count] of Object.entries(current)) {
     if (count > 0) next[key] = count;
   }
   writeFileSync(BASELINE_PATH, `${JSON.stringify(sorted(next), undefined, 2)}\n`);
-  const raised = Object.keys(next).filter((key) => next[key] > (baseline[key] ?? 0));
+  const raised = Object.keys(next).filter((key) => (next[key] ?? 0) > (baseline[key] ?? 0));
   console.log(`✓ baseline written to ${BASELINE_PATH} (current counts).`);
   if (raised.length > 0) {
     console.log(
@@ -98,6 +108,7 @@ if (update) {
   process.exit(0);
 }
 
+/** @type {string[]} */
 const regressions = [];
 const improvable = [];
 for (const key of new Set([...Object.keys(current), ...Object.keys(baseline)])) {

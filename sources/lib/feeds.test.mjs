@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { at, fetchMock, makeSyncContext, setFetch } from './feed-fixtures.mjs';
 import {
   dayToLocalNoonIso,
   decodeHtmlEntities,
@@ -16,9 +17,15 @@ import {
 
 // --- Shared test helpers ---
 
+/**
+ * Answer every request with `xml`.
+ *
+ * @param {string} xml - The feed body.
+ * @returns {void} Nothing; it installs the resolved value.
+ */
 function mockFetch(xml) {
   const encoded = new TextEncoder().encode(xml);
-  fetch.mockResolvedValue({
+  fetchMock().mockResolvedValue({
     ok: true,
     headers: new Headers(),
     body: {
@@ -36,14 +43,13 @@ function mockFetch(xml) {
   });
 }
 
-function makeContext(cursor) {
-  return {
-    log: { info: vi.fn(), warn: vi.fn() },
-    progress: vi.fn(),
-    config: {},
-    cursor,
-  };
-}
+/**
+ * A context, optionally resuming from `cursor`.
+ *
+ * @param {import('./types.d.ts').Cursor} [cursor] - The previous run's cursor.
+ * @returns {import('./types.d.ts').SyncContext} The context.
+ */
+const makeContext = (cursor) => makeSyncContext({ cursor });
 
 // --- stableId ---
 
@@ -76,7 +82,6 @@ describe('safeDate', () => {
 
   it('returns null for empty input', () => {
     expect(safeDate()).toBeUndefined();
-    expect(safeDate()).toBeUndefined();
     expect(safeDate('')).toBeUndefined();
   });
 
@@ -101,7 +106,7 @@ describe('dayToLocalNoonIso', () => {
       const iso = dayToLocalNoonIso(day, 'America/Vancouver');
       const local = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Vancouver',
-      }).format(new Date(iso));
+      }).format(new Date(String(iso)));
       expect(local).toBe(day);
     }
   });
@@ -167,11 +172,11 @@ describe('parseRSS', () => {
 
     const items = parseRSS(xml);
     expect(items).toHaveLength(1);
-    expect(items[0].title).toBe('Post One');
-    expect(items[0].link).toBe('https://example.com/post-1');
-    expect(items[0].description).toBe('First post');
-    expect(items[0].pubDate).toBe('Mon, 15 Jan 2024 00:00:00 GMT');
-    expect(items[0].guid).toBe('post-1');
+    expect(at(items, 0).title).toBe('Post One');
+    expect(at(items, 0).link).toBe('https://example.com/post-1');
+    expect(at(items, 0).description).toBe('First post');
+    expect(at(items, 0).pubDate).toBe('Mon, 15 Jan 2024 00:00:00 GMT');
+    expect(at(items, 0).guid).toBe('post-1');
   });
 
   it('parses RSS item with dc:creator author', () => {
@@ -182,7 +187,7 @@ describe('parseRSS', () => {
       <dc:creator>John Doe</dc:creator>
     </item>`;
     const items = parseRSS(xml);
-    expect(items[0].author).toBe('John Doe');
+    expect(at(items, 0).author).toBe('John Doe');
   });
 
   it('parses Atom entries', () => {
@@ -201,11 +206,11 @@ describe('parseRSS', () => {
 
     const items = parseRSS(xml);
     expect(items).toHaveLength(1);
-    expect(items[0].title).toBe('Atom Post');
-    expect(items[0].link).toBe('https://example.com/atom-1');
-    expect(items[0].pubDate).toBe('2024-01-15T00:00:00Z');
-    expect(items[0].guid).toBe('atom-1');
-    expect(items[0].author).toBe('Author Name');
+    expect(at(items, 0).title).toBe('Atom Post');
+    expect(at(items, 0).link).toBe('https://example.com/atom-1');
+    expect(at(items, 0).pubDate).toBe('2024-01-15T00:00:00Z');
+    expect(at(items, 0).guid).toBe('atom-1');
+    expect(at(items, 0).author).toBe('Author Name');
   });
 
   it('parses Atom with reverse attribute order on link', () => {
@@ -216,7 +221,7 @@ describe('parseRSS', () => {
       <id>test-1</id>
     </entry>`;
     const items = parseRSS(xml);
-    expect(items[0].link).toBe('https://example.com/test');
+    expect(at(items, 0).link).toBe('https://example.com/test');
   });
 
   it('uses a self-closing <link href> when no rel="alternate" is present (sources-2)', () => {
@@ -231,8 +236,8 @@ describe('parseRSS', () => {
       </entry>
     </feed>`;
     const items = parseRSS(xml);
-    expect(items[0].link).toBe('https://example.com/atom-bare');
-    expect(items[0].guid).toBe('bare-1');
+    expect(at(items, 0).link).toBe('https://example.com/atom-bare');
+    expect(at(items, 0).guid).toBe('bare-1');
   });
 
   it('prefers the rel="alternate" link over other <link> elements', () => {
@@ -244,7 +249,7 @@ describe('parseRSS', () => {
       <id>m-1</id>
     </entry>`;
     const items = parseRSS(xml);
-    expect(items[0].link).toBe('https://example.com/the-post');
+    expect(at(items, 0).link).toBe('https://example.com/the-post');
   });
 
   it('falls back to a bare <link> element and uses link as guid when <id> is absent', () => {
@@ -258,8 +263,8 @@ describe('parseRSS', () => {
       </entry>
     </feed>`;
     const items = parseRSS(xml);
-    expect(items[0].link).toBe('https://example.com/bare');
-    expect(items[0].guid).toBe('https://example.com/bare');
+    expect(at(items, 0).link).toBe('https://example.com/bare');
+    expect(at(items, 0).guid).toBe('https://example.com/bare');
   });
 
   it('decodes HTML entities in Atom content', () => {
@@ -270,7 +275,7 @@ describe('parseRSS', () => {
       <id>test-1</id>
     </entry>`;
     const items = parseRSS(xml);
-    expect(items[0].description).toBe('Hello & World');
+    expect(at(items, 0).description).toBe('Hello & World');
   });
 
   it('decodes numeric entities in Atom content', () => {
@@ -281,8 +286,8 @@ describe('parseRSS', () => {
       <id>test-1</id>
     </entry>`;
     const items = parseRSS(xml);
-    expect(items[0].description).toContain("'quoted'");
-    expect(items[0].description).toContain('& hex');
+    expect(at(items, 0).description).toContain("'quoted'");
+    expect(at(items, 0).description).toContain('& hex');
   });
 
   it('uses content tag as fallback for Atom summary', () => {
@@ -293,7 +298,7 @@ describe('parseRSS', () => {
       <id>test-1</id>
     </entry>`;
     const items = parseRSS(xml);
-    expect(items[0].description).toBe('Atom content here');
+    expect(at(items, 0).description).toBe('Atom content here');
   });
 
   it('truncates Atom description to 1000 chars', () => {
@@ -305,7 +310,7 @@ describe('parseRSS', () => {
       <id>test-1</id>
     </entry>`;
     const items = parseRSS(xml);
-    expect(items[0].description.length).toBe(1000);
+    expect(at(items, 0).description.length).toBe(1000);
   });
 
   it('uses updated date as fallback for Atom published', () => {
@@ -317,7 +322,7 @@ describe('parseRSS', () => {
       <id>test-1</id>
     </entry>`;
     const items = parseRSS(xml);
-    expect(items[0].pubDate).toBe('2024-02-01T00:00:00Z');
+    expect(at(items, 0).pubDate).toBe('2024-02-01T00:00:00Z');
   });
 
   it('throws on non-feed XML — a misconfigured feed must fail loudly, not sync zero forever', () => {
@@ -331,7 +336,7 @@ describe('parseRSS', () => {
 
 describe('fetchPage', () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn();
+    setFetch();
   });
 
   afterEach(() => {
@@ -343,7 +348,7 @@ describe('fetchPage', () => {
     const encoder = new TextEncoder();
     const encoded = encoder.encode(content);
 
-    fetch.mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       headers: new Headers({ 'content-length': String(encoded.length) }),
       body: {
@@ -366,7 +371,7 @@ describe('fetchPage', () => {
   });
 
   it('throws on non-OK response', async () => {
-    fetch.mockResolvedValue({ ok: false, status: 404 });
+    fetchMock().mockResolvedValue({ ok: false, status: 404 });
     await expect(fetchPage('https://example.com')).rejects.toThrow('HTTP 404');
   });
 
@@ -386,11 +391,11 @@ describe('fetchPage', () => {
     for (const url of blocked) {
       await expect(fetchPage(url)).rejects.toThrow(/Refusing|Invalid URL/);
     }
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetchMock()).not.toHaveBeenCalled();
   });
 
   it('throws on content-length too large', async () => {
-    fetch.mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       headers: new Headers({ 'content-length': '999999999' }),
       body: { getReader: () => ({ read: () => Promise.resolve({ done: true }) }) },
@@ -400,7 +405,7 @@ describe('fetchPage', () => {
 
   it('throws on streaming content exceeding limit', async () => {
     const bigChunk = new Uint8Array(11 * 1024 * 1024);
-    fetch.mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       headers: new Headers(),
       body: {
@@ -421,13 +426,13 @@ describe('fetchPage', () => {
   });
 
   it('passes an abort signal so a slow request can be timed out', async () => {
-    fetch.mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       headers: new Headers(),
       body: { getReader: () => ({ read: () => Promise.resolve({ done: true }) }) },
     });
     await fetchPage('https://example.com');
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetchMock()).toHaveBeenCalledWith(
       'https://example.com',
       expect.objectContaining({ signal: expect.anything() }),
     );
@@ -438,7 +443,7 @@ describe('fetchPage', () => {
 
 describe('syncRSS', () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn();
+    setFetch();
   });
 
   afterEach(() => {
@@ -460,7 +465,7 @@ describe('syncRSS', () => {
       defaultAuthor: 'Author',
     });
 
-    const document = result.documents[0];
+    const document = at(result.documents);
     expect(document.title).toBe('Watch now | \u{1F399}\uFE0F Testing Google\u2019s Gemini');
     expect(document.text).not.toMatch(/&#\d+;|&[a-z]+;|<[a-z]/);
     expect(document.text).toContain('Episode & notes');
@@ -482,12 +487,13 @@ describe('syncRSS', () => {
       defaultAuthor: 'Author',
     });
 
+    /** @type {Record<string, import('./types.d.ts').TroveDocument | undefined>} */
     const byTitle = Object.fromEntries(result.documents.map((d) => [d.title, d]));
-    expect(byTitle.Dated.date).toBe('2024-01-15T00:00:00.000Z');
-    expect(byTitle.Undated.date).toBeUndefined();
-    expect(byTitle['Junk date'].date).toBeUndefined();
+    expect(byTitle.Dated?.date).toBe('2024-01-15T00:00:00.000Z');
+    expect(byTitle.Undated?.date).toBeUndefined();
+    expect(byTitle['Junk date']?.date).toBeUndefined();
     // Counted and logged, so a feed that stops emitting dates is visible.
-    expect(result.stats.undated).toBe(2);
+    expect(result.stats?.undated).toBe(2);
     expect(context.log.warn).toHaveBeenCalledWith(expect.stringContaining('no publish date'));
   });
 
@@ -541,7 +547,7 @@ describe('syncRSS', () => {
       defaultAuthor: 'Author',
     });
 
-    expect(result.stats.undated).toBeUndefined();
+    expect(result.stats?.undated).toBeUndefined();
     expect(context.log.warn).not.toHaveBeenCalled();
   });
 
@@ -562,9 +568,9 @@ describe('syncRSS', () => {
     });
 
     expect(result.documents).toHaveLength(1);
-    expect(result.documents[0].title).toBe('Post');
-    expect(result.documents[0].author).toBe('Author');
-    expect(result.stats.fetched).toBe(1);
+    expect(at(result.documents, 0).title).toBe('Post');
+    expect(at(result.documents, 0).author).toBe('Author');
+    expect(result.stats?.fetched).toBe(1);
     expect(result.cursor).toEqual({ type: 'date', value: '2024-01-15T00:00:00.000Z' });
   });
 
@@ -582,8 +588,8 @@ describe('syncRSS', () => {
     });
 
     expect(result.documents).toHaveLength(1);
-    expect(result.documents[0].title).toBe('New');
-    expect(result.stats.skipped).toBe(1);
+    expect(at(result.documents, 0).title).toBe('New');
+    expect(result.stats?.skipped).toBe(1);
   });
 
   it('includes items with no date when cursor is set', async () => {
@@ -607,6 +613,7 @@ describe('syncRSS', () => {
     </channel></rss>`;
     mockFetch(xml);
 
+    /** @type {import('./types.d.ts').Cursor} */
     const cursor = { type: 'date', value: '2024-01-01T00:00:00.000Z' };
     const result = await syncRSS(makeContext(cursor), {
       feedUrl: 'https://example.com/feed',
@@ -630,7 +637,7 @@ describe('syncRSS', () => {
       defaultAuthor: 'Author',
     });
 
-    expect(result.documents[0].title).toBe('Untitled');
+    expect(at(result.documents, 0).title).toBe('Untitled');
   });
 
   it('uses item author over defaultAuthor', async () => {
@@ -646,7 +653,7 @@ describe('syncRSS', () => {
       defaultAuthor: 'Default',
     });
 
-    expect(result.documents[0].author).toBe('Item Author');
+    expect(at(result.documents, 0).author).toBe('Item Author');
   });
 });
 
@@ -772,6 +779,12 @@ describe('htmlToText', () => {
 
 // --- fetchArticleText + syncFeedArticles (full-text fetch for CC sources) ---
 
+/**
+ * A response streaming `text` once.
+ *
+ * @param {string} text - The body.
+ * @returns {unknown} The response, as far as `fetchPage` reads it.
+ */
 function streamBody(text) {
   const encoded = new TextEncoder().encode(text);
   return {
@@ -793,13 +806,19 @@ function streamBody(text) {
 }
 
 const FAIL_500 = Symbol('fail-500');
+/**
+ * Answer by URL fragment: the first key the URL contains wins.
+ *
+ * @param {Record<string, string | symbol>} map - Fragment → body, or {@link FAIL_500}.
+ * @returns {void} Nothing; it installs the implementation.
+ */
 function mockFetchByUrl(map) {
-  fetch.mockImplementation((url) => {
+  fetchMock().mockImplementation((url) => {
     for (const [fragment, body] of Object.entries(map)) {
       if (String(url).includes(fragment)) {
         return body === FAIL_500
           ? Promise.resolve({ ok: false, status: 500 })
-          : Promise.resolve(streamBody(body));
+          : Promise.resolve(streamBody(String(body)));
       }
     }
     return Promise.resolve(streamBody('<html></html>'));
@@ -817,7 +836,7 @@ const ARTICLE_FEED = `<rss><channel>
 
 describe('fetchArticleText', () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn();
+    setFetch();
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -838,7 +857,7 @@ describe('fetchArticleText', () => {
 
 describe('syncFeedArticles', () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn();
+    setFetch();
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -854,7 +873,9 @@ describe('syncFeedArticles', () => {
     mockFetchByUrl({ '/feed': ARTICLE_FEED, '/new': ARTICLE_HTML, '/old': ARTICLE_HTML });
     const result = await syncFeedArticles(makeContext(), options);
     expect(result.documents).toHaveLength(2);
-    expect(result.documents.every((d) => d.text.includes('The full article body'))).toBe(true);
+    expect(result.documents.every((d) => String(d.text).includes('The full article body'))).toBe(
+      true,
+    );
     expect(result.cursor).toEqual({ type: 'date', value: '2024-01-10T00:00:00.000Z' });
   });
 
@@ -872,7 +893,7 @@ describe('syncFeedArticles', () => {
     const context = makeContext();
     const result = await syncFeedArticles(context, options);
     expect(result.documents).toHaveLength(2);
-    expect(result.documents.every((d) => d.text.includes('excerpt'))).toBe(true);
+    expect(result.documents.every((d) => String(d.text).includes('excerpt'))).toBe(true);
     expect(context.log.warn).toHaveBeenCalled();
   });
 
@@ -882,7 +903,7 @@ describe('syncFeedArticles', () => {
     context.deadline = Date.now() - 1;
     const result = await syncFeedArticles(context, options);
     expect(result.documents).toHaveLength(0);
-    expect(result.stats.remaining).toBeGreaterThan(0);
+    expect(result.stats?.remaining).toBeGreaterThan(0);
   });
 });
 

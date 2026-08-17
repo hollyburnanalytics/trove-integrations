@@ -38,10 +38,27 @@ import path from 'node:path';
 import tsModule from 'typescript';
 
 // typescript ships CJS; under bun the namespace can arrive wrapped in .default.
-const ts = tsModule.ScriptTarget ? tsModule : tsModule.default;
+// The cast is that interop shape stated out loud — the compiler is given the
+// ESM view, and only the wrapped case needs describing.
+const ts = tsModule.ScriptTarget
+  ? tsModule
+  : /** @type {{ default: typeof tsModule }} */ (/** @type {unknown} */ (tsModule)).default;
 
-/** Every file under `root` matching `pred`, recursively. */
+/**
+ * One `tool({ name, input })` call as this check reads it.
+ *
+ * @typedef {{ toolName: string, inputNode: import('typescript').Expression }} ToolSpec
+ */
+
+/**
+ * Every file under `root` matching `pred`, recursively.
+ *
+ * @param {string} root - Where to start walking.
+ * @param {(file: string) => boolean} [pred] - Which files to keep.
+ * @returns {string[]} The matching paths.
+ */
 function filesUnder(root, pred = () => true) {
+  /** @type {string[]} */
   const out = [];
   (function walk(directory) {
     for (const entry of readdirSync(directory)) {
@@ -57,6 +74,10 @@ function filesUnder(root, pred = () => true) {
 /**
  * The toolkit a file belongs to: the nearest ancestor holding a manifest.json.
  * Falls back to the file's own directory for a toolkit still without one.
+ *
+ * @param {string} file - The file to place.
+ * @param {string[]} roots - The search roots, which the walk never climbs past.
+ * @returns {string} The toolkit's directory.
  */
 function toolkitRoot(file, roots) {
   let directory = path.dirname(file);
@@ -73,19 +94,27 @@ function toolkitRoot(file, roots) {
   return path.dirname(file);
 }
 
-/** Unwrap `z.object({...})` / `.extend({...})` through any chained modifiers. */
+/**
+ * Unwrap `z.object({...})` / `.extend({...})` through any chained modifiers.
+ *
+ * @param {import('typescript').Node | undefined} node - The `input` expression.
+ * @returns {import('typescript').ObjectLiteralExpression | undefined} Its object
+ *   literal, or nothing when the input is not written as one.
+ */
 function zodObjectLiteral(node) {
+  /** @type {import('typescript').Node | undefined} */
   let current = node;
   for (let index = 0; index < 12 && current; index++) {
     if (ts.isCallExpression(current)) {
       const callee = current.expression;
+      const [firstArgument] = current.arguments;
       if (
         ts.isPropertyAccessExpression(callee) &&
         (callee.name.text === 'object' || callee.name.text === 'extend') &&
-        current.arguments.length > 0 &&
-        ts.isObjectLiteralExpression(current.arguments[0])
+        firstArgument !== undefined &&
+        ts.isObjectLiteralExpression(firstArgument)
       ) {
-        return current.arguments[0];
+        return firstArgument;
       }
       current = callee;
       continue;
@@ -99,32 +128,50 @@ function zodObjectLiteral(node) {
   // Not a literal object — the caller reports it rather than assuming empty.
 }
 
-/** Does `field` appear anywhere in `text` in a position that READS it? */
+/**
+ * Does `field` appear anywhere in `text` in a position that READS it?
+ *
+ * @param {string} field - The declared input field's name.
+ * @param {string} text - The source to search.
+ * @returns {boolean} True when something reads it.
+ */
 function isRead(field, text) {
   const name = field.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
   return new RegExp(`\\.${name}\\b|\\{[^}]*\\b${name}\\b[^{]*\\}|['"\`]${name}['"\`]`).test(text);
 }
 
-/** The name of a property, when it has a readable one. */
+/**
+ * The name of a property, when it has a readable one.
+ *
+ * @param {import('typescript').ObjectLiteralElementLike} property - The member.
+ * @returns {string | undefined} Its name, for an identifier or string key.
+ */
 function propertyName(property) {
   const n = property.name;
   return n && (ts.isIdentifier(n) || ts.isStringLiteral(n)) ? n.text : undefined;
 }
 
-/** A `tool({...})` call's name and input node, or null if this isn't one. */
+/**
+ * A `tool({...})` call's name and input node, or nothing if this isn't one.
+ *
+ * @param {import('typescript').Node} node - Any node in the file.
+ * @returns {ToolSpec | undefined} The tool's name and input expression.
+ */
 function toolSpec(node) {
+  if (!ts.isCallExpression(node)) return;
+  const [firstArgument] = node.arguments;
   if (
-    !ts.isCallExpression(node) ||
     !ts.isIdentifier(node.expression) ||
     node.expression.text !== 'tool' ||
-    node.arguments.length === 0 ||
-    !ts.isObjectLiteralExpression(node.arguments[0])
+    firstArgument === undefined ||
+    !ts.isObjectLiteralExpression(firstArgument)
   ) {
     return;
   }
   let toolName = '(unnamed)';
+  /** @type {import('typescript').Expression | undefined} */
   let inputNode;
-  for (const property of node.arguments[0].properties) {
+  for (const property of firstArgument.properties) {
     const key = propertyName(property);
     if (!ts.isPropertyAssignment(property)) continue;
     if (key === 'name' && ts.isStringLiteral(property.initializer))
@@ -134,9 +181,24 @@ function toolSpec(node) {
   return inputNode ? { toolName, inputNode } : undefined;
 }
 
+/**
+ * Walk a file, handing every `tool({...})` call it finds to `auditTool`.
+ *
+ * @param {import('typescript').Node} node - The node to walk.
+ * @param {(spec: ToolSpec) => void} auditTool - What to do with each tool.
+ * @returns {void} Nothing; the auditor collects.
+ */
+function visitTools(node, auditTool) {
+  const spec = toolSpec(node);
+  if (spec) auditTool(spec);
+  ts.forEachChild(node, (child) => visitTools(child, auditTool));
+}
+
 const roots = process.argv.slice(2);
 const searchRoots = roots.length > 0 ? roots : ['mcp'];
+/** @type {Array<{ file: string, tool: string, field: string }>} */
 const orphans = [];
+/** @type {Array<{ file: string, tool: string }>} */
 const unparsed = [];
 let checked = 0;
 
@@ -151,7 +213,11 @@ for (const root of searchRoots) {
       .map((p) => readFileSync(p, 'utf8'))
       .join('\n');
 
-    /** Check one tool's declared input fields against the toolkit. */
+    /**
+     * Check one tool's declared input fields against the toolkit.
+     *
+     * @type {(spec: ToolSpec) => void}
+     */
     const auditTool = ({ toolName, inputNode }) => {
       const lit = zodObjectLiteral(inputNode);
       if (!lit) {
@@ -170,15 +236,12 @@ for (const root of searchRoots) {
       }
     };
 
-    (function visit(node) {
-      const spec = toolSpec(node);
-      if (spec) auditTool(spec);
-      ts.forEachChild(node, visit);
-    })(sf);
+    visitTools(sf, auditTool);
   }
 }
 
-const where = (f) => path.relative(process.cwd(), f);
+/** @type {(file: string) => string} */
+const where = (file) => path.relative(process.cwd(), file);
 
 if (orphans.length === 0 && unparsed.length === 0) {
   console.log(`orphan-fields: ${checked} declared input fields, all read.`);

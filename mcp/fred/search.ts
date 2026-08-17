@@ -170,10 +170,7 @@ function filteredOutText(args: SearchArgs, page: SearchPage): string {
  * response is exactly where the keywords-not-questions hint is needed and a
  * caller has no reason to know it up front.
  */
-export async function runSearch(
-  args: SearchArgs,
-  ctx: ToolContext,
-): Promise<{ text: string; structured: unknown }> {
+export async function runSearch(args: SearchArgs, ctx: ToolContext) {
   let page = await searchOnce(args.text, args, ctx);
   let retried: string | null = null;
   // Retry only when the TEXT found nothing. A page that matched and was then

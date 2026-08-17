@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at, enclosureOf } from './feed-fixtures.mjs';
 import { parseRSS, xmlText } from './rss-parse.mjs';
 
 describe('xmlText', () => {
@@ -20,7 +21,7 @@ describe('parseRSS', () => {
       <category>Tech</category><category> News </category>
       <guid>g1</guid>
     </item></channel></rss>`;
-    const [item] = parseRSS(xml);
+    const item = at(parseRSS(xml));
     expect(item.title).toBe('Post');
     expect(item.link).toBe('https://ex.test/p');
     expect(item.description).toContain('Excerpt');
@@ -40,7 +41,7 @@ describe('parseRSS', () => {
       <author><name>Jane</name></author>
       <id>tag:1</id>
     </entry></feed>`;
-    const [item] = parseRSS(xml);
+    const item = at(parseRSS(xml));
     expect(item.title).toBe('Entry');
     expect(item.link).toBe('https://ex.test/a');
     expect(item.description).toContain('Short');
@@ -55,19 +56,19 @@ describe('attributed opening tags (Atom type="html")', () => {
     const xml = `<entry><title type="html">Moving away from Tailwind</title><link href="https://jvns.ca/x"/><updated>2026-05-14T00:00:00Z</updated><content type="html">body</content></entry>`;
     const items = parseRSS(xml);
     expect(items.length).toBe(1);
-    expect(items[0].title).toBe('Moving away from Tailwind');
+    expect(at(items, 0).title).toBe('Moving away from Tailwind');
   });
 
   it('does not let a tag prefix match a longer sibling tag', () => {
     const xml = `<entry><titleExtra>WRONG</titleExtra><title>Right</title><updated>2026-01-01T00:00:00Z</updated></entry>`;
     const items = parseRSS(xml);
-    expect(items[0].title).toBe('Right');
+    expect(at(items, 0).title).toBe('Right');
   });
 
   it('extracts attributed CDATA titles', () => {
     const xml = `<item><title type="text"><![CDATA[CDATA Title]]></title><link>https://x.example/a</link></item>`;
     const items = parseRSS(xml);
-    expect(items[0].title).toBe('CDATA Title');
+    expect(at(items, 0).title).toBe('CDATA Title');
   });
 });
 
@@ -86,10 +87,10 @@ describe('namespace-prefixed Atom (the HBR live regression)', () => {
       </ns6:feed>`;
     const items = parseRSS(xml);
     expect(items.length).toBe(1);
-    expect(items[0].title).toBe('The Hidden Storage Tax');
-    expect(items[0].link).toBe('https://hbr.org/2026/07/storage-tax');
-    expect(items[0].description).toBe('A short abstract.');
-    expect(items[0].guid).toBe('tag:hbr.org,2026:storage-tax');
+    expect(at(items, 0).title).toBe('The Hidden Storage Tax');
+    expect(at(items, 0).link).toBe('https://hbr.org/2026/07/storage-tax');
+    expect(at(items, 0).description).toBe('A short abstract.');
+    expect(at(items, 0).guid).toBe('tag:hbr.org,2026:storage-tax');
   });
 });
 
@@ -106,7 +107,7 @@ describe('RSS 1.0 / RDF', () => {
         <dc:creator>Ada</dc:creator>
       </item>
     </rdf:RDF>`;
-    const [item] = parseRSS(xml);
+    const item = at(parseRSS(xml));
     expect(item.title).toBe('First');
     expect(item.link).toBe('https://ex.test/one');
     expect(item.pubDate).toBe('2026-01-05T00:00:00Z');
@@ -135,14 +136,14 @@ describe('JSON Feed', () => {
     });
     const items = parseRSS(json);
     expect(items.length).toBe(2);
-    expect(items[0].title).toBe('Hello');
-    expect(items[0].bodyHtml).toBe('<p>Full <em>body</em> here</p>');
-    expect(items[0].description).toBe('Short.');
-    expect(items[0].author).toBe('John Gruber');
-    expect(items[0].categories).toEqual(['apple']);
-    expect(items[1].guid).toBe('2');
-    expect(items[1].bodyHtml).toBe('Plain text body');
-    expect(items[1].pubDate).toBe('2026-07-12T00:00:00Z');
+    expect(at(items, 0).title).toBe('Hello');
+    expect(at(items, 0).bodyHtml).toBe('<p>Full <em>body</em> here</p>');
+    expect(at(items, 0).description).toBe('Short.');
+    expect(at(items, 0).author).toBe('John Gruber');
+    expect(at(items, 0).categories).toEqual(['apple']);
+    expect(at(items, 1).guid).toBe('2');
+    expect(at(items, 1).bodyHtml).toBe('Plain text body');
+    expect(at(items, 1).pubDate).toBe('2026-07-12T00:00:00Z');
   });
 });
 
@@ -151,11 +152,11 @@ describe('bodyHtml — the fullest available body', () => {
     const withBoth = `<item><title>A</title><link>https://ex.test/a</link>
       <description><![CDATA[<p>Excerpt</p>]]></description>
       <content:encoded><![CDATA[<p>Everything</p>]]></content:encoded></item>`;
-    expect(parseRSS(withBoth)[0].bodyHtml).toBe('<p>Everything</p>');
+    expect(at(parseRSS(withBoth)).bodyHtml).toBe('<p>Everything</p>');
 
     const descriptionOnly = `<item><title>B</title><link>https://ex.test/b</link>
       <description>&lt;p&gt;Escaped full text&lt;/p&gt;</description></item>`;
-    const [item] = parseRSS(descriptionOnly);
+    const item = at(parseRSS(descriptionOnly));
     expect(item.content).toBe('');
     expect(item.bodyHtml).toContain('Escaped full text');
   });
@@ -166,7 +167,7 @@ describe('bodyHtml — the fullest available body', () => {
       <content type="html" xml:base="https://df.test/">
       <![CDATA[ <p>The whole post body</p> ]]>
       </content><id>tag:df,1</id><published>2026-07-11T00:00:00Z</published></entry>`;
-    const [item] = parseRSS(xml);
+    const item = at(parseRSS(xml));
     expect(item.bodyHtml).toBe('<p>The whole post body</p>');
     expect(item.description).toBe('Four word summary here.');
   });
@@ -178,21 +179,21 @@ describe('author resolution', () => {
       <title>Julia Evans</title><author><name>Julia Evans</name></author>
       <entry><title>Post</title><link href="https://jvns.test/p"/><id>1</id></entry>
     </feed>`;
-    expect(parseRSS(xml)[0].author).toBe('Julia Evans');
+    expect(at(parseRSS(xml)).author).toBe('Julia Evans');
   });
 
   it('falls back to the feed title when no author exists anywhere', () => {
     const xml = `<rss><channel><title>Dan Luu</title>
       <item><title>Post</title><link>https://ex.test/p</link></item>
     </channel></rss>`;
-    expect(parseRSS(xml)[0].author).toBe('Dan Luu');
+    expect(at(parseRSS(xml)).author).toBe('Dan Luu');
   });
 
   it('extracts the display name from RSS email-style authors and never stores a bare email', () => {
     const withName = `<item><title>T</title><link>https://ex.test/t</link><author>news@ex.test (Johnny Dee)</author></item>`;
-    expect(parseRSS(withName)[0].author).toBe('Johnny Dee');
+    expect(at(parseRSS(withName)).author).toBe('Johnny Dee');
     const bareEmail = `<item><title>T</title><link>https://ex.test/t</link><author>news@ex.test</author></item>`;
-    expect(parseRSS(bareEmail)[0].author).toBe('');
+    expect(at(parseRSS(bareEmail)).author).toBe('');
   });
 });
 
@@ -200,7 +201,7 @@ describe('categories', () => {
   it('collects Atom term attributes and de-duplicates', () => {
     const xml = `<entry><title>T</title><link href="https://ex.test/t"/><id>1</id>
       <category term="ai"/><category term="apple"/><category term="ai"/></entry>`;
-    expect(parseRSS(xml)[0].categories).toEqual(['ai', 'apple']);
+    expect(at(parseRSS(xml)).categories).toEqual(['ai', 'apple']);
   });
 });
 
@@ -245,20 +246,20 @@ describe('unrecognizable documents fail loudly', () => {
     </feed>`;
 
   it('links a LINK-BLOG post to the publisher, not to the site it points at', () => {
-    const [linked] = parseRSS(LINK_BLOG);
+    const linked = at(parseRSS(LINK_BLOG));
     expect(linked.link).toBe('https://daringfireball.net/linked/2026/08/01/apple-q3');
   });
 
   it('leaves the publisher’s OWN article alone', () => {
     // No `related` to prefer, and `alternate` is already on the publisher's
     // host — the rule must not fire here.
-    expect(parseRSS(LINK_BLOG)[1].link).toBe('https://daringfireball.net/2026/07/temu');
+    expect(at(parseRSS(LINK_BLOG), 1).link).toBe('https://daringfireball.net/2026/07/temu');
   });
 
   it('does NOT change identity, so a corrected URL cannot duplicate a document', () => {
     // Identity comes from Atom `<id>`. If it came from the link, this fix would
     // re-ingest every linked-list post as a new document.
-    expect(parseRSS(LINK_BLOG)[0].guid).toBe('tag:daringfireball.net,2026:/linked//6.43312');
+    expect(at(parseRSS(LINK_BLOG)).guid).toBe('tag:daringfireball.net,2026:/linked//6.43312');
   });
 
   it('keeps an off-site alternate when nothing points back to the publisher', () => {
@@ -270,16 +271,18 @@ describe('unrecognizable documents fail loudly', () => {
           <link rel="alternate" type="text/html" href="https://other.example.org/story" />
         </entry>
       </feed>`;
-    expect(parseRSS(aggregator)[0].link).toBe('https://other.example.org/story');
+    expect(at(parseRSS(aggregator)).link).toBe('https://other.example.org/story');
   });
 });
 
 describe('enclosures — how a podcast feed carries its audio', () => {
   it('reads url, type and length from an RSS <enclosure>', () => {
-    const [item] = parseRSS(`<rss><channel><item>
+    const item = at(
+      parseRSS(`<rss><channel><item>
       <title>Ep 1</title><link>https://show.test/1</link>
       <enclosure url="https://cdn.test/1.mp3" length="42000000" type="audio/mpeg"/>
-    </item></channel></rss>`);
+    </item></channel></rss>`),
+    );
     expect(item.enclosure).toEqual({
       url: 'https://cdn.test/1.mp3',
       type: 'audio/mpeg',
@@ -288,34 +291,42 @@ describe('enclosures — how a podcast feed carries its audio', () => {
   });
 
   it('leaves enclosure undefined for an item without one', () => {
-    const [item] = parseRSS(
-      `<rss><channel><item><title>No audio</title><link>https://s.test/a</link></item></channel></rss>`,
+    const item = at(
+      parseRSS(
+        `<rss><channel><item><title>No audio</title><link>https://s.test/a</link></item></channel></rss>`,
+      ),
     );
     expect(item.enclosure).toBeUndefined();
   });
 
   it('normalizes the type and drops a non-numeric length', () => {
-    const [item] = parseRSS(`<rss><channel><item>
+    const item = at(
+      parseRSS(`<rss><channel><item>
       <enclosure url="https://cdn.test/1.mp3" length="" type="Audio/MPEG; charset=binary"/>
-    </item></channel></rss>`);
-    expect(item.enclosure.type).toBe('audio/mpeg');
-    expect(item.enclosure.length).toBeUndefined();
+    </item></channel></rss>`),
+    );
+    expect(enclosureOf(item).type).toBe('audio/mpeg');
+    expect(enclosureOf(item).length).toBeUndefined();
   });
 
   it('takes the first enclosure when a feed repeats the element', () => {
-    const [item] = parseRSS(`<rss><channel><item>
+    const item = at(
+      parseRSS(`<rss><channel><item>
       <enclosure url="https://cdn.test/hi.mp3" type="audio/mpeg"/>
       <enclosure url="https://cdn.test/lo.mp3" type="audio/mpeg"/>
-    </item></channel></rss>`);
-    expect(item.enclosure.url).toBe('https://cdn.test/hi.mp3');
+    </item></channel></rss>`),
+    );
+    expect(enclosureOf(item).url).toBe('https://cdn.test/hi.mp3');
   });
 
   it('reads an Atom <link rel="enclosure"> without mistaking it for the permalink', () => {
-    const [entry] = parseRSS(`<feed><entry>
+    const entry = at(
+      parseRSS(`<feed><entry>
       <title>Ep 2</title>
       <link rel="alternate" href="https://show.test/2"/>
       <link rel="enclosure" type="audio/mpeg" length="99" href="https://cdn.test/2.mp3"/>
-    </entry></feed>`);
+    </entry></feed>`),
+    );
     expect(entry.link).toBe('https://show.test/2');
     expect(entry.enclosure).toEqual({
       url: 'https://cdn.test/2.mp3',
@@ -325,19 +336,21 @@ describe('enclosures — how a podcast feed carries its audio', () => {
   });
 
   it('reads a JSON Feed attachment', () => {
-    const [item] = parseRSS(
-      JSON.stringify({
-        version: 'https://jsonfeed.org/version/1.1',
-        items: [
-          {
-            id: '3',
-            url: 'https://show.test/3',
-            attachments: [
-              { url: 'https://cdn.test/3.m4a', mime_type: 'audio/x-m4a', size_in_bytes: 7 },
-            ],
-          },
-        ],
-      }),
+    const item = at(
+      parseRSS(
+        JSON.stringify({
+          version: 'https://jsonfeed.org/version/1.1',
+          items: [
+            {
+              id: '3',
+              url: 'https://show.test/3',
+              attachments: [
+                { url: 'https://cdn.test/3.m4a', mime_type: 'audio/x-m4a', size_in_bytes: 7 },
+              ],
+            },
+          ],
+        }),
+      ),
     );
     expect(item.enclosure).toEqual({
       url: 'https://cdn.test/3.m4a',
@@ -349,30 +362,32 @@ describe('enclosures — how a podcast feed carries its audio', () => {
 
 describe('feedTitle — the publication, distinct from the author', () => {
   it('carries the RSS channel title on every item', () => {
-    const [item] = parseRSS(`<rss><channel>
+    const item = at(
+      parseRSS(`<rss><channel>
       <title>The Test Show</title>
       <item><title>Ep 1</title><author>hosts@show.test (Ada and Grace)</author></item>
-    </channel></rss>`);
+    </channel></rss>`),
+    );
     expect(item.feedTitle).toBe('The Test Show');
     expect(item.author).toBe('Ada and Grace');
   });
 
   it('carries the Atom feed title', () => {
-    const [entry] = parseRSS(
-      `<feed><title>The Test Show</title><entry><title>Ep 1</title></entry></feed>`,
+    const entry = at(
+      parseRSS(`<feed><title>The Test Show</title><entry><title>Ep 1</title></entry></feed>`),
     );
     expect(entry.feedTitle).toBe('The Test Show');
   });
 
   it('carries the JSON Feed title', () => {
-    const [item] = parseRSS(
-      JSON.stringify({ version: '1.1', title: 'The Test Show', items: [{ id: '1' }] }),
+    const item = at(
+      parseRSS(JSON.stringify({ version: '1.1', title: 'The Test Show', items: [{ id: '1' }] })),
     );
     expect(item.feedTitle).toBe('The Test Show');
   });
 
   it('is empty for a bare fragment with no feed element', () => {
-    const [item] = parseRSS(`<item><title>Loose</title></item>`);
+    const item = at(parseRSS(`<item><title>Loose</title></item>`));
     expect(item.feedTitle).toBe('');
   });
 });

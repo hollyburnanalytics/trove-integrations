@@ -19,7 +19,7 @@ export const DEFAULT_ID_SET_MAX = 10_000;
 /**
  * Read a `date` watermark as a `Date`, or `undefined` when absent/unparseable.
  *
- * @param {unknown} cursor - the source adapter's previous cursor (`ctx.cursor`)
+ * @param {unknown} [cursor] - the source adapter's previous cursor (`ctx.cursor`)
  * @returns {Date | undefined}
  */
 export function readDateWatermark(cursor) {
@@ -64,11 +64,11 @@ export function dateWatermark(valueIso, { inclusive = false } = {}) {
  *    everything published between now and that future date invisible.
  *
  * @param {object} args
- * @param {unknown} args.previous - the incoming `ctx.cursor`, returned when holding
+ * @param {import('./types.d.ts').Cursor | undefined} args.previous - the incoming `ctx.cursor`, returned when holding
  * @param {string | undefined} args.maxIso - max ISO date across this run's items
  * @param {boolean} args.anyFailed - whether any sub-source failed this run
  * @param {boolean} [args.inclusive] - see {@link dateWatermark}
- * @returns the cursor to return from `sync`
+ * @returns {import('./types.d.ts').Cursor | undefined} the cursor to return from `sync`
  */
 export function advanceDateWatermark({ previous, maxIso, anyFailed, inclusive = false }) {
   if (anyFailed || !maxIso) return previous;
@@ -82,7 +82,7 @@ export function advanceDateWatermark({ previous, maxIso, anyFailed, inclusive = 
 /**
  * Read an `idSet` watermark as a string array (empty when absent).
  *
- * @param {unknown} cursor - the source adapter's previous cursor (`ctx.cursor`)
+ * @param {unknown} [cursor] - the source adapter's previous cursor (`ctx.cursor`)
  * @returns {string[]}
  */
 export function readIdSet(cursor) {

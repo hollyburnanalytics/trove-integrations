@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { makeDirectoryContext } from '../feed-fixtures.mjs';
 import { matchRank, parseRegistry, query } from './companies.mjs';
 
 /** EDGAR's registry shape: an object keyed by row number, not an array. */
@@ -10,11 +11,16 @@ const REGISTRY = {
   4: { cik_str: 1_000_001, ticker: 'WSM', title: 'Williams-Sonoma, Inc.' },
 };
 
+/**
+ * A directory context whose fetch returns a canned JSON payload.
+ *
+ * @param {unknown} payload - What `.json()` resolves to.
+ * @param {boolean} [ok] - Whether the request succeeded.
+ * @param {number} [status] - The status code.
+ * @returns {ReturnType<typeof makeDirectoryContext>} The context.
+ */
 function contextReturning(payload, ok = true, status = 200) {
-  return {
-    fetch: vi.fn(async () => ({ ok, status, json: async () => payload })),
-    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  };
+  return makeDirectoryContext({ ok, status, json: async () => payload });
 }
 
 describe('parseRegistry', () => {

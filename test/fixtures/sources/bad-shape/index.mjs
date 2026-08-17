@@ -1,6 +1,7 @@
 /**
  * Fixture source returning an invalid shape. `config.mode` selects which
- * contract violation to produce, so one fixture covers several invalid cases.
+ * contract violation to produce, so one fixture covers several invalid cases. *
+ * @param {import('../../../../sources/lib/types.d.ts').SyncContext} context - The harness context.
  */
 export async function sync(context) {
   switch (context.config.mode) {

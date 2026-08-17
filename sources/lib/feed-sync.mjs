@@ -1,6 +1,7 @@
 import { parse as parseHtmlDocument } from 'node-html-parser';
 import { feedRelocation, feedSelfTitle, selfReport } from './feed-identity.mjs';
 import {
+  countUndated,
   deadlineReached,
   decodeHtmlEntities,
   fetchPage,
@@ -38,7 +39,7 @@ const FEED_LINK_TYPES = new Set([
 export function discoverFeedUrl(html, baseUrl) {
   const root = parseHtmlDocument(html);
   for (const link of root.querySelectorAll('link[rel="alternate"]')) {
-    const type = (link.getAttribute('type') || '').toLowerCase().split(';')[0].trim();
+    const type = ((link.getAttribute('type') || '').toLowerCase().split(';')[0] ?? '').trim();
     const href = link.getAttribute('href');
     if (!href || !FEED_LINK_TYPES.has(type)) continue;
     try {
@@ -65,16 +66,21 @@ export function discoverFeedUrl(html, baseUrl) {
  * {@link undatedStats}.
  *
  * @param {string} idPrefix - stable-ID namespace (e.g. `'bbc'`)
- * @param {object} item - a `parseRSS()` item, plus a resolved `url`
+ * @param {import('./types.d.ts').FeedItem} item - a `parseRSS()` item, plus a resolved `url`
  * @param {object} [options]
  * @param {string} [options.defaultAuthor] - author when the item has none
  * @param {string[]} [options.tags] - tags to attach (omitted when empty)
  * @param {boolean} [options.fullText] - store the fullest available body
  *   instead of the excerpt
- * @returns {object} TroveDocument
+ * @returns {import('./types.d.ts').TroveDocument & { text: string }} The document.
+ *   `text` is narrowed to always present — it is built here from the title and
+ *   body rather than copied — so a caller that post-processes the body (the
+ *   Guardian's boilerplate strip) does not have to guard a field this never
+ *   omits.
  */
 export function feedItemDocument(idPrefix, item, { defaultAuthor, tags, fullText = false } = {}) {
   const body = fullText ? item.bodyHtml || item.description : item.description;
+  /** @type {import('./types.d.ts').TroveDocument & { text: string }} */
   const document = {
     // itemIdentity, NOT a second hand-rolled `guid || link`. The dedupe key and
     // the stored id have to be the same string or an item can be judged unseen
@@ -97,6 +103,12 @@ export function feedItemDocument(idPrefix, item, { defaultAuthor, tags, fullText
  * Fetch one feed URL and parse its items. When the URL turns out to be an HTML
  * page rather than a feed (users paste site URLs), follow the feed the page
  * advertises instead of failing.
+ *
+ * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').Feed} feed - The feed to fetch.
+ * @param {(xml: string) => import('./types.d.ts').FeedItem[]} parseFeed - The parser to run over the body.
+ * @param {number} [maxBytes] - Per-response size cap.
+ * @returns {Promise<{items: import('./types.d.ts').FeedItem[], movedPermanentlyTo?: string}>} Its items.
  */
 async function fetchFeedItems(context, feed, parseFeed, maxBytes) {
   const { text: body, movedPermanentlyTo } = await fetchPageWithMeta(feed.url, { maxBytes });
@@ -129,9 +141,17 @@ async function fetchFeedItems(context, feed, parseFeed, maxBytes) {
  * 924 episodes, so 923 of them collapsed onto the first. Items with distinct
  * guids are distinct documents and must both survive.
  *
- * @returns {{ entries: Array<{document: object, ms: number}>, skipped: number }}
+ * @param {import('./types.d.ts').FeedItem[]} items - The feed's parsed items.
+ * @param {object} options - The shared accumulator state.
+ * @param {import('./types.d.ts').Feed} options.feed - The feed these items came from.
+ * @param {Set<string>} options.seenIdentities - Identities already emitted, across all feeds.
+ * @param {Date} [options.lastDate] - The date watermark; items at or before it are skipped.
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} options.toDocument -
+ *   Build a document, or return undefined to reject the item.
+ * @returns {{ entries: Array<{document: import('./types.d.ts').TroveDocument, ms: number}>, skipped: number }} Its entries.
  */
 function collectFeedItems(items, { feed, seenIdentities, lastDate, toDocument }) {
+  /** @type {Array<{document: import('./types.d.ts').TroveDocument, ms: number}>} */
   const entries = [];
   let skipped = 0;
 
@@ -179,15 +199,10 @@ function collectFeedItems(items, { feed, seenIdentities, lastDate, toDocument })
  * individual items (`idSet`), not a different sort. Measured against 22 live
  * podcast feeds this is unreached: 0 of 12,213 episodes lacked a date.
  *
- * @param {Array<{document: object, ms: number}>} entries
- * @param {number} [maxDocuments]
- * @returns {Array<{document: object, ms: number}>}
+ * @param {Array<{document: import('./types.d.ts').TroveDocument, ms: number}>} entries - Every collected entry.
+ * @param {number} [maxDocuments] - The per-run cap, if the source declares one.
+ * @returns {Array<{document: import('./types.d.ts').TroveDocument, ms: number}>} The entries to emit.
  */
-/** How many of these entries carry no usable publication date. */
-function countUndated(entries) {
-  return entries.filter((entry) => !Number.isFinite(entry.ms)).length;
-}
-
 function selectEntries(entries, maxDocuments) {
   if (!maxDocuments || entries.length <= maxDocuments) return entries;
   const ordered = entries.toSorted((a, b) => {
@@ -226,7 +241,12 @@ function selectEntries(entries, maxDocuments) {
  *
  * @returns {Promise<{entries: Array<{document: object, ms: number}>, skipped: number, transient: number, permanent: number, unreached: number}>}
  */
-/** Warn about one feed's fetch failure, naming it and why it failed. */
+/**
+ * Warn about one feed's fetch failure, naming it and why it failed.
+ *
+ * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').FeedOutcome & {error: Error}} outcome - The failed outcome.
+ */
 function warnFetchFailure(context, outcome) {
   const origin = outcome.feed.label || outcome.feed.url;
   context.log.warn(
@@ -239,6 +259,14 @@ function warnFetchFailure(context, outcome) {
 /**
  * Collect one successfully-fetched feed's items into the shared accumulator.
  *
+ * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').FeedOutcome & {items: import('./types.d.ts').FeedItem[]}} outcome - The successful outcome.
+ * @param {object} state - The shared accumulator.
+ * @param {import('./types.d.ts').FeedEntry[]} state.entries - Where collected entries go.
+ * @param {Set<string>} state.seenIdentities - Identities already emitted.
+ * @param {Date} [state.lastDate] - The date watermark.
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} state.toDocument -
+ *   Build a document, or reject the item.
  * @returns {number} How many items this feed's watermark skipped.
  */
 function absorbFeedItems(context, outcome, { entries, seenIdentities, lastDate, toDocument }) {
@@ -267,6 +295,19 @@ function absorbFeedItems(context, outcome, { entries, seenIdentities, lastDate, 
  * separate concerns, and nesting them made the whole fetch too tangled to read
  * (or to lint).
  *
+ * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').FeedOutcome[]} outcomes - One batch's fetch outcomes, in feed order.
+ * @param {object} state - The shared accumulators.
+ * @param {import('./types.d.ts').FeedEntry[]} state.entries - Where collected entries go.
+ * @param {string[]} state.feedTitles - Titles the feeds gave themselves.
+ * @param {string[]} state.relocations - 301 targets the feeds reported.
+ * @param {Set<string>} state.seenIdentities - Identities already emitted.
+ * @param {Date} [state.lastDate] - The date watermark.
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} state.toDocument -
+ *   Build a document, or reject the item.
+ * @param {number} state.total - How many feeds this source has, for progress lines.
+ * @param {number} state.start - This batch's offset into the feed list.
+ * @param {string} state.label - The noun for log lines (e.g. "sections").
  * @returns {{skipped: number, transient: number, permanent: number}} Deltas.
  */
 function absorbBatch(context, outcomes, state) {
@@ -317,13 +358,33 @@ function absorbBatch(context, outcomes, state) {
   return { skipped, transient, permanent };
 }
 
+/**
+ * Fetch every feed, `concurrency` at a time, collecting in feed order.
+ *
+ * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {object} options - What to fetch and how.
+ * @param {import('./types.d.ts').Feed[]} options.feeds - The feeds to fetch, in order.
+ * @param {string} options.label - The noun for log lines.
+ * @param {(xml: string) => import('./types.d.ts').FeedItem[]} options.parseFeed - The parser.
+ * @param {Date} [options.lastDate] - The date watermark.
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} options.toDocument -
+ *   Build a document, or reject the item.
+ * @param {number} [options.maxBytes] - Per-feed response-size cap.
+ * @param {number} options.concurrency - How many feeds to fetch at once.
+ * @returns {Promise<{entries: import('./types.d.ts').FeedEntry[], feedTitles: string[], relocations: string[], skipped: number, transient: number, permanent: number, unreached: number}>}
+ *   Everything collected, plus the counters that decide whether the cursor holds.
+ */
 async function fetchAllFeeds(
   context,
   { feeds, label, parseFeed, lastDate, toDocument, maxBytes, concurrency },
 ) {
+  /** @type {import('./types.d.ts').FeedEntry[]} */
   const entries = [];
+  /** @type {string[]} */
   const feedTitles = [];
+  /** @type {string[]} */
   const relocations = [];
+  /** @type {Set<string>} */
   const seenIdentities = new Set();
   let skipped = 0;
   let transient = 0;
@@ -346,7 +407,9 @@ async function fetchAllFeeds(
         try {
           return { feed, ...(await fetchFeedItems(context, feed, parseFeed, maxBytes)) };
         } catch (error) {
-          return { feed, error };
+          // Normalised because the warning prints `.message`, and a thrown
+          // string used to print "failed — undefined".
+          return { feed, error: error instanceof Error ? error : new Error(String(error)) };
         }
       }),
     );
@@ -380,14 +443,14 @@ async function fetchAllFeeds(
  * Per-feed failures are warned and skipped; if *every* feed fails the whole
  * sync throws (the source is unreachable — a fatal error).
  *
- * @param {object} context - harness context
+ * @param {import('./types.d.ts').SyncContext} context - harness context
  * @param {object} options
- * @param {Array<object>} options.feeds - feed descriptors; each needs `url`,
+ * @param {import('./types.d.ts').Feed[]} options.feeds - feed descriptors; each needs `url`,
  *   plus any per-feed metadata the `toDocument` callback wants (e.g. `section`)
- * @param {(item: object, feed: object) => object|undefined} options.toDocument -
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument|undefined} options.toDocument -
  *   build a TroveDocument from a parsed item (with resolved `url`) and its feed;
  *   return `undefined` to skip an item the source cannot represent
- * @param {(xml: string) => object[]} [options.parseFeed] - parser; defaults to
+ * @param {(xml: string) => import('./types.d.ts').FeedItem[]} [options.parseFeed] - parser; defaults to
  *   `parseRSS`. Items must expose `link`/`guid` and `pubDate`.
  * @param {string} [options.label] - noun for log/progress lines (e.g. `'sections'`)
  * @param {string} [options.emptyWarning] - when `feeds` is empty, warn with this
@@ -406,7 +469,7 @@ async function fetchAllFeeds(
  *   (default 1, i.e. sequential). Raise it for sources whose feed list is long
  *   or whose feeds are large enough that fetching them in sequence risks the
  *   harness's soft deadline — see {@link fetchAllFeeds}.
- * @returns {Promise<{documents: object[], cursor: object|undefined, stats: object}>}
+ * @returns {Promise<import('./types.d.ts').SyncResult>} The round's documents, cursor and stats.
  */
 export async function syncFeeds(
   context,

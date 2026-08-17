@@ -21,13 +21,17 @@ import { decodeHtmlEntities, stripHtmlTags } from './text.mjs';
  *
  * A lightweight helper for adapters picking single fields out of small XML
  * fragments — full feed parsing goes through {@link parseRSS}.
+ *
+ * @param {string} xml - The fragment to search.
+ * @param {string} tag - The tag name, treated as a literal.
+ * @returns {string} Its text content, or `''`.
  */
 export function xmlText(xml, tag) {
   const t = tag.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
   const m =
     xml.match(new RegExp(String.raw`<${t}(?:\s[^>]*)?><!\[CDATA\[([\s\S]*?)\]\]><\/${t}>`)) ||
     xml.match(new RegExp(String.raw`<${t}(?:\s[^>]*)?>([^<]*)<\/${t}>`));
-  return m ? m[1].trim() : '';
+  return m?.[1]?.trim() ?? '';
 }
 
 /**
@@ -53,10 +57,42 @@ const xmlParser = new XMLParser({
   stopNodes: STOP_NODES,
 });
 
-/** Normalize a maybe-missing / maybe-scalar / maybe-array value to an array. */
+/**
+ * Normalize a maybe-missing / maybe-scalar / maybe-array value to an array.
+ *
+ * @param {unknown} value - A parsed node, or nothing.
+ * @returns {unknown[]} Zero, one or many nodes.
+ */
 function asArray(value) {
   if (value === undefined || value === null) return [];
   return Array.isArray(value) ? value : [value];
+}
+
+/**
+ * A parsed node as a keyed object, or undefined when it is not one.
+ *
+ * The parser's output is `any`-shaped by nature — this is the one place that
+ * says so, instead of `typeof x === 'object' && x !== null` at nine call sites.
+ *
+ * @param {unknown} value - A parsed node.
+ * @returns {Record<string, unknown> | undefined} Its properties, if it has any.
+ */
+function record(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? /** @type {Record<string, unknown>} */ (value)
+    : undefined;
+}
+
+/**
+ * The keyed-object nodes among `value`, skipping anything that is not one.
+ *
+ * @param {unknown} value - A parsed node, or a list of them.
+ * @returns {Record<string, unknown>[]} The nodes that have properties.
+ */
+function records(value) {
+  return asArray(value)
+    .map((entry) => record(entry))
+    .filter((entry) => entry !== undefined);
 }
 
 /**
@@ -64,15 +100,25 @@ function asArray(value) {
  * yield their CDATA/text parts; nested markup (Atom `type="xhtml"` bodies that
  * escaped the stop-node net) collapses to its string leaves in document order.
  * Attributes (`@_*` keys) never contribute.
+ *
+ * @param {unknown} value - A parsed node.
+ * @returns {string} Its text.
  */
 function nodeText(value) {
   if (value === undefined || value === null) return '';
   if (typeof value === 'string') return value.trim();
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  return Array.isArray(value) ? firstNodeText(value) : elementNodeText(value);
+  if (Array.isArray(value)) return firstNodeText(value);
+  const node = record(value);
+  return node ? elementNodeText(node) : '';
 }
 
-/** The first non-empty text among repeated sibling elements. */
+/**
+ * The first non-empty text among repeated sibling elements.
+ *
+ * @param {unknown[]} values - The sibling nodes.
+ * @returns {string} The first non-empty text, or `''`.
+ */
 function firstNodeText(values) {
   for (const entry of values) {
     const text = nodeText(entry);
@@ -81,11 +127,17 @@ function firstNodeText(values) {
   return '';
 }
 
-/** Text of a parsed element object: CDATA/text parts, else its string leaves. */
+/**
+ * Text of a parsed element object: CDATA/text parts, else its string leaves.
+ *
+ * @param {Record<string, unknown>} value - The element's properties.
+ * @returns {string} Its text.
+ */
 function elementNodeText(value) {
   const cdata = nodeText(value['#cdata']);
   const text = nodeText(value['#text']);
   if (cdata || text) return `${cdata}${text}`.trim();
+  /** @type {string[]} */
   const parts = [];
   for (const [key, child] of Object.entries(value)) {
     if (key.startsWith('@_')) continue;
@@ -99,6 +151,9 @@ function elementNodeText(value) {
  * A stop-node's raw payload: the inner markup as a string, with a wrapping
  * CDATA section unwrapped. Attributed stop-nodes come back as
  * `{ '#text': raw, '@_type': … }`; bare ones as plain strings.
+ *
+ * @param {unknown} value - The stop-node's parsed value.
+ * @returns {string} Its raw inner markup.
  */
 function htmlPayload(value) {
   let raw = '';
@@ -106,10 +161,15 @@ function htmlPayload(value) {
   else if (typeof value === 'object' && value !== null) raw = nodeText(value);
   const trimmed = raw.trim();
   const cdata = trimmed.match(/^<!\[CDATA\[([\s\S]*)\]\]>$/);
-  return cdata ? cdata[1].trim() : trimmed;
+  return cdata?.[1]?.trim() ?? trimmed;
 }
 
-/** Plain-text form of an HTML payload: decoded, tag-stripped, whitespace-collapsed. */
+/**
+ * Plain-text form of an HTML payload: decoded, tag-stripped, whitespace-collapsed.
+ *
+ * @param {string} html - The markup.
+ * @returns {string} Its text.
+ */
 function plainText(html) {
   return stripHtmlTags(decodeHtmlEntities(decodeHtmlEntities(html)))
     .replaceAll(/\s+/g, ' ')
@@ -119,10 +179,13 @@ function plainText(html) {
 /**
  * Resolve an Atom link set: prefer `rel="alternate"`, then any link with an
  * `href`, then a link carried as element text (RSS-style).
+ *
+ * @param {unknown} value - The entry's `<link>` node(s).
+ * @param {string} [feedHost] - The publisher's own host, for {@link permalinkFor}.
+ * @returns {string} The resolved URL, or `''`.
  */
 function atomLink(value, feedHost = '') {
-  const links = asArray(value);
-  const withHref = links.filter((l) => typeof l === 'object' && l !== null && l['@_href']);
+  const withHref = records(value).filter((l) => Boolean(l['@_href']));
   const alternate = withHref.find((l) => (l['@_rel'] ?? 'alternate') === 'alternate');
   const chosen = alternate ?? withHref[0];
   if (!chosen) return nodeText(value);
@@ -151,7 +214,7 @@ function atomLink(value, feedHost = '') {
  * Note this does NOT change document identity — that comes from Atom `<id>` —
  * so correcting a URL re-points existing documents rather than duplicating them.
  *
- * @param {object[]} links - The entry's `<link>` elements that carry an href.
+ * @param {Record<string, unknown>[]} links - The entry's `<link>` elements that carry an href.
  * @param {string} href - The chosen `alternate` href.
  * @param {string} feedHost - The publisher's own host, from the feed element.
  * @returns {string} The permalink to store as the document's URL.
@@ -170,7 +233,12 @@ function permalinkFor(links, href, feedHost) {
   return related ? String(related['@_href']).trim() : href;
 }
 
-/** A URL's lowercase host, or '' when it has none we can read. */
+/**
+ * A URL's lowercase host, or '' when it has none we can read.
+ *
+ * @param {string} url - The URL to read.
+ * @returns {string} Its host, `www.` stripped.
+ */
 function hostOf(url) {
   try {
     return new URL(url).host.toLowerCase().replace(/^www\./, '');
@@ -179,13 +247,16 @@ function hostOf(url) {
   }
 }
 
-/** An author node's name: `<author><name>…</name></author>` or bare text. */
+/**
+ * An author node's name: `<author><name>…</name></author>` or bare text.
+ *
+ * @param {unknown} value - The `<author>` node(s).
+ * @returns {string} A display name, or `''`.
+ */
 function authorName(value) {
   for (const author of asArray(value)) {
-    const name =
-      typeof author === 'object' && author !== null && author.name !== undefined
-        ? nodeText(author.name)
-        : nodeText(author);
+    const node = record(author);
+    const name = node?.name === undefined ? nodeText(author) : nodeText(node.name);
     if (!name) continue;
     // RSS 2.0 <author> is an email address ("a@b.com (Name)") — extract the
     // parenthesized display name when present, and never store a bare email.
@@ -203,19 +274,17 @@ function authorName(value) {
  * any MIME parameters so callers can test it with a plain prefix comparison;
  * `length` is omitted unless the feed gave a positive byte count.
  *
- * @param {string} url
- * @param {unknown} type
- * @param {unknown} length
- * @returns {{ url: string, type: string, length?: number }}
+ * @param {string} url - The enclosure's URL.
+ * @param {unknown} type - Its declared MIME type, with any parameters.
+ * @param {unknown} length - Its declared byte count.
+ * @returns {import('./types.d.ts').FeedEnclosure} The normalized enclosure.
  */
 function enclosureOf(url, type, length) {
   const bytes = Number.parseInt(String(length ?? ''), 10);
+  /** @type {import('./types.d.ts').FeedEnclosure} */
   const enclosure = {
     url,
-    type: String(type ?? '')
-      .split(';')[0]
-      .trim()
-      .toLowerCase(),
+    type: (String(type ?? '').split(';')[0] ?? '').trim().toLowerCase(),
   };
   if (Number.isFinite(bytes) && bytes > 0) enclosure.length = bytes;
   return enclosure;
@@ -227,48 +296,75 @@ function enclosureOf(url, type, length) {
  * an attached file at all). Feeds occasionally repeat the element — for a
  * low-bitrate alternate, or by mistake — so the first one with a URL wins,
  * matching how podcast clients read them.
+ *
+ * @param {unknown} value - The item's `<enclosure>` node(s).
+ * @returns {import('./types.d.ts').FeedEnclosure | undefined} The first with a URL.
  */
 function rssEnclosure(value) {
   for (const node of asArray(value)) {
-    if (typeof node !== 'object' || node === null) continue;
-    const url = String(node['@_url'] ?? '').trim();
-    if (url) return enclosureOf(url, node['@_type'], node['@_length']);
+    const element = record(node);
+    if (!element) continue;
+    const url = String(element['@_url'] ?? '').trim();
+    if (url) return enclosureOf(url, element['@_type'], element['@_length']);
   }
 }
 
-/** The same, for Atom's `<link rel="enclosure" href type length>`. */
+/**
+ * The same, for Atom's `<link rel="enclosure" href type length>`.
+ *
+ * @param {unknown} value - The entry's `<link>` node(s).
+ * @returns {import('./types.d.ts').FeedEnclosure | undefined} The first enclosure link.
+ */
 function atomEnclosure(value) {
   for (const link of asArray(value)) {
-    if (typeof link !== 'object' || link === null) continue;
-    if (link['@_rel'] !== 'enclosure') continue;
-    const url = String(link['@_href'] ?? '').trim();
-    if (url) return enclosureOf(url, link['@_type'], link['@_length']);
+    const element = record(link);
+    if (element?.['@_rel'] !== 'enclosure') continue;
+    const url = String(element['@_href'] ?? '').trim();
+    if (url) return enclosureOf(url, element['@_type'], element['@_length']);
   }
 }
 
-/** The same, for a JSON Feed item's first `attachments[]` entry. */
+/**
+ * The same, for a JSON Feed item's first `attachments[]` entry.
+ *
+ * @param {unknown} value - The item's `attachments` array.
+ * @returns {import('./types.d.ts').FeedEnclosure | undefined} The first with a URL.
+ */
 function jsonFeedEnclosure(value) {
   for (const attachment of asArray(value)) {
-    if (typeof attachment !== 'object' || attachment === null) continue;
-    const url = String(attachment.url ?? '').trim();
-    if (url) return enclosureOf(url, attachment.mime_type, attachment.size_in_bytes);
+    const element = record(attachment);
+    if (!element) continue;
+    const url = String(element.url ?? '').trim();
+    if (url) return enclosureOf(url, element.mime_type, element.size_in_bytes);
   }
 }
 
-/** Category labels: RSS text nodes and Atom `term` attributes, de-duplicated. */
+/**
+ * Category labels: RSS text nodes and Atom `term` attributes, de-duplicated.
+ *
+ * @param {unknown} value - The `<category>` node(s).
+ * @returns {string[]} The distinct labels, in document order.
+ */
 function categoryLabels(value) {
+  /** @type {string[]} */
   const labels = [];
   for (const category of asArray(value)) {
-    const label =
-      typeof category === 'object' && category !== null && category['@_term']
-        ? String(category['@_term']).trim()
-        : nodeText(category);
+    const element = record(category);
+    const label = element?.['@_term'] ? String(element['@_term']).trim() : nodeText(category);
     if (label && !labels.includes(label)) labels.push(label);
   }
   return labels;
 }
 
-/** Normalize one RSS 2.0 / RSS 1.0 `<item>`. */
+/**
+ * Normalize one RSS 2.0 / RSS 1.0 `<item>`.
+ *
+ * @param {Record<string, unknown>} item - The parsed item.
+ * @param {string} feedAuthor - The channel-level author, as a fallback.
+ * @param {string} [feedTitle] - The channel's own title.
+ * @param {string} [feedNewUrl] - Where the channel says it has moved.
+ * @returns {import('./types.d.ts').FeedItem} The normalized item.
+ */
 function rssItem(item, feedAuthor, feedTitle = '', feedNewUrl = '') {
   const descriptionHtml = htmlPayload(item.description);
   const contentHtml = htmlPayload(item.encoded); // <content:encoded>
@@ -289,7 +385,15 @@ function rssItem(item, feedAuthor, feedTitle = '', feedNewUrl = '') {
   };
 }
 
-/** Normalize one Atom `<entry>`. */
+/**
+ * Normalize one Atom `<entry>`.
+ *
+ * @param {Record<string, unknown>} entry - The parsed entry.
+ * @param {string} feedAuthor - The feed-level author, as a fallback.
+ * @param {string} [feedHost] - The publisher's own host, for link resolution.
+ * @param {string} [feedTitle] - The feed's own title.
+ * @returns {import('./types.d.ts').FeedItem} The normalized item.
+ */
 function atomEntry(entry, feedAuthor, feedHost = '', feedTitle = '') {
   const link = atomLink(entry.link, feedHost);
   const contentHtml = htmlPayload(entry.content);
@@ -309,41 +413,59 @@ function atomEntry(entry, feedAuthor, feedHost = '', feedTitle = '') {
   };
 }
 
-/** Normalize one JSON Feed item (https://jsonfeed.org, 1.0 and 1.1). */
+/**
+ * Normalize one JSON Feed item (https://jsonfeed.org, 1.0 and 1.1).
+ *
+ * @param {Record<string, unknown>} item - The parsed item.
+ * @param {string} feedAuthor - The feed-level author, as a fallback.
+ * @param {string} [feedTitle] - The feed's own title.
+ * @returns {import('./types.d.ts').FeedItem} The normalized item.
+ */
 function jsonFeedItem(item, feedAuthor, feedTitle = '') {
-  const link = typeof item.url === 'string' ? item.url : (item.external_url ?? '');
+  const link = typeof item.url === 'string' ? item.url : String(item.external_url ?? '');
   const contentHtml = typeof item.content_html === 'string' ? item.content_html : '';
   const contentText = typeof item.content_text === 'string' ? item.content_text : '';
   const summary = typeof item.summary === 'string' ? item.summary : '';
-  const author = item.authors?.[0]?.name ?? item.author?.name ?? (feedAuthor || undefined);
+  const author =
+    nodeText(record(asArray(item.authors)[0])?.name) ||
+    nodeText(record(item.author)?.name) ||
+    feedAuthor;
   return {
     title: typeof item.title === 'string' ? item.title : '',
     link,
     description: (summary || plainText(contentHtml) || contentText).slice(0, 1000),
     content: contentHtml,
     bodyHtml: contentHtml || contentText || summary,
-    pubDate: item.date_published ?? item.date_modified ?? '',
-    author: author ?? '',
-    guid: item.id !== undefined && item.id !== null ? String(item.id) : link,
-    categories: Array.isArray(item.tags) ? item.tags.filter((t) => typeof t === 'string') : [],
+    pubDate: String(item.date_published ?? item.date_modified ?? ''),
+    author,
+    guid: item.id === undefined || item.id === null ? link : String(item.id),
+    categories: asArray(item.tags).filter((t) => typeof t === 'string'),
     enclosure: jsonFeedEnclosure(item.attachments),
     feedTitle,
   };
 }
 
-/** Parse a JSON Feed document, or return undefined when the JSON is not one. */
+/**
+ * Parse a JSON Feed document, or return undefined when the JSON is not one.
+ *
+ * @param {string} text - The raw JSON document.
+ * @returns {import('./types.d.ts').FeedItem[] | undefined} Its items, if it is a JSON Feed.
+ */
 function parseJsonFeed(text) {
+  /** @type {unknown} */
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch {
     return;
   }
-  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) return;
-  const feedAuthor = parsed.authors?.[0]?.name ?? parsed.author?.name ?? '';
-  const feedTitle = typeof parsed.title === 'string' ? parsed.title : '';
+  const feed = record(parsed);
+  if (!feed || !Array.isArray(feed.items)) return;
+  const feedAuthor =
+    nodeText(record(asArray(feed.authors)[0])?.name) || nodeText(record(feed.author)?.name);
+  const feedTitle = typeof feed.title === 'string' ? feed.title : '';
   const fallback = feedAuthor || feedTitle;
-  return parsed.items.map((item) => jsonFeedItem(item, fallback, feedTitle));
+  return records(feed.items).map((item) => jsonFeedItem(item, fallback, feedTitle));
 }
 
 /**
@@ -377,7 +499,7 @@ function parseJsonFeed(text) {
  *    podcast feed carries its episode audio.
  *
  * @param {string} text - The raw feed document (XML or JSON).
- * @returns {Array<object>} Normalized items (empty for a feed with no items).
+ * @returns {import('./types.d.ts').FeedItem[]} Normalized items (empty for a feed with no items).
  * @throws {Error} When the document is not a recognizable feed — a syncing
  *   feed must fail loudly rather than report a healthy "0 new" forever.
  */
@@ -391,20 +513,29 @@ export function parseRSS(text) {
   return parseXmlFeed(trimmed);
 }
 
-/** Parse an XML feed document (RSS 2.0, RSS 1.0/RDF, or Atom) into items. */
+/**
+ * Parse an XML feed document (RSS 2.0, RSS 1.0/RDF, or Atom) into items.
+ *
+ * @param {string} trimmed - The raw XML document.
+ * @returns {import('./types.d.ts').FeedItem[]} Its normalized items.
+ * @throws {Error} When the document is not a recognizable feed.
+ */
 function parseXmlFeed(trimmed) {
+  /** @type {Record<string, any>} */
   let parsed;
   try {
     parsed = xmlParser.parse(trimmed);
   } catch (error) {
-    throw new Error(`Unrecognized feed format: ${error.message}`);
+    throw new Error(
+      `Unrecognized feed format: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   // RSS 2.0 (<rss><channel>…), headerless <channel>, and RSS 1.0 (<rdf:RDF>,
   // where <item> elements sit beside <channel> at the RDF root).
   const channel = parsed.rss?.channel ?? parsed.RDF ?? parsed.channel;
   if (channel) {
-    const channelNode = parsed.RDF ? asArray(parsed.RDF.channel)[0] : asArray(channel)[0];
+    const channelNode = record(parsed.RDF ? asArray(parsed.RDF.channel)[0] : asArray(channel)[0]);
     const feedTitle = nodeText(channelNode?.title);
     const feedAuthor =
       nodeText(channelNode?.creator) || authorName(channelNode?.author) || feedTitle;
@@ -413,14 +544,14 @@ function parseXmlFeed(trimmed) {
     // arrives as `new-feed-url`. Published by the show itself, which makes it
     // the most authoritative relocation signal available.
     const feedNewUrl = nodeText(channelNode?.['new-feed-url']);
-    const items = asArray(channel).flatMap((c) => asArray(c.item));
+    const items = records(channel).flatMap((c) => records(c.item));
     return items.map((item) => rssItem(item, feedAuthor, feedTitle, feedNewUrl));
   }
 
   // Atom <feed> documents and bare fragments.
   const feed = parsed.feed;
   if (feed || parsed.entry !== undefined) {
-    const entries = feed ? asArray(feed.entry) : asArray(parsed.entry);
+    const entries = records(feed ? feed.entry : parsed.entry);
     const feedTitle = nodeText(feed?.title);
     const feedAuthor = authorName(feed?.author) || feedTitle;
     // The publisher's own host, so a link blog's entries can be told apart from
@@ -429,7 +560,7 @@ function parseXmlFeed(trimmed) {
     return entries.map((entry) => atomEntry(entry, feedAuthor, feedHost, feedTitle));
   }
   if (parsed.item !== undefined) {
-    return asArray(parsed.item).map((item) => rssItem(item, ''));
+    return records(parsed.item).map((item) => rssItem(item, ''));
   }
 
   throw new Error('Unrecognized feed format: no RSS, Atom, or JSON Feed structure found');

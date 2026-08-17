@@ -1,12 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { makeDirectoryContext } from '../feed-fixtures.mjs';
 import { advertisedFeeds, query } from './feeds.mjs';
 
-/** A directory context whose fetch returns a canned response. */
+/**
+ * A directory context whose fetch returns a canned response.
+ *
+ * @param {string} body - The response body.
+ * @param {boolean} [ok] - Whether the request succeeded.
+ * @param {number} [status] - The status code.
+ * @returns {ReturnType<typeof makeDirectoryContext>} The context.
+ */
 function contextReturning(body, ok = true, status = 200) {
-  return {
-    fetch: vi.fn(async () => ({ ok, status, text: async () => body })),
-    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  };
+  return makeDirectoryContext({ ok, status, text: async () => body });
 }
 
 const RSS =

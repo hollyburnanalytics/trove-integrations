@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { dateCursorValue } from './feed-fixtures.mjs';
 import {
   advanceDateWatermark,
   DEFAULT_ID_SET_MAX,
@@ -58,6 +59,7 @@ describe('idSet watermark', () => {
 });
 
 describe('advanceDateWatermark', () => {
+  /** @type {import('./types.d.ts').Cursor} */
   const previous = { type: 'date', value: '2026-01-01T00:00:00.000Z' };
 
   it('advances to the max date when every sub-source succeeded', () => {
@@ -83,7 +85,7 @@ describe('advanceDateWatermark', () => {
     const future = new Date(Date.now() + 5 * 86_400_000).toISOString();
     const before = Date.now();
     const result = advanceDateWatermark({ previous, maxIso: future, anyFailed: false });
-    const advanced = new Date(result.value).getTime();
+    const advanced = new Date(dateCursorValue(result)).getTime();
     expect(advanced).toBeGreaterThanOrEqual(before - 1000);
     expect(advanced).toBeLessThanOrEqual(Date.now() + 1000);
   });
@@ -95,6 +97,6 @@ describe('advanceDateWatermark', () => {
       anyFailed: false,
       inclusive: true,
     });
-    expect(result.inclusive).toBe(true);
+    expect(result?.type === 'date' && result.inclusive).toBe(true);
   });
 });
