@@ -47,12 +47,15 @@ export function specToCategory(spec) {
  * Every category arXiv currently publishes, in the order the archive lists them.
  *
  * @param {string} xml - An OAI `ListSets` response.
- * @returns {Array<{category: string, name: string}>}
+ * @returns {Array<{category: string, name: string}>} Every category, deduplicated.
  */
 export function parseCategories(xml) {
+  /** @type {Array<{category: string, name: string}>} */
   const out = [];
   const seen = new Set();
-  for (const [, spec, name] of xml.matchAll(SET_PATTERN)) {
+  // Both groups are required by the pattern, so a match always carries them;
+  // the defaults are what lets the destructuring say so.
+  for (const [, spec = '', name = ''] of xml.matchAll(SET_PATTERN)) {
     const category = specToCategory(spec.trim());
     if (!category || seen.has(category)) continue;
     seen.add(category);
@@ -68,9 +71,9 @@ export function parseCategories(xml) {
  * a list, and a short enough one to browse. Matching is on both the code and
  * the subject name, because people arrive knowing one or the other.
  *
- * @param {{query?: string, limit: number}} input
- * @param {object} context - The directory context (guarded fetch + log).
- * @returns {Promise<object[]>} Category entries.
+ * @param {import('../types.d.ts').DirectoryQuery} input
+ * @param {import('../types.d.ts').DirectoryContext} context - The directory context (guarded fetch + log).
+ * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Category entries.
  */
 export async function query(input, context) {
   const response = await context.fetch(SETS_URL);

@@ -1,15 +1,24 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { makeDirectoryContext } from '../feed-fixtures.mjs';
 import { lookup, query } from './podcasts.mjs';
 
-/** A directory context whose fetch returns a canned response. */
+/**
+ * A directory context whose fetch returns a canned response.
+ *
+ * @param {Response} response - What every request resolves to.
+ * @returns {ReturnType<typeof makeDirectoryContext>} The context.
+ */
 function contextReturning(response) {
-  return {
-    fetch: vi.fn(async () => response),
-    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  };
+  return makeDirectoryContext(response);
 }
 
-/** A JSON Response with the given status. */
+/**
+ * A JSON Response with the given status.
+ *
+ * @param {unknown} body - The payload.
+ * @param {number} [status] - The status code.
+ * @returns {Response} The response.
+ */
 function json(body, status = 200) {
   return Response.json(body, { status });
 }
@@ -32,7 +41,7 @@ describe('podcasts directory lookup (repair)', () => {
   it('asks the index by feed URL', async () => {
     const context = contextReturning(json({ feed: FEED }));
     await lookup('https://old.test/feed.xml', context);
-    const called = String(context.fetch.mock.calls[0][0]);
+    const called = String(context.fetch.mock.calls[0]?.[0]);
     expect(called).toContain('/podcasts/byfeedurl');
     expect(called).toContain(encodeURIComponent('https://old.test/feed.xml'));
   });

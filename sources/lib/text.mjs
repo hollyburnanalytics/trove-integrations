@@ -12,6 +12,9 @@ import { createHash } from 'node:crypto';
 /**
  * Strip HTML tags from a string by matching angle-bracketed sequences.
  * Uses a simple state-machine approach to avoid regex backtracking issues.
+ *
+ * @param {string} input - The markup to flatten.
+ * @returns {string} Everything outside a tag.
  */
 export function stripHtmlTags(input) {
   let result = '';
@@ -30,6 +33,10 @@ export function stripHtmlTags(input) {
 
 /**
  * Generate a stable, collision-resistant ID from a string.
+ *
+ * @param {string} prefix - Names the source, so ids from two sources never collide.
+ * @param {string} input - The identity being hashed; the same input must hash the same forever.
+ * @returns {string} The prefixed id.
  */
 export function stableId(prefix, input) {
   const hash = createHash('sha256').update(input).digest('hex').slice(0, 16);
@@ -38,6 +45,9 @@ export function stableId(prefix, input) {
 
 /**
  * Safely parse a date string. Returns a valid ISO string or undefined.
+ *
+ * @param {string} [dateString] - Whatever the feed published.
+ * @returns {string | undefined} An ISO instant, or nothing — never a faked date.
  */
 export function safeDate(dateString) {
   if (!dateString) return;
@@ -45,7 +55,13 @@ export function safeDate(dateString) {
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
-/** Hour-of-day a `YYYY-MM-DD` instant lands on in `timeZone`. */
+/**
+ * Hour-of-day a `YYYY-MM-DD` instant lands on in `timeZone`.
+ *
+ * @param {Date} instant - The instant to read.
+ * @param {string} timeZone - IANA zone.
+ * @returns {number} The local hour, 0–23.
+ */
 function hourIn(instant, timeZone) {
   const hour = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -97,13 +113,22 @@ const NAMED_ENTITIES = {
   '&middot;': '·',
 };
 
+/** @type {(match: string, digits: string) => string} */
+const fromDecimal = (_, digits) => String.fromCodePoint(Number.parseInt(digits, 10));
+
+/** @type {(match: string, hex: string) => string} */
+const fromHex = (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16));
+
 /**
  * Decode common HTML entities (numeric plus the named ones feeds use).
+ *
+ * @param {string} string_ - The text to decode.
+ * @returns {string} The same text with entities resolved.
  */
 export function decodeHtmlEntities(string_) {
   let result = string_
-    .replaceAll(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number.parseInt(n, 10)))
-    .replaceAll(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(Number.parseInt(h, 16)))
+    .replaceAll(/&#(\d+);/g, fromDecimal)
+    .replaceAll(/&#x([0-9a-fA-F]+);/g, fromHex)
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')
     .replaceAll('&quot;', '"')

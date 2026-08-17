@@ -13,7 +13,7 @@ This repo holds **Trove toolkits and sources** (see
 
 A **source** is a small, self-contained module (a source adapter) that fetches
 data from an external system and returns structured documents. Each lives in
-`sources/{category}/{source-id}/` with an `index.mjs` and `manifest.json`.
+`sources/{source-id}/` with an `index.mjs` and `manifest.json`.
 
 Sources are loaded by an external harness that calls `sync(ctx)` and handles storage, scheduling, and auth flows. The source adapter's only job is: given a context, fetch data and return documents.
 
@@ -55,45 +55,35 @@ Dependencies are auto-installed by the devcontainer (`postCreateCommand` + `post
 
 - **`bun install`/`curl`/`pip`** — work out of the box (inherit proxy from env vars). If `bun install` fails with 407 errors, retry — the proxy JWT token may have expired and been refreshed.
 - **Bun's `fetch()`** — respects `HTTP_PROXY`/`HTTPS_PROXY` env vars, so live smoke tests (Step 4) run directly under `bun` with no extra setup.
-- **Tests** must always mock `fetch` — see existing tests (e.g. `070-news/hacker-news/index.test.mjs`) for the pattern. Never rely on network access in tests.
+- **Tests** must always mock `fetch` — see existing tests (e.g. `hacker-news/index.test.mjs`) for the pattern. Never rely on network access in tests.
 
 ## Architecture
 
 ```
-sources/{category}/{source-id}/
+sources/{source-id}/
   manifest.json    # metadata, location, schedule, config schema
   index.mjs        # exports async function sync(ctx) → { documents, cursor, stats }
 ```
 
-### Categories
-Sources are filed by **subject**, Dewey-decimal style — the folder name *is* the
-manifest `category`, and the number gives stable ordering with gaps to grow into:
+### One flat set
+`sources/` holds one directory per source and nothing else (bar `lib/`). There is
+no subject folder above it and no `category` field in the manifest.
 
-| Folder | Subject |
-|--------|---------|
-| `000-general` | containers with no fixed subject (generic RSS, podcasts) |
-| `070-news` | news media & journalism |
-| `300-social-sciences` | society & social sciences (e.g. global development data) |
-| `330-economics` | economics |
-| `350-public-administration` | public administration & government |
-| `500-science` | science & research |
-| `600-technology` | technology & computing |
-| `650-business` | business, startups, finance |
-
-File by *what the content is about*, not by format (a blog, a news feed, and a filing on
-the same topic share a folder). Add a new class only when a source genuinely needs one;
-pick a Dewey number that sorts it sensibly.
+Sources used to be filed Dewey-decimal style, with the folder name copied into
+the manifest as `category`. It bought nothing: a source's identity was never the
+folder, the shelf mapped the codes onto a different vocabulary anyway, and every
+new source began with a question — which drawer? — that had no answer worth the
+argument. A flat set has one name per source and no drawer to be wrong about.
 
 ### Catalog identity (`sources/catalog.json`)
 
 `sources/` is a **catalog** — it declares its identity in `sources/catalog.json`
 (`"id": "hollyburnanalytics/trove-integrations"`). A source's stable cloud identity is
-**`{catalog.id}/{source.id}`** — the **`category` is *not* part of identity**, so a
-source can be re-filed into a different Dewey folder without orphaning its indexed
-documents. Two consequences, both enforced by `bun run validate`:
+**`{catalog.id}/{source.id}`**. Two consequences, both enforced by
+`bun run validate`:
 
-- A source's **`id` must be unique across the whole catalog** (not just within its
-  category), because it is the identity slug.
+- A source's **`id` must be unique across the whole catalog**, because it is the
+  identity slug.
 - A source's `id` is its **permanent identity** — renaming it re-registers it as a new
   source in the cloud. Treat `id` like the pinned catalog name: don't change it.
 
@@ -124,9 +114,9 @@ config/auth UI exists. Absent = available. (Currently off: rss-feeds, sec-filing
 
 | Transport | Auth | Example | Helper |
 |-----------|------|---------|--------|
-| `feed` (RSS/Atom) | none | `650-business/stratechery`, `000-general/rss-feeds` | `syncRSS()` / `parseRSS()` |
-| `scrape` (CC full-text) | none | `500-science/quanta-magazine` | `syncFeedArticles()` |
-| `api` (JSON/REST) | none **or** API key | `070-news/hacker-news` (keyless) | Direct `fetch` |
+| `feed` (RSS/Atom) | none | `stratechery`, `rss-feeds` | `syncRSS()` / `parseRSS()` |
+| `scrape` (CC full-text) | none | `quanta-magazine` | `syncFeedArticles()` |
+| `api` (JSON/REST) | none **or** API key | `hacker-news` (keyless) | Direct `fetch` |
 
 The repo favours **direct pulls** — public feeds and official/documented APIs — and stores
 bodies as plain text (`htmlToText()`), no rich-Markdown reconstruction. The one exception is
@@ -171,7 +161,7 @@ For a **day-granular** event (a meeting, a filing) use
 `dayToLocalNoonIso(day, timeZone)` rather than passing the bare `YYYY-MM-DD`
 through: a bare day parses as midnight UTC, which renders as the *previous*
 day anywhere west of Greenwich. Anchoring to local noon keeps the calendar day
-intact — see `350-public-administration/dnv-council-minutes`.
+intact — see `dnv-council-minutes`.
 
 Run `bun run audit:dates` to measure live publish-date coverage per source.
 
@@ -180,8 +170,8 @@ inline `text`; an `audio_url` enclosure the server transcribes; or a
 `file_url` + `mime_type` (e.g. a PDF) the server downloads, **retains** (the
 app renders the original), and extracts into the body — any `text` sent
 alongside `file_url` becomes the extraction header, so use it for metadata
-(source, date, subject), not the content. See `350-public-administration/
-dnv-council-minutes` for the `file_url` pattern.
+(source, date, subject), not the content. See `dnv-council-minutes` for the
+`file_url` pattern.
 
 ## Shared Helpers (`sources/lib/feeds.mjs`)
 
@@ -205,7 +195,7 @@ dnv-council-minutes` for the `file_url` pattern.
 ### Step 2: Create the files
 
 ```bash
-mkdir -p sources/{category}/{source-id}
+mkdir -p sources/{source-id}
 ```
 
 **manifest.json:**
@@ -217,7 +207,6 @@ mkdir -p sources/{category}/{source-id}
   "icon": "📄",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
-  "category": "600-technology",
   "kind": "scheduled-sync",
   "transport": "feed",
   "watermark": "date",
@@ -262,7 +251,7 @@ Run `bun scripts/validate-registry.mjs --fix` to auto-add the source to `registr
 
 **Unit tests** (always works, uses mocks):
 ```bash
-bun run test sources/{category}/{source-id}/
+bun run test sources/{source-id}/
 ```
 
 **Live smoke test** (works in and out of the devcontainer — `bun`'s `fetch` inherits the proxy):
@@ -274,7 +263,7 @@ const ctx = {
   config: {},
   cursor: undefined,
 };
-import('./sources/{category}/{source-id}/index.mjs')
+import('./sources/{source-id}/index.mjs')
   .then(m => m.sync(ctx))
   .then(r => {
     console.log(r.stats.fetched + ' docs');

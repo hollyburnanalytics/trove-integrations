@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { at, fetchMock, makeSyncContext, setFetch } from './feed-fixtures.mjs';
 import { stableId, syncRSS } from './feeds.mjs';
 
 // Multi-run / watermark round-trip tests.
@@ -14,6 +15,12 @@ import { stableId, syncRSS } from './feeds.mjs';
 
 // --- fetch harness (a URL -> response map; { fail: true } yields an HTTP 500) ---
 
+/**
+ * A response streaming `content` once.
+ *
+ * @param {string} content - The body.
+ * @returns {unknown} The response, as far as `fetchPage` reads it.
+ */
 function streamBody(content) {
   const encoded = new TextEncoder().encode(content);
   return {
@@ -34,25 +41,38 @@ function streamBody(content) {
   };
 }
 
-/** Sorted document ids for a sync result — used to compare runs order-independently. */
+/**
+ * Sorted document ids for a sync result — used to compare runs order-independently.
+ *
+ * @type {(result: import('./types.d.ts').SyncResult) => string[]}
+ */
 const documentIds = (result) => result.documents.map((d) => d.id).toSorted();
 
-/** Route fetch by URL. Values are response bodies (strings) or `{ fail: true }`. */
+/**
+ * Route fetch by URL. Values are response bodies (strings) or `{ fail: true }`.
+ *
+ * @param {Record<string, string | { fail: true }>} map - URL → body or failure.
+ * @returns {void} Nothing; it installs the implementation.
+ */
 function respond(map) {
-  fetch.mockImplementation((url) => {
-    const entry = map[url];
+  fetchMock().mockImplementation((url) => {
+    const entry = map[String(url)];
     if (entry === undefined) return Promise.resolve({ ok: false, status: 404 });
-    if (typeof entry === 'object' && entry.fail) return Promise.resolve({ ok: false, status: 500 });
+    if (typeof entry === 'object') return Promise.resolve({ ok: false, status: 500 });
     return Promise.resolve(streamBody(entry));
   });
 }
 
-function makeContext(cursor) {
-  return { log: { info: vi.fn(), warn: vi.fn() }, progress: vi.fn(), config: {}, cursor };
-}
+/**
+ * A context, optionally resuming from `cursor`.
+ *
+ * @param {import('./types.d.ts').Cursor} [cursor] - The previous run's cursor.
+ * @returns {import('./types.d.ts').SyncContext} The context.
+ */
+const makeContext = (cursor) => makeSyncContext({ cursor });
 
 beforeEach(() => {
-  globalThis.fetch = vi.fn();
+  setFetch();
 });
 
 afterEach(() => {
@@ -64,7 +84,12 @@ afterEach(() => {
 const FEED_URL = 'https://example.com/feed';
 const RSS_OPTS = { feedUrl: FEED_URL, idPrefix: 'blog', defaultAuthor: 'Author' };
 
-/** Build an RSS feed. Each item: { title, guid, date? (RFC822) }. */
+/**
+ * Build an RSS feed.
+ *
+ * @param {Array<{ title: string, guid: string, date?: string }>} items - Its items.
+ * @returns {string} The document.
+ */
 function rssFeed(items) {
   const body = items
     .map(
@@ -93,7 +118,7 @@ describe('RSS incremental round-trips', () => {
 
     const run2 = await syncRSS(makeContext(run1.cursor), RSS_OPTS);
     expect(run2.documents).toHaveLength(0);
-    expect(run2.stats.skipped).toBe(2);
+    expect(run2.stats?.skipped).toBe(2);
     expect(run2.cursor).toEqual(run1.cursor); // watermark unchanged
   });
 
@@ -128,12 +153,12 @@ describe('RSS incremental round-trips', () => {
     respond({ [FEED_URL]: rssFeed([ND, B]) });
 
     const run1 = await syncRSS(makeContext(), RSS_OPTS);
-    const ndId = run1.documents.find((d) => d.title === 'ND').id;
+    const ndId = run1.documents.find((d) => d.title === 'ND')?.id;
     expect(ndId).toBe(stableId('blog', 'nd'));
 
     const run2 = await syncRSS(makeContext(run1.cursor), RSS_OPTS);
     expect(run2.documents.map((d) => d.title)).toEqual(['ND']); // dated B filtered out
-    expect(run2.documents[0].id).toBe(ndId); // identical id across runs
+    expect(at(run2.documents, 0).id).toBe(ndId); // identical id across runs
   });
 
   it('without a watermark, every run re-emits all items with identical ids', async () => {

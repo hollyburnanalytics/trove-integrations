@@ -25,7 +25,7 @@
  * `feedTitle`), so this needs no second pass over the document. A feed carrying
  * no items yields nothing, which is the honest answer rather than a guess.
  *
- * @param {object[]} items - The feed's parsed items.
+ * @param {import('./types.d.ts').FeedItem[]} items - The feed's parsed items.
  * @returns {string | undefined} The trimmed title, or undefined.
  */
 export function feedSelfTitle(items) {
@@ -55,7 +55,7 @@ export function feedSelfTitle(items) {
  * and perfectly correct thing to publish, so it is filtered here rather than
  * reported as a no-op relocation that would churn every round.
  *
- * @param {object[]} items - The feed's parsed items.
+ * @param {import('./types.d.ts').FeedItem[]} items - The feed's parsed items.
  * @param {string} fetchedUrl - The address actually fetched.
  * @param {string} [redirectedTo] - Where a permanent redirect chain led.
  * @returns {string | undefined} The new address, or undefined.

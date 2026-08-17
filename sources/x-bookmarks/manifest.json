@@ -1,0 +1,29 @@
+{
+  "id": "x-bookmarks",
+  "name": "X Bookmarks",
+  "description": "Your saved X (Twitter) bookmarks, synced into Trove (your ~800 most recent, newest-first). Not yet available: X sign-in for this source can't be completed in the app yet.",
+  "icon": "🔖",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "kind": "scheduled-sync",
+  "transport": "api",
+  "watermark": "idSet",
+  "documentSemantics": "append",
+  "location": "client",
+  "schedule": "every 6 hours",
+  "status": "implemented",
+  "secrets": [
+    "X_OAUTH_CLIENT_ID",
+    "X_OAUTH_CLIENT_SECRET",
+    "X_OAUTH_REFRESH_TOKEN"
+  ],
+  "available": false,
+  "needs_browser": false,
+  "egress": [
+    "api.x.com"
+  ],
+  "egressNotFetched": [
+    "x.com"
+  ],
+  "egressNote": "The X API v2 only. x.com appears in stored document URLs but is never fetched."
+}

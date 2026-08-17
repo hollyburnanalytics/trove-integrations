@@ -46,7 +46,7 @@ function isoFromUnix(seconds) {
  * no name cannot be chosen between.
  *
  * @param {Record<string, unknown>} feed - A raw `feeds` entry.
- * @returns {object | undefined} The entry, or undefined when unusable.
+ * @returns {import('../types.d.ts').DirectoryEntry | undefined} The entry, or undefined when unusable.
  */
 function toEntry(feed) {
   const value = typeof feed.url === 'string' ? feed.url.trim() : '';
@@ -77,9 +77,9 @@ function toEntry(feed) {
  * to a person as "no such show", which is a different and misleading claim from
  * "the directory is unreachable".
  *
- * @param {object} context - The directory context (signing fetch + log).
+ * @param {import('../types.d.ts').DirectoryContext} context - The directory context (signing fetch + log).
  * @param {URL} url - The endpoint to call.
- * @returns {Promise<object[]>} Usable entries.
+ * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Usable entries.
  */
 async function fetchEntries(context, url) {
   const response = await context.fetch(url.toString());
@@ -100,9 +100,9 @@ async function fetchEntries(context, url) {
 /**
  * Answer a directory query.
  *
- * @param {{ query?: string, limit: number }} input - The query; empty means featured.
- * @param {object} context - The directory context.
- * @returns {Promise<object[]>} Candidate shows.
+ * @param {import('../types.d.ts').DirectoryQuery} input - The query; empty means featured.
+ * @param {import('../types.d.ts').DirectoryContext} context - The directory context.
+ * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Candidate shows.
  */
 export async function query(input, context) {
   const term = typeof input.query === 'string' ? input.query.trim() : '';
@@ -139,8 +139,8 @@ export async function query(input, context) {
  * healthy path and puts no third party between Trove and a working feed.
  *
  * @param {string} url - The address that stopped answering.
- * @param {object} context - The directory context (signing fetch + log).
- * @returns {Promise<object | undefined>} The show as the index knows it today.
+ * @param {import('../types.d.ts').DirectoryContext} context - The directory context (signing fetch + log).
+ * @returns {Promise<import('../types.d.ts').DirectoryEntry | undefined>} The show as the index knows it today.
  */
 export async function lookup(url, context) {
   const endpoint = new URL(`${BASE}/podcasts/byfeedurl`);

@@ -9,7 +9,7 @@
  *
  * Usage:
  *   bun run source <source-dir> [options]
- *   (source-dir is relative to the repo root, e.g. sources/070-news/hacker-news)
+ *   (source-dir is relative to the repo root, e.g. sources/hacker-news)
  *
  * Options:
  *   --method <sync|query>   Method to invoke (default: sync)
@@ -19,8 +19,8 @@
  *   --json                  Print the full result as JSON instead of a summary
  *
  * Examples:
- *   bun run source sources/500-science/arxiv-papers --timeout 120000
- *   bun run source sources/070-news/hacker-news --json
+ *   bun run source sources/arxiv-papers --timeout 120000
+ *   bun run source sources/hacker-news --json
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -30,7 +30,12 @@ import { runSource } from '../sources/lib/harness.mjs';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 /** Parse argv into the runner options. */
+/**
+ * @param {string[]} argv - The raw process arguments.
+ * @returns {Record<string, any>} The parsed options.
+ */
 function parseArguments(argv) {
+  /** @type {{ method: string, timeoutMs: number, cursor: unknown, config: Record<string, string>, json: boolean, sourcePath: string | undefined }} */
   const options = {
     method: 'sync',
     timeoutMs: DEFAULT_TIMEOUT_MS,
@@ -40,10 +45,10 @@ function parseArguments(argv) {
     sourcePath: undefined,
   };
   for (let index = 0; index < argv.length; index++) {
-    const argument = argv[index];
+    const argument = argv[index] ?? '';
     switch (argument) {
       case '--method': {
-        options.method = argv[++index];
+        options.method = argv[++index] ?? '';
         break;
       }
       case '--timeout': {
@@ -51,11 +56,11 @@ function parseArguments(argv) {
         break;
       }
       case '--cursor': {
-        options.cursor = JSON.parse(argv[++index]);
+        options.cursor = JSON.parse(argv[++index] ?? 'null');
         break;
       }
       case '--config': {
-        const [key, ...rest] = argv[++index].split('=');
+        const [key = '', ...rest] = (argv[++index] ?? '').split('=');
         options.config[key] = rest.join('=');
         break;
       }
@@ -77,6 +82,10 @@ function parseArguments(argv) {
 }
 
 /** Read a source's manifest.json, or {} if absent. */
+/**
+ * @param {string} sourcePath - The source directory.
+ * @returns {Record<string, any>} Its manifest.
+ */
 function readManifest(sourcePath) {
   const abs = path.isAbsolute(sourcePath) ? sourcePath : path.resolve(process.cwd(), sourcePath);
   const manifestPath = path.join(abs, 'manifest.json');
@@ -91,10 +100,15 @@ const COLOR = {
   reset: '\u001B[0m',
 };
 
-/** Timestamped log line written to stderr (stdout stays clean for --json). */
+/**
+ * Timestamped log line written to stderr (stdout stays clean for --json).
+ *
+ * @param {string} level - One of info, warn, error.
+ * @param {string} message - What to print.
+ */
 function logLine(level, message) {
   const ts = new Date().toISOString().slice(11, 23);
-  const color = COLOR[level] ?? '';
+  const color = /** @type {Record<string, string>} */ (COLOR)[level] ?? '';
   process.stderr.write(
     `${COLOR.dim}${ts}${COLOR.reset} ${color}${level.toUpperCase()}${COLOR.reset} ${message}\n`,
   );
@@ -140,7 +154,7 @@ async function main() {
       );
     }
   } catch (error) {
-    logLine('error', error?.message ?? String(error));
+    logLine('error', error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 }
@@ -148,6 +162,6 @@ async function main() {
 try {
   await main();
 } catch (error) {
-  logLine('error', error?.message ?? String(error));
+  logLine('error', error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 }

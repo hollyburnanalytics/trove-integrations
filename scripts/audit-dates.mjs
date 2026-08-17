@@ -31,6 +31,7 @@ const TIMEOUT_MS = 120_000;
  * are audit probes, not defaults — just enough of a feed/ticker/book list to
  * exercise the source's real date path against live data.
  */
+/** @type {Record<string, Record<string, import('../sources/lib/types.d.ts').ConfigValue>>} */
 const PROBE_CONFIG = {
   'rss-feeds': { feeds: ['https://daringfireball.net/feeds/main', 'https://avc.com/feed'] },
   'sec-filings': { tickers: ['AAPL'] },
@@ -38,22 +39,39 @@ const PROBE_CONFIG = {
 };
 
 /** Sources that need input the audit cannot supply, with the reason to print. */
+/** @type {Record<string, string>} */
 const NEEDS_INPUT = {
   'x-bookmarks': 'needs X credentials + browser login',
 };
 
-/** Discover `{ id, category, directory, manifest }` for every source in the catalog. */
+/**
+ * One source as this script sees it, and one row of its output.
+ *
+ * A row is one of two things and never a blend: a source that did not run, or
+ * one that did and has counts. Splitting the union is what lets the formatter
+ * and the summary read `fetched` without asking whether it is there.
+ *
+ * @typedef {{ id: string, directory: string, manifest: Record<string, unknown> }} Source
+ * @typedef {Source & { status: 'skip', reason: string }} SkippedRow
+ * @typedef {Source & { status: 'error', reason: string }} FailedRow
+ * @typedef {Source & { status: 'ok', fetched: number, dated: number, undated: number,
+ *   sample?: string }} CountedRow
+ * @typedef {SkippedRow | FailedRow | CountedRow} AuditRow
+ */
+
+/**
+ * Discover `{ id, directory, manifest }` for every source in the catalog.
+ *
+ * @returns {Source[]} Every source in the catalog, id-sorted.
+ */
 function discoverSources() {
+  /** @type {Source[]} */
   const found = [];
-  for (const category of readdirSync(SOURCES_DIR, { withFileTypes: true })) {
-    if (!category.isDirectory() || category.name === 'lib') continue;
-    const categoryDirectory = path.join(SOURCES_DIR, category.name);
-    for (const entry of readdirSync(categoryDirectory, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const directory = path.join(categoryDirectory, entry.name);
-      const manifest = JSON.parse(readFileSync(path.join(directory, 'manifest.json'), 'utf8'));
-      found.push({ id: manifest.id, category: category.name, directory, manifest });
-    }
+  for (const entry of readdirSync(SOURCES_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'lib') continue;
+    const directory = path.join(SOURCES_DIR, entry.name);
+    const manifest = JSON.parse(readFileSync(path.join(directory, 'manifest.json'), 'utf8'));
+    found.push({ id: String(manifest.id), directory, manifest });
   }
   return found.toSorted((a, b) => a.id.localeCompare(b.id));
 }
@@ -63,6 +81,8 @@ function discoverSources() {
  * `location: client` is *not* a reason — that is the source's default executor,
  * not a constraint on running it here; only on-disk data, a browser login, or
  * required user config actually blocks an unattended run.
+ * @param {Source} source - The source to judge.
+ * @returns {string | undefined} Why it cannot be audited, or nothing.
  */
 function skipReason({ id, manifest }) {
   if (manifest.transport === 'local') return 'reads on-disk data (local transport)';
@@ -70,7 +90,12 @@ function skipReason({ id, manifest }) {
   return NEEDS_INPUT[id];
 }
 
-/** Run one source and summarize its date coverage. */
+/**
+ * Run one source and summarize its date coverage.
+ *
+ * @param {Source} source - The source to run.
+ * @returns {Promise<AuditRow>} One result row.
+ */
 async function auditSource(source) {
   const skip = skipReason(source);
   if (skip) return { ...source, status: 'skip', reason: skip };
@@ -91,19 +116,30 @@ async function auditSource(source) {
       sample: dated[0]?.date,
     };
   } catch (error) {
-    return { ...source, status: 'error', reason: error.message };
+    return {
+      ...source,
+      status: 'error',
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
-/** Format one audited source as a table row. */
-function formatRow({ id, status, fetched, dated, undated, sample, reason }) {
-  const name = id.padEnd(24);
-  if (status === 'skip') return `${name} SKIP   ${reason}`;
-  if (status === 'error') return `${name} ERROR  ${reason}`;
-  if (fetched === 0) return `${name} EMPTY  no new documents this run`;
-  const pct = Math.round((dated / fetched) * 100);
-  const flag = undated === 0 ? ' ' : '!';
-  return `${name}${flag}${String(pct).padStart(4)}%  ${dated}/${fetched} dated   ${sample ?? ''}`;
+/**
+ * Format one audited source as a table row.
+ *
+ * @param {AuditRow} row - One audit result.
+ * @returns {string} The printable row.
+ */
+function formatRow(row) {
+  const name = row.id.padEnd(24);
+  if (row.status === 'skip') return `${name} SKIP   ${row.reason}`;
+  if (row.status === 'error') return `${name} ERROR  ${row.reason}`;
+  if (row.fetched === 0) return `${name} EMPTY  no new documents this run`;
+  const pct = Math.round((row.dated / row.fetched) * 100);
+  const flag = row.undated === 0 ? ' ' : '!';
+  return `${name}${flag}${String(pct).padStart(4)}%  ${row.dated}/${row.fetched} dated   ${
+    row.sample ?? ''
+  }`;
 }
 
 const arguments_ = process.argv.slice(2);
@@ -111,6 +147,7 @@ const asJson = arguments_.includes('--json');
 const filter = arguments_.find((argument) => !argument.startsWith('--'));
 
 const sources = discoverSources().filter((source) => !filter || source.id.includes(filter));
+/** @type {AuditRow[]} */
 const results = [];
 for (const source of sources) {
   const result = await auditSource(source);
@@ -121,7 +158,9 @@ for (const source of sources) {
 if (asJson) {
   console.log(JSON.stringify(results, undefined, 2));
 } else {
-  const ran = results.filter((r) => r.status === 'ok' && r.fetched > 0);
+  // flatMap, not filter: only the former carries the `status === 'ok'` narrowing
+  // out to the reductions below, which read counts only that arm has.
+  const ran = results.flatMap((r) => (r.status === 'ok' && r.fetched > 0 ? [r] : []));
   const totalDocuments = ran.reduce((sum, r) => sum + r.fetched, 0);
   const totalDated = ran.reduce((sum, r) => sum + r.dated, 0);
   const gaps = ran.filter((r) => r.undated > 0);

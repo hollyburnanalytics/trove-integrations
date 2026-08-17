@@ -20,7 +20,12 @@ export { fetchPage, fetchPageWithMeta, isTooLargeError } from './http.mjs';
 export { parseRSS, xmlText } from './rss-parse.mjs';
 export { dayToLocalNoonIso, decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
 
-/** Pause between paced requests. Exported so source tests can stub the pacing. */
+/**
+ * Pause between paced requests. Exported so source tests can stub the pacing.
+ *
+ * @param {number} ms - How long to wait.
+ * @returns {Promise<void>} Resolves when the wait is over.
+ */
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -29,6 +34,9 @@ export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * hard-kills the run; paged source adapters check it so a large first run splits
  * across runs (fetch what fits, advance the cursor, resume next run). An absent
  * deadline means "unbounded".
+ *
+ * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @returns {boolean} True once the soft budget is spent.
  */
 export function deadlineReached(context) {
   return typeof context.deadline === 'number' && Date.now() >= context.deadline;
@@ -43,7 +51,7 @@ export function deadlineReached(context) {
  * (it would sort a decade-old post as brand new). Undated documents are counted
  * and logged instead, so a feed that silently stops emitting dates is visible.
  *
- * @param {object[]} documents - The documents a source is about to return.
+ * @param {import('./types.d.ts').TroveDocument[]} documents - The documents a source is about to return.
  * @returns {{ undated?: number }} `stats` fragment; empty when all are dated.
  */
 export function undatedStats(documents) {
@@ -55,8 +63,8 @@ export function undatedStats(documents) {
  * Warn when any of `documents` carries no publication date, naming the origin
  * so the operator can tell *which* feed regressed. No-op when all are dated.
  *
- * @param {object} context - Harness context (for `log.warn`).
- * @param {object[]} documents - The documents a source is about to return.
+ * @param {import('./types.d.ts').SyncContext} context - Harness context (for `log.warn`).
+ * @param {import('./types.d.ts').TroveDocument[]} documents - The documents a source is about to return.
  * @param {string} origin - Feed/endpoint URL or label the documents came from.
  */
 export function warnIfUndated(context, documents, origin) {
@@ -67,6 +75,16 @@ export function warnIfUndated(context, documents, origin) {
 }
 
 /**
+ * How many of these entries carry no usable publication date.
+ *
+ * @param {Array<{document: import('./types.d.ts').TroveDocument, ms: number}>} entries - The entries to count.
+ * @returns {number} How many are undated.
+ */
+export function countUndated(entries) {
+  return entries.filter((entry) => !Number.isFinite(entry.ms)).length;
+}
+
+/**
  * The string a feed item's stable ID is derived from, or `''` when the item
  * carries no identity at all.
  *
@@ -74,6 +92,15 @@ export function warnIfUndated(context, documents, origin) {
  * no link and no title would hash the empty string — and *every* such item in
  * the feed would collapse onto that one document ID, silently overwriting each
  * other. Callers drop these instead (see {@link identifiedItems}).
+ *
+ * The parameter is the three fields this actually reads, not a whole
+ * {@link import('./types.d.ts').FeedItem}: identity is a property of those
+ * three, and saying so is what lets a caller ask about an item it is holding
+ * only part of.
+ *
+ * @param {Partial<Pick<import('./types.d.ts').FeedItem, 'guid' | 'link' | 'title'>>} item -
+ *   A parsed feed item, or the parts of one that carry identity.
+ * @returns {string} Its identity string, or `''`.
  */
 export function itemIdentity(item) {
   return withoutFragment(item.guid || item.link || item.title || '');
@@ -110,10 +137,10 @@ function withoutFragment(value) {
  * ID that survives the next sync, and keeping it would collide with every other
  * identity-less item in the feed.
  *
- * @param {object} context - Harness context (for `log.warn`).
- * @param {object[]} items - Parsed feed items.
+ * @param {import('./types.d.ts').SyncContext} context - Harness context (for `log.warn`).
+ * @param {import('./types.d.ts').FeedItem[]} items - Parsed feed items.
  * @param {string} origin - Feed URL or label, for the warning.
- * @returns {object[]} The items that can be given a stable ID.
+ * @returns {import('./types.d.ts').FeedItem[]} The items that can be given a stable ID.
  */
 function identifiedItems(context, items, origin) {
   const identified = items.filter((item) => itemIdentity(item) !== '');
@@ -128,6 +155,13 @@ function identifiedItems(context, items, origin) {
  * Fetch and parse an RSS/Atom feed, returning TroveDocuments.
  * Supports incremental sync via a `date` watermark — only returns items
  * published after the cursor date. Cursor advances to max date of returned items.
+ *
+ * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {object} options - Which feed, and how to label its documents.
+ * @param {string} options.feedUrl - The feed to fetch.
+ * @param {string} options.idPrefix - The stable-ID namespace.
+ * @param {string} [options.defaultAuthor] - Author for items carrying none.
+ * @returns {Promise<import('./types.d.ts').SyncResult>} The round's documents, cursor and stats.
  */
 export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
   context.log.info(`Fetching ${feedUrl}...`);
@@ -191,6 +225,10 @@ export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
  * Only use this for sources whose license permits storing the full text
  * (Creative Commons / public domain) — for all-rights-reserved feeds, store the
  * publisher's syndicated excerpt via `syncRSS()` instead.
+ *
+ * @param {string} url - The article page.
+ * @param {string} [articleSelector] - The prose container(s) to keep.
+ * @returns {Promise<string>} The extracted body text.
  */
 export async function fetchArticleText(url, articleSelector) {
   const root = parse(await fetchPage(url));
@@ -217,12 +255,29 @@ export async function fetchArticleText(url, articleSelector) {
  *
  * CC / public-domain sources only — see {@link fetchArticleText}.
  */
+/**
+ * Fetch one article page and build its document.
+ *
+ * A failed fetch is NOT a missing document: the item's feed excerpt stands in,
+ * so the round still produces something addressable rather than a hole the
+ * watermark would then skip past.
+ *
+ * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').FeedItem} item - The feed item to expand.
+ * @param {object} options - How to label the document.
+ * @param {string} options.idPrefix - The stable-ID namespace.
+ * @param {string} [options.defaultAuthor] - Author for items carrying none.
+ * @param {string} [options.articleSelector] - The container to extract.
+ * @returns {Promise<import('./types.d.ts').TroveDocument>} The document, body or excerpt.
+ */
 async function articleToDocument(context, item, { idPrefix, defaultAuthor, articleSelector }) {
   let body;
   try {
     body = await fetchArticleText(item.link, articleSelector);
   } catch (error) {
-    context.log.warn(`Failed to fetch ${item.link}: ${error.message}`);
+    context.log.warn(
+      `Failed to fetch ${item.link}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     body = item.description || ''; // fall back to the feed excerpt
   }
   return {
@@ -235,6 +290,21 @@ async function articleToDocument(context, item, { idPrefix, defaultAuthor, artic
   };
 }
 
+/**
+ * Fetch a feed, then fetch each new article's full text, oldest first.
+ *
+ * For CC / public-domain feeds that carry only excerpts. Deadline-bounded: a
+ * large backlog drains across runs, resuming from the `date` watermark.
+ *
+ * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {object} options - Which feed, and how to label its documents.
+ * @param {string} options.feedUrl - The feed to fetch.
+ * @param {string} options.idPrefix - The stable-ID namespace.
+ * @param {string} [options.defaultAuthor] - Author for items carrying none.
+ * @param {string} [options.articleSelector] - The prose container to extract.
+ * @param {number} [options.delayMs] - Pause between article fetches.
+ * @returns {Promise<import('./types.d.ts').SyncResult>} The round's documents, cursor and stats.
+ */
 export async function syncFeedArticles(
   context,
   { feedUrl, idPrefix, defaultAuthor, articleSelector, delayMs = 300 },
@@ -251,7 +321,9 @@ export async function syncFeedArticles(
     })
     .toSorted((a, b) => new Date(a.pubDate || 0).getTime() - new Date(b.pubDate || 0).getTime());
 
+  /** @type {import('./types.d.ts').TroveDocument[]} */
   const documents = [];
+  /** @type {number[]} */
   const dates = [];
   let stoppedEarly = false;
   for (const [index, item] of fresh.entries()) {

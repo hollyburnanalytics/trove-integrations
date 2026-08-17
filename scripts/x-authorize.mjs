@@ -41,12 +41,23 @@ const TOKEN_URL = 'https://api.x.com/2/oauth2/token';
 const SCOPES = 'tweet.read users.read bookmark.read offline.access';
 const DEFAULT_REDIRECT_URI = 'http://localhost:8723/callback';
 
-/** Base64url (no padding) of a buffer. */
+/**
+ * Base64url (no padding) of a buffer.
+ *
+ * @param {Buffer} buffer - The bytes to encode.
+ * @returns {string} The URL-safe encoding.
+ */
 function base64Url(buffer) {
   return buffer.toString('base64').replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 
-/** Read a `--flag=value` from argv, falling back to an env var. */
+/**
+ * Read a `--flag=value` from argv, falling back to an env var.
+ *
+ * @param {string} flag - The flag name, without the leading dashes.
+ * @param {string} [environmentName] - The environment variable to fall back to.
+ * @returns {string | undefined} The value, if either supplied one.
+ */
 function readOption(flag, environmentName) {
   const prefix = `--${flag}=`;
   const match = argv.find((argument) => argument.startsWith(prefix));
@@ -54,13 +65,20 @@ function readOption(flag, environmentName) {
   return environmentName ? env[environmentName] : undefined;
 }
 
-/** Wait for the OAuth redirect on a localhost listener and return its query. */
+/**
+ * Wait for the OAuth redirect on a localhost listener and return its query.
+ *
+ * @param {string} redirectUri - Where the authorization server will send the browser.
+ * @returns {Promise<{ code: string | null, state: string | null }>} The redirect's query.
+ */
 function awaitRedirect(redirectUri) {
   const parsed = new URL(redirectUri);
   const port = parsed.port ? Number(parsed.port) : 80;
   return new Promise((resolve, reject) => {
     const server = createServer((request, response) => {
-      const requestUrl = new URL(request.url, `http://${parsed.host}`);
+      // `request.url` is optional on the Node type but always set for a server
+      // request; `''` would fail the pathname check below rather than throw.
+      const requestUrl = new URL(request.url ?? '', `http://${parsed.host}`);
       if (requestUrl.pathname !== parsed.pathname) {
         response.writeHead(404).end('Not found');
         return;
@@ -85,7 +103,12 @@ function awaitRedirect(redirectUri) {
   });
 }
 
-/** Prompt the user to paste the full redirect URL, return its query. */
+/**
+ * Prompt the user to paste the full redirect URL, return its query.
+ *
+ * @returns {Promise<{ code: string | null, state: string | null | undefined }>} What
+ *   the pasted URL carried.
+ */
 async function promptRedirect() {
   const readline = createInterface({ input: stdin, output: stdout });
   try {
@@ -103,7 +126,17 @@ async function promptRedirect() {
   }
 }
 
-/** Exchange the authorization code for tokens at the token endpoint. */
+/**
+ * Exchange the authorization code for tokens at the token endpoint.
+ *
+ * @param {object} options - The grant's inputs.
+ * @param {string} options.code - The authorization code just received.
+ * @param {string} options.clientId - The OAuth client id.
+ * @param {string} [options.clientSecret] - Set only for a confidential client.
+ * @param {string} options.redirectUri - The same redirect the code was issued against.
+ * @param {string} options.codeVerifier - The PKCE verifier for this exchange.
+ * @returns {Promise<{ refresh_token?: string, access_token?: string }>} The token response.
+ */
 async function exchangeCode({ code, clientId, clientSecret, redirectUri, codeVerifier }) {
   const form = new URLSearchParams({
     grant_type: 'authorization_code',
@@ -112,6 +145,7 @@ async function exchangeCode({ code, clientId, clientSecret, redirectUri, codeVer
     client_id: clientId,
     code_verifier: codeVerifier,
   });
+  /** @type {Record<string, string>} */
   const headers = {
     'content-type': 'application/x-www-form-urlencoded',
     accept: 'application/json',
@@ -128,6 +162,11 @@ async function exchangeCode({ code, clientId, clientSecret, redirectUri, codeVer
   return JSON.parse(text);
 }
 
+/**
+ * Run the whole authorization flow and print the refresh token.
+ *
+ * @returns {Promise<void>} Resolves once the token has been printed.
+ */
 async function main() {
   const clientId = readOption('client-id', 'X_OAUTH_CLIENT_ID');
   const clientSecret = readOption('client-secret', 'X_OAUTH_CLIENT_SECRET');

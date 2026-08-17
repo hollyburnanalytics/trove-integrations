@@ -11,18 +11,16 @@
 The SDK gives every source adapter one uniform contract — `sync(ctx) → { documents, cursor, stats }`.
 That contract is expressive enough that every source in this repo shares it cleanly, but
 on its own it treats **collection shape and watermark semantics as an undeclared,
-adapter-private detail.** The manifest captures *topic* (`category`), *cadence*
+adapter-private detail.** The manifest captures *cadence*
 (`schedule`), *browser-need* (`needs_browser`), *default executor* (`location`), and
 *user preferences* (`config`) — but nothing about *how* a
 source adapter collects or *how* it resumes. This doc names that taxonomy explicitly so we can
 (a) reason about sync health, (b) decide what is in and out of MVP, and (c) evolve the
 contract deliberately instead of stuffing new shapes into `sync()`.
 
-The repo ships **sources** (under the Dewey-style categories
-`000-general`, `070-news`, `300-social-sciences`, `330-economics`, `500-science`,
-`600-technology`, `650-business`) and **toolkits** (`mcp/`). `registry.json` is the
-source of truth for the sources and is validated by
-`scripts/validate-registry.mjs`.
+The repo ships **sources** (one flat directory each under `sources/`) and
+**toolkits** (`mcp/`). `registry.json` is the source of truth for the sources and
+is validated by `scripts/validate-registry.mjs`.
 
 ## 2. The four dimensions
 
@@ -61,11 +59,11 @@ ones below are the shapes the repo actually exercises:
 
 | Class | Transport × Watermark × Fan-out | Helper | Exemplars |
 |---|---|---|---|
-| **Feed-poll** | feed × `date` × single | `syncRSS()` | `650-business/stratechery`, `000-general/rss-feeds` |
-| **Full-text feed** | scrape × `date` × single | `syncFeedArticles()` | `500-science/quanta-magazine` |
-| **API-poll** | api × `date`/`none` × single / multi-entity | direct `fetch` | `070-news/hacker-news` |
-| **Media-feed-poll** | feed × `date` × multi | `syncFeeds()` + `maxDocuments` | `000-general/podcast-feeds` |
-| **Local-store-sync** | local × `date` × single | direct read | `000-general/apple-podcasts` |
+| **Feed-poll** | feed × `date` × single | `syncRSS()` | `stratechery`, `rss-feeds` |
+| **Full-text feed** | scrape × `date` × single | `syncFeedArticles()` | `quanta-magazine` |
+| **API-poll** | api × `date`/`none` × single / multi-entity | direct `fetch` | `hacker-news` |
+| **Media-feed-poll** | feed × `date` × multi | `syncFeeds()` + `maxDocuments` | `podcast-feeds` |
+| **Local-store-sync** | local × `date` × single | direct read | `apple-podcasts` |
 | **Authed-browser-harvest** | browser × `none` × paged-scroll | `ctx.browser` | — (harness-supported; none shipped) |
 
 **Media-feed-poll** is Feed-poll where the body is not in the feed at all: the item's
@@ -184,7 +182,7 @@ local}`.
 
 ```jsonc
 {
-  "id": "simon-willison", "name": "Simon Willison", "category": "600-technology",
+  "id": "simon-willison", "name": "Simon Willison",
   "kind": "scheduled-sync",        // execution contract
   "transport": "feed",             // mechanism
   "watermark": "date",             // strategy only; the value lives in the feed's cursor

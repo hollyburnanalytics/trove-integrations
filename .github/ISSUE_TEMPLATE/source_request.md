@@ -8,9 +8,6 @@ labels: enhancement
 **Source**
 <!-- Name + URL of the site/API/feed -->
 
-**Category**
-<!-- 000-general / 070-news / 330-economics / 500-science / 600-technology / 650-business -->
-
 **How is the data exposed?**
 - [ ] RSS / Atom feed (URL: )
 - [ ] Sitemap (URL: )

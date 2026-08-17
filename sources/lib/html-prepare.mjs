@@ -28,6 +28,9 @@ import { decodeHtmlEntities } from './text.mjs';
  * begins `<![CDATA[<p><b><a href=…` in full, which the ingest gate rejects as raw
  * HTML. 179 of the 239 gate rejections in the audit corpus were this one shape,
  * and every one of them held a feed's cursor.
+ *
+ * @param {string} source - The fragment as it arrived.
+ * @returns {string} The same fragment with the delimiters gone.
  */
 export function unwrapCdata(source) {
   return source.includes('<![CDATA[')
@@ -48,6 +51,9 @@ export function unwrapCdata(source) {
  *
  * Bounded at three passes: the loop exists to reveal markup, and a body needing
  * a fourth decode is likelier to be prose about entities than more layers.
+ *
+ * @param {string} html - The fragment, possibly entity-encoded more than once.
+ * @returns {string} The fragment with its markup revealed.
  */
 export function decodeUntilMarkup(html) {
   let value = html;
@@ -60,7 +66,12 @@ export function decodeUntilMarkup(html) {
   return value;
 }
 
-/** Collapse an already-plain fragment's whitespace, keeping its line structure. */
+/**
+ * Collapse an already-plain fragment's whitespace, keeping its line structure.
+ *
+ * @param {string} source - The fragment, which parsed as containing no markup.
+ * @returns {string} Its text as Markdown.
+ */
 export function plainTextToMarkdown(source) {
   return (
     stripControlCharacters(decodeHtmlEntities(decodeHtmlEntities(source)))
@@ -76,7 +87,12 @@ export function plainTextToMarkdown(source) {
   );
 }
 
-/** Tidy the assembled output: strip join artifacts and cap blank runs. */
+/**
+ * Tidy the assembled output: strip join artifacts and cap blank runs.
+ *
+ * @param {string} markdown - The assembled document.
+ * @returns {string} The tidied document.
+ */
 export function tidy(markdown) {
   return markdown
     .split('\n')

@@ -48,7 +48,9 @@ export class InvalidSourceResponseError extends Error {
  * Build the `context` object passed to a source's `sync()` / `query()`.
  *
  * @param {object} options - Context inputs.
- * @param {Record<string, string>} [options.config] - Source config.
+ * @param {Record<string, import('./types.d.ts').ConfigValue>} [options.config] - Source
+ *   config. NOT `Record<string, string>`: a `url[]`/`text[]` field arrives as an
+ *   array, which is what every fan-out source reads.
  * @param {Record<string, string>} [options.credentials] - Source credentials.
  * @param {unknown} [options.cursor] - Resume cursor from a prior run.
  * @param {unknown} [options.browser] - Playwright browser context, or null.
@@ -56,7 +58,7 @@ export class InvalidSourceResponseError extends Error {
  * @param {number} [options.now] - Current epoch ms (injectable for tests).
  * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [options.onLog] - Log sink.
  * @param {(documentsSoFar: number, message: string) => void} [options.onProgress] - Progress sink.
- * @returns {object} The source context.
+ * @returns {import('./types.d.ts').SyncContext} The source context.
  */
 export function buildContext({
   config,
@@ -74,7 +76,7 @@ export function buildContext({
   return {
     config: config || {},
     credentials: credentials || {},
-    cursor: cursor ?? undefined,
+    cursor: /** @type {import('./types.d.ts').Cursor | undefined} */ (cursor ?? undefined),
     browser: browser ?? undefined,
     deadline: base + softBudgetMs,
     log: {
@@ -160,14 +162,16 @@ function sourceModuleUrl(sourcePath) {
  * @param {object} options - Run inputs.
  * @param {string} options.sourcePath - Path to the source directory.
  * @param {'sync' | 'query'} [options.method] - Method to invoke (default 'sync').
- * @param {Record<string, string>} [options.config] - Source config.
+ * @param {Record<string, import('./types.d.ts').ConfigValue>} [options.config] - Source
+ *   config. NOT `Record<string, string>`: a `url[]`/`text[]` field arrives as an
+ *   array, which is what every fan-out source reads.
  * @param {Record<string, string>} [options.credentials] - Source credentials.
  * @param {unknown} [options.cursor] - Resume cursor.
  * @param {unknown} [options.browser] - Playwright browser context, or null.
  * @param {number} [options.timeoutMs] - Hard-timeout budget in ms.
  * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [options.onLog] - Log sink.
  * @param {(documentsSoFar: number, message: string) => void} [options.onProgress] - Progress sink.
- * @returns {Promise<{ documents: object[], cursor: unknown, stats: object }>} Normalized result.
+ * @returns {Promise<import('./types.d.ts').SyncResult & { stats: Record<string, unknown> }>} Normalized result.
  * @throws {InvalidSourceResponseError} If the source lacks the method or returns an invalid shape.
  */
 export async function runSource({
@@ -202,7 +206,7 @@ export async function runSource({
   const durationMs = Date.now() - startedAt;
 
   validateResult(result);
-  const documents = /** @type {object[]} */ (result.documents);
+  const documents = /** @type {import('./types.d.ts').TroveDocument[]} */ (result.documents);
   return {
     documents,
     cursor: result.cursor ?? undefined,
@@ -211,7 +215,7 @@ export async function runSource({
       fetched: documents.length,
       // Publish-date coverage, measured here so every source reports it the
       // same way whether or not its adapter tracks it (see `undatedStats()`).
-      undated: documents.filter((document) => !(/** @type {any} */ (document).date)).length,
+      undated: documents.filter((document) => !document.date).length,
       duration_ms: durationMs,
     },
   };

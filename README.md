@@ -45,17 +45,12 @@ more. See the full catalog in [`mcp/README.md`](mcp/README.md).
 
 ### Sources (`sources/`) — fill the knowledge base
 
-Filed by **subject**, Dewey-decimal style (folder name = category):
-
-| Folder | What's in it |
-|--------|--------------|
-| `650-business` | Stratechery, Not Boring, AVC, Lenny's Newsletter, Bits about Money, SEC filings |
-| `600-technology` | Benedict Evans, Simon Willison, Daring Fireball, Benn Stancil |
-| `070-news` | Guardian / BBC / NYTimes / FT headlines, Hacker News, The Conversation |
-| `330-economics` | Marginal Revolution |
-| `500-science` | arXiv papers, Quanta Magazine |
-| `300-social-sciences` | Our World in Data |
-| `000-general` | Apple Podcasts, OpenStax, X bookmarks, any RSS feed |
+One directory per source, directly under `sources/` — Stratechery, Not Boring,
+AVC, Lenny's Newsletter, Bits about Money, SEC filings, Benedict Evans, Simon
+Willison, Daring Fireball, Benn Stancil, Guardian / BBC / NYTimes / FT
+headlines, Hacker News, The Conversation, Marginal Revolution, arXiv papers,
+Quanta Magazine, Our World in Data, Apple Podcasts, OpenStax, X bookmarks, and
+any RSS feed. `registry.json` lists them all.
 
 ## Requirements
 
@@ -75,7 +70,7 @@ the app uses, printing the resulting documents, cursor, and stats:
 
 ```bash
 # RSS source (no auth, instant)
-bun run source sources/070-news/hacker-news --json
+bun run source sources/hacker-news --json
 ```
 
 ### Incremental sync

@@ -6,7 +6,7 @@ labels: bug
 ---
 
 **Source / area**
-<!-- e.g. sources/070-news/hacker-news, or a shared helper -->
+<!-- e.g. sources/hacker-news, or a shared helper -->
 
 **What happened**
 <!-- Describe the bug. Include error output with secrets redacted. -->

@@ -23,13 +23,13 @@ The full guide — source types, shared helpers, copy-paste patterns, and the
 rules — lives in [`CLAUDE.md`](CLAUDE.md) (written to be useful to both humans and
 AI assistants). The short version:
 
-1. Create `sources/{category}/{source-id}/` with a `manifest.json` and
+1. Create `sources/{source-id}/` with a `manifest.json` and
    `index.mjs` that exports `async function sync(ctx)`.
 2. Reuse the shared helpers in `sources/lib/feeds.mjs`
    (`syncRSS`, `syncFeedArticles`, …) instead of re-writing RSS/HTML parsing.
    All network I/O must go through these helpers — never call raw `fetch()` when
    any part of a URL comes from `config`.
-3. Add a test that mocks `fetch` (see `sources/070-news/hacker-news/index.test.mjs`).
+3. Add a test that mocks `fetch` (see `sources/hacker-news/index.test.mjs`).
 4. Run `bun scripts/validate-registry.mjs --fix` to register the source.
 
 A merged source can be promoted to run in Trove's cloud, so both authors and

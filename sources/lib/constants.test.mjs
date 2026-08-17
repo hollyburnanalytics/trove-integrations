@@ -338,10 +338,18 @@ describe('validateManifest', () => {
   });
 });
 
-/** Stands in for the on-disk provider lookup: only `podcasts` has a module. */
+/**
+ * Stands in for the on-disk provider lookup: only `podcasts` has a module.
+ *
+ * @type {(name: string) => boolean}
+ */
 const providerExists = (name) => name === 'podcasts';
 
-/** A manifest whose one `url[]` field declares the given directory descriptor. */
+/**
+ * A manifest whose one `url[]` field declares the given directory descriptor.
+ *
+ * @type {(directory: unknown) => Record<string, unknown>}
+ */
 const withDirectory = (directory) => ({
   config: { feeds: { label: 'Podcast feed URLs', type: 'url[]', directory } },
 });

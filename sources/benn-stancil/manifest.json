@@ -1,0 +1,23 @@
+{
+  "id": "benn-stancil",
+  "name": "Benn Stancil",
+  "description": "Benn Stancil on the business of data and analytics",
+  "icon": "🧮",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "kind": "scheduled-sync",
+  "transport": "feed",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "location": "cloud",
+  "schedule": "daily",
+  "status": "implemented",
+  "needs_browser": false,
+  "historyReach": {
+    "kind": "window",
+    "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
+  },
+  "egress": [
+    "benn.substack.com"
+  ]
+}

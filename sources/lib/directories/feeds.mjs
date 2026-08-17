@@ -34,29 +34,19 @@ const FEED_LINK_TYPES = new Set([
 const MAX_LINKS = 20;
 
 /**
- * The feeds a page advertises, in document order.
- *
- * Returns every alternate rather than the first, because a site with separate
- * post and comment feeds — or one feed per section — is exactly the case where
- * guessing picks wrong and a person picks right.
- *
- * @param {string} html - The fetched document.
- * @param {string} baseUrl - For resolving relative hrefs.
- * @returns {Array<{url: string, title: string}>}
- */
-/**
  * The subscribable address one `<link rel="alternate">` points at, if any.
  *
  * Returns nothing for a non-feed type, an unresolvable href, or a scheme that
  * is not http(s) — the page chose these values, so a `javascript:` or `data:`
  * alternate is untrusted input that must never be offered as a subscription.
  *
- * @param {object} link - A parsed `<link>` element.
+ * @param {import('node-html-parser').HTMLElement} link - A parsed `<link>` element.
  * @param {string} baseUrl - For resolving relative hrefs.
  * @returns {string | undefined} The absolute feed URL.
  */
 function feedLinkUrl(link, baseUrl) {
-  const type = (link.getAttribute('type') || '').toLowerCase().split(';')[0].trim();
+  const [declared = ''] = (link.getAttribute('type') || '').toLowerCase().split(';');
+  const type = declared.trim();
   const href = link.getAttribute('href');
   if (!href || !FEED_LINK_TYPES.has(type)) return;
 
@@ -70,9 +60,21 @@ function feedLinkUrl(link, baseUrl) {
   return resolved.toString();
 }
 
+/**
+ * The feeds a page advertises, in document order.
+ *
+ * Returns every alternate rather than the first, because a site with separate
+ * post and comment feeds — or one feed per section — is exactly the case where
+ * guessing picks wrong and a person picks right.
+ *
+ * @param {string} html - The fetched document.
+ * @param {string} baseUrl - For resolving relative hrefs.
+ * @returns {Array<{url: string, title: string}>} Every advertised feed.
+ */
 export function advertisedFeeds(html, baseUrl) {
   const root = parseHtmlDocument(html);
   const pageTitle = decodeHtmlEntities(root.querySelector('title')?.text?.trim() ?? '');
+  /** @type {Array<{url: string, title: string}>} */
   const found = [];
   const seen = new Set();
 
@@ -96,9 +98,9 @@ export function advertisedFeeds(html, baseUrl) {
  * An address that IS a feed resolves to itself, named by its own channel title
  * — so pasting a feed URL confirms what it is rather than rejecting it.
  *
- * @param {{query?: string, limit: number}} input - `query` is the pasted address.
- * @param {object} context - The directory context (guarded fetch + log).
- * @returns {Promise<object[]>} Subscribable feeds.
+ * @param {import('../types.d.ts').DirectoryQuery} input - `query` is the pasted address.
+ * @param {import('../types.d.ts').DirectoryContext} context - The directory context (guarded fetch + log).
+ * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Subscribable feeds.
  */
 export async function query(input, context) {
   const address = typeof input.query === 'string' ? input.query.trim() : '';

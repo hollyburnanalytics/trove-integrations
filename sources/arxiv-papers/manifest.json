@@ -1,0 +1,40 @@
+{
+  "id": "arxiv-papers",
+  "name": "arXiv Papers",
+  "description": "ML and CS paper abstracts matching your search queries",
+  "icon": "📄",
+  "version": "0.1.0",
+  "author": "Hollyburn Analytics Inc.",
+  "kind": "scheduled-sync",
+  "transport": "api",
+  "watermark": "date",
+  "documentSemantics": "append",
+  "formatting": "verbatim",
+  "location": "cloud",
+  "schedule": "every 6 hours",
+  "status": "implemented",
+  "fanOut": "queries",
+  "config": {
+    "queries": {
+      "label": "Search Queries",
+      "type": "text[]",
+      "directory": {
+        "provider": "arxiv",
+        "mode": "search",
+        "placeholder": "Search arXiv subjects"
+      }
+    }
+  },
+  "needs_browser": false,
+  "historyReach": {
+    "kind": "full",
+    "note": "arXiv answers any date range. A run fetches up to 500 papers per query and the next run carries on, so a deep backfill arrives over several syncs rather than all at once."
+  },
+  "egress": [
+    "export.arxiv.org"
+  ],
+  "egressNotFetched": [
+    "arxiv.org"
+  ],
+  "egressNote": "The adapter queries the arXiv API on export.arxiv.org. arxiv.org appears only as the paper's HTML/PDF `file_url`, which Trove's ingest fetches when it captures the artifact."
+}
