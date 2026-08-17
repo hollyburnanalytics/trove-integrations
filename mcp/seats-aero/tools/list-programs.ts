@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { PROGRAMS } from '../programs.ts';
 
 /**
@@ -9,7 +9,7 @@ import { PROGRAMS } from '../programs.ts';
  * seat counts and taxes) are otherwise learned by burning calls on searches that
  * come back empty or with zeros that mean nothing.
  */
-export const listPrograms: ToolDefinition = {
+export const listPrograms = tool({
   name: 'list_programs',
   title: 'Seats.aero: List mileage programs',
   description:
@@ -63,4 +63,4 @@ export const listPrograms: ToolDefinition = {
       },
     };
   },
-};
+});

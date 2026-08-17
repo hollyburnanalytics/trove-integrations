@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { apiKey, quotaNote, seatsJson } from '../client.ts';
 import {
   availabilityOutput,
@@ -22,7 +22,7 @@ import { WireAvailabilityPage } from '../wire.ts';
  * the point on a 1,000-call-a-day budget. Nothing is auto-paged: the result says
  * whether more exists and exactly how to ask for it.
  */
-export const searchAwards: ToolDefinition = {
+export const searchAwards = tool({
   name: 'search_awards',
   title: 'Seats.aero: Search award availability',
   description:
@@ -124,4 +124,4 @@ export const searchAwards: ToolDefinition = {
       structured: { page, notes, quota, results },
     };
   },
-};
+});

@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/mcp';
 import { apiKey, isAccessToken, quotaNote, seatsJson } from '../client.ts';
 import { bookingLinkOutput, quotaOutput, tripOutput } from '../fields.ts';
 import { airportList, isoDate } from '../params.ts';
@@ -25,7 +25,7 @@ import { WireLiveResponse } from '../wire.ts';
  * persisted — the ids it returns are not availability ids and `get_trips` cannot
  * expand them.
  */
-export const liveSearch: ToolDefinition = {
+export const liveSearch = tool({
   name: 'live_search',
   title: 'Seats.aero: Live search one route',
   description:
@@ -153,4 +153,4 @@ export const liveSearch: ToolDefinition = {
       },
     };
   },
-};
+});

@@ -1,4 +1,4 @@
-import { defineMcpServer, type ToolContext, ToolError, z } from '@ontrove/mcp';
+import { defineMcpServer, type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
 
 /**
  * CRA GST/HST Registry — a hosted MCP server over the Canada Revenue Agency's
@@ -183,7 +183,7 @@ const BUSINESS_NUMBER_RE = /^\d{9}$/;
 export default defineMcpServer({
   egress: ['www.businessregistration-inscriptionentreprise.gc.ca'],
   tools: [
-    {
+    tool({
       name: 'confirm_gst_hst_number',
       title: 'CRA: Confirm a GST/HST account number',
       description:
@@ -316,6 +316,6 @@ export default defineMcpServer({
           structured,
         };
       },
-    },
+    }),
   ],
 });

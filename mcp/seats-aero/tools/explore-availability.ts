@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/mcp';
 import { apiKey, quotaNote, seatsJson } from '../client.ts';
 import {
   availabilityOutput,
@@ -22,7 +22,7 @@ import { WireAvailabilityPage } from '../wire.ts';
  * ("where can Aeroplan get me in Europe in business next spring?") where naming
  * every destination airport up front is the wrong shape.
  */
-export const exploreAvailability: ToolDefinition = {
+export const exploreAvailability = tool({
   name: 'explore_availability',
   title: 'Seats.aero: Explore one program',
   description:
@@ -82,4 +82,4 @@ export const exploreAvailability: ToolDefinition = {
       structured: { page, notes, quota, results },
     };
   },
-};
+});

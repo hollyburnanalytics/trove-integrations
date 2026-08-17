@@ -296,10 +296,7 @@ function renderBlock(block: SeriesBlock, args: ObservationArgs, previewRows: num
  * both to label the result and to reject an impossible `frequency` by name
  * before any observation request is made.
  */
-export async function runObservations(
-  args: ObservationArgs,
-  ctx: ToolContext,
-): Promise<{ text: string; structured: unknown }> {
+export async function runObservations(args: ObservationArgs, ctx: ToolContext) {
   const metas = await Promise.all(args.seriesIds.map((id) => fetchSeriesMeta(id, ctx)));
   if (args.frequency) {
     const conflicts = metas.map((m) => frequencyConflict(m, args.frequency ?? '')).filter(Boolean);
