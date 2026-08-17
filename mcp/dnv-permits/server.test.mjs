@@ -148,7 +148,7 @@ describe('dnv-permits MCP server', () => {
         'suggest_addresses',
         { prefix: 'hazel' },
         {
-          json: ['2298 HAZELLYNN PL', '   ', '', 42],
+          json: ['2298 HAZELLYNN PL', ' '.repeat(3), '', 42],
         },
       );
       expect(result.ok).toBe(true);

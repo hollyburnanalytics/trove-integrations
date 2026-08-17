@@ -42,7 +42,7 @@ describe('http helpers', () => {
 
   it('fetchPage throws on a non-200 response', async () => {
     setFetch(() => Promise.resolve(new Response('', { status: 503 })));
-    expect(fetchPage('https://example.com/down')).rejects.toThrow('HTTP 503');
+    await expect(fetchPage('https://example.com/down')).rejects.toThrow('HTTP 503');
   });
 
   it('fetchBytes returns the raw response bytes', async () => {

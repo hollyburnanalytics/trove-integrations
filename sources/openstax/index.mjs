@@ -1,6 +1,6 @@
 import { parse } from 'node-html-parser';
 import { stringList } from '../lib/constants.mjs';
-import { deadlineReached, fetchPage, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
+import { fetchPage, hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
 
 /**
  * OpenStax — free, peer-reviewed, openly licensed college textbooks.
@@ -69,7 +69,8 @@ async function loadRelease() {
   const archiveBase = `${ORIGIN}${release.archiveUrl}`;
   /** @type {Map<string, string>} */
   const versions = new Map();
-  for (const [cnxId, info] of Object.entries(release.books ?? {})) {
+  const books = Object.entries(release.books ?? {});
+  for (const [cnxId, info] of books) {
     if (!info.retired && info.defaultVersion) versions.set(cnxId, info.defaultVersion);
   }
   return { archiveBase, versions };
@@ -96,7 +97,8 @@ async function loadCatalog() {
  * @returns {TreeNode[]} Every leaf, in reading order.
  */
 function flattenPages(node, accumulator = []) {
-  for (const child of node?.contents ?? []) {
+  const children = node?.contents ?? [];
+  for (const child of children) {
     if (child.contents) flattenPages(child, accumulator);
     else accumulator.push(child);
   }
@@ -161,7 +163,7 @@ async function syncBook(context, archiveBase, book, startIndex) {
   /** @type {import('../lib/types.d.ts').TroveDocument[]} */
   const sections = [];
   for (const [offset, page] of pages.slice(startIndex).entries()) {
-    if (deadlineReached(context)) return { sections, next: startIndex + offset };
+    if (hasDeadlinePassed(context)) return { sections, next: startIndex + offset };
     const document = await buildSection(context, archiveBase, book, page, license);
     if (document) {
       sections.push(document);
@@ -241,7 +243,7 @@ export async function sync(context) {
   // one source whose checkpoint is its own shape, and it says so here rather
   // than widening the vocabulary every other source shares.
   const stored = /** @type {{ value?: Checkpoint } | undefined} */ (context.cursor)?.value;
-  if (context.cursor && stored === undefined) {
+  if (stored === undefined && context.cursor) {
     context.log.warn(
       'Resume state was not readable, so this run starts from the first book. ' +
         'This source keeps a custom checkpoint the platform cannot parse, and only ' +
@@ -261,7 +263,7 @@ export async function sync(context) {
       skipped++;
       continue;
     }
-    if (deadlineReached(context)) break;
+    if (hasDeadlinePassed(context)) break;
     const start = resume?.key === key ? resume.next : 0;
     const { sections, next } = await syncBook(context, archiveBase, book, start);
     documents.push(...sections);

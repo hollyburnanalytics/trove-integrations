@@ -104,14 +104,14 @@ function toolkitRoot(file, roots) {
 function zodObjectLiteral(node) {
   /** @type {import('typescript').Node | undefined} */
   let current = node;
-  for (let index = 0; index < 12 && current; index++) {
+  for (let index = 0; current && index < 12; index++) {
     if (ts.isCallExpression(current)) {
       const callee = current.expression;
       const [firstArgument] = current.arguments;
       if (
+        firstArgument !== undefined &&
         ts.isPropertyAccessExpression(callee) &&
         (callee.name.text === 'object' || callee.name.text === 'extend') &&
-        firstArgument !== undefined &&
         ts.isObjectLiteralExpression(firstArgument)
       ) {
         return firstArgument;
@@ -161,9 +161,9 @@ function toolSpec(node) {
   if (!ts.isCallExpression(node)) return;
   const [firstArgument] = node.arguments;
   if (
+    firstArgument === undefined ||
     !ts.isIdentifier(node.expression) ||
     node.expression.text !== 'tool' ||
-    firstArgument === undefined ||
     !ts.isObjectLiteralExpression(firstArgument)
   ) {
     return;
@@ -202,51 +202,61 @@ const orphans = [];
 const unparsed = [];
 let checked = 0;
 
-for (const root of searchRoots) {
-  for (const file of filesUnder(root, (p) => p.endsWith('.ts'))) {
-    const text = readFileSync(file, 'utf8');
-    if (!text.includes('tool(')) continue;
-    const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const kit = toolkitRoot(file, searchRoots);
-    const kitText = filesUnder(kit, (p) => /\.(ts|mjs)$/.test(p))
-      .filter((p) => p !== file)
-      .map((p) => readFileSync(p, 'utf8'))
-      .join('\n');
+/**
+ * Audit every tool declared in one file, recording orphans and unparsed inputs.
+ *
+ * @param {string} file - The TypeScript file to read.
+ * @param {string[]} roots - The search roots, for locating the file's toolkit.
+ * @returns {void} Nothing; it appends to `orphans` / `unparsed` and counts fields.
+ */
+function auditFile(file, roots) {
+  const text = readFileSync(file, 'utf8');
+  if (!text.includes('tool(')) return;
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const kit = toolkitRoot(file, roots);
+  const kitText = filesUnder(kit, (p) => /\.(ts|mjs)$/.test(p))
+    .filter((p) => p !== file)
+    .map((p) => readFileSync(p, 'utf8'))
+    .join('\n');
 
-    /**
-     * Check one tool's declared input fields against the toolkit.
-     *
-     * @type {(spec: ToolSpec) => void}
-     */
-    const auditTool = ({ toolName, inputNode }) => {
-      const lit = zodObjectLiteral(inputNode);
-      if (!lit) {
-        unparsed.push({ file, tool: toolName });
-        return;
+  /**
+   * Check one tool's declared input fields against the toolkit.
+   *
+   * @type {(spec: ToolSpec) => void}
+   */
+  const auditTool = ({ toolName, inputNode }) => {
+    const lit = zodObjectLiteral(inputNode);
+    if (!lit) {
+      unparsed.push({ file, tool: toolName });
+      return;
+    }
+    for (const property of lit.properties) {
+      const field = propertyName(property);
+      if (!field) continue;
+      checked++;
+      // The field's own declaration cannot vouch for itself.
+      const own = text.slice(0, property.getStart(sf)) + text.slice(property.getEnd());
+      if (!isRead(field, own) && !isRead(field, kitText)) {
+        orphans.push({ file, tool: toolName, field });
       }
-      for (const property of lit.properties) {
-        const field = propertyName(property);
-        if (!field) continue;
-        checked++;
-        // The field's own declaration cannot vouch for itself.
-        const own = text.slice(0, property.getStart(sf)) + text.slice(property.getEnd());
-        if (!isRead(field, own) && !isRead(field, kitText)) {
-          orphans.push({ file, tool: toolName, field });
-        }
-      }
-    };
+    }
+  };
 
-    visitTools(sf, auditTool);
-  }
+  visitTools(sf, auditTool);
 }
 
-/** @type {(file: string) => string} */
-const where = (file) => path.relative(process.cwd(), file);
+for (const root of searchRoots) {
+  const typescriptFiles = filesUnder(root, (p) => p.endsWith('.ts'));
+  for (const file of typescriptFiles) auditFile(file, searchRoots);
+}
 
 if (orphans.length === 0 && unparsed.length === 0) {
   console.log(`orphan-fields: ${checked} declared input fields, all read.`);
   process.exit(0);
 }
+
+/** @type {(file: string) => string} */
+const where = (file) => path.relative(process.cwd(), file);
 
 for (const o of orphans) {
   console.error(

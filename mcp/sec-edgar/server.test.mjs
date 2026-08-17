@@ -1234,20 +1234,20 @@ describe('sec-edgar v1.3 features', () => {
     });
 
     it('skips archives when recent filings already satisfy the limit', async () => {
-      let archiveFetched = false;
+      let isArchiveFetched = false;
       const result = await callTool(
         server,
         'company_filings',
         { company: '100030', forms: '10-K', limit: 1 },
         (url) => {
-          if (url.includes('-submissions-001')) archiveFetched = true;
+          if (url.includes('-submissions-001')) isArchiveFetched = true;
           if (url.includes('/submissions/CIK0000100030.json')) return { json: PAGED_SUBMISSIONS };
           if (url.includes('-submissions-001')) return { json: PAGED_ARCHIVE };
           throw new Error(`unexpected url ${url}`);
         },
       );
       expect(result.ok).toBe(true);
-      expect(archiveFetched).toBe(false);
+      expect(isArchiveFetched).toBe(false);
       expect(result.result.structured.historyComplete).toBe(false);
       expect(result.result.text).toContain('of 1+ matching');
     });

@@ -101,7 +101,7 @@ function isScraper(path) {
  * The context one test run gets.
  *
  * Built by the harness rather than by hand. The hand-rolled version this
- * replaced carried no `deadline` at all — so `deadlineReached()` compared
+ * replaced carried no `deadline` at all — so `hasDeadlinePassed()` compared
  * against `undefined`, was never true, and every deadline-bounded source was
  * tested with the one branch that bounds its work permanently switched off.
  * `buildContext` derives a soft deadline from the same timeout this script
@@ -128,11 +128,11 @@ function makeContext(entry) {
  * @returns {string[]} The issues; empty when the result is usable.
  */
 function validateResult(result) {
-  /** @type {string[]} */
-  const issues = [];
   if (!result || typeof result !== 'object') {
     return ['sync() did not return an object'];
   }
+  /** @type {string[]} */
+  const issues = [];
   const { documents, stats } = /** @type {{ documents?: unknown, stats?: unknown }} */ (result);
   if (!Array.isArray(documents)) {
     issues.push('missing documents array');
@@ -144,7 +144,8 @@ function validateResult(result) {
   if (Array.isArray(documents) && documents.length > 0) {
     const document = /** @type {Record<string, unknown>} */ (documents[0]);
     for (const field of ['id', 'title', 'text', 'url']) {
-      if (!document[field]) issues.push(`first document missing "${field}"`);
+      const value = document[field];
+      if (!value) issues.push(`first document missing "${field}"`);
     }
   }
   if (Array.isArray(documents) && documents.length === 0) {
@@ -164,16 +165,15 @@ function validateResult(result) {
 function withTimeout(promise, ms) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`Timed out after ${ms / 1000}s`)), ms);
-    promise.then(
-      (value) => {
+    promise
+      .then((value) => {
         clearTimeout(timer);
         resolve(value);
-      },
-      (error) => {
+      })
+      .catch((error) => {
         clearTimeout(timer);
         reject(error);
-      },
-    );
+      });
   });
 }
 

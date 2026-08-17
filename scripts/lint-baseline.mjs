@@ -111,7 +111,8 @@ if (update) {
 /** @type {string[]} */
 const regressions = [];
 const improvable = [];
-for (const key of new Set([...Object.keys(current), ...Object.keys(baseline)])) {
+const trackedRules = new Set([...Object.keys(current), ...Object.keys(baseline)]);
+for (const key of trackedRules) {
   const now = current[key] ?? 0;
   const cap = baseline[key] ?? 0;
   if (now > cap) regressions.push(`  ✗ ${key}: ${now} > baseline ${cap}  (+${now - cap})`);

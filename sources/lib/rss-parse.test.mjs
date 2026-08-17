@@ -55,7 +55,7 @@ describe('attributed opening tags (Atom type="html")', () => {
   it('extracts a title carrying attributes — the jvns.ca live regression', () => {
     const xml = `<entry><title type="html">Moving away from Tailwind</title><link href="https://jvns.ca/x"/><updated>2026-05-14T00:00:00Z</updated><content type="html">body</content></entry>`;
     const items = parseRSS(xml);
-    expect(items.length).toBe(1);
+    expect(items).toHaveLength(1);
     expect(at(items, 0).title).toBe('Moving away from Tailwind');
   });
 
@@ -86,7 +86,7 @@ describe('namespace-prefixed Atom (the HBR live regression)', () => {
         </ns6:entry>
       </ns6:feed>`;
     const items = parseRSS(xml);
-    expect(items.length).toBe(1);
+    expect(items).toHaveLength(1);
     expect(at(items, 0).title).toBe('The Hidden Storage Tax');
     expect(at(items, 0).link).toBe('https://hbr.org/2026/07/storage-tax');
     expect(at(items, 0).description).toBe('A short abstract.');
@@ -135,7 +135,7 @@ describe('JSON Feed', () => {
       ],
     });
     const items = parseRSS(json);
-    expect(items.length).toBe(2);
+    expect(items).toHaveLength(2);
     expect(at(items, 0).title).toBe('Hello');
     expect(at(items, 0).bodyHtml).toBe('<p>Full <em>body</em> here</p>');
     expect(at(items, 0).description).toBe('Short.');

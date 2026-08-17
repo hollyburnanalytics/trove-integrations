@@ -6,12 +6,12 @@ import { advertisedFeeds, query } from './feeds.mjs';
  * A directory context whose fetch returns a canned response.
  *
  * @param {string} body - The response body.
- * @param {boolean} [ok] - Whether the request succeeded.
- * @param {number} [status] - The status code.
+ * @param {number} [status] - The status code; `ok` follows from it, as it does
+ *   on a real Response — there is no such thing as a 404 that succeeded.
  * @returns {ReturnType<typeof makeDirectoryContext>} The context.
  */
-function contextReturning(body, ok = true, status = 200) {
-  return makeDirectoryContext({ ok, status, text: async () => body });
+function contextReturning(body, status = 200) {
+  return makeDirectoryContext({ ok: status < 400, status, text: async () => body });
 }
 
 const RSS =
@@ -115,7 +115,7 @@ describe('feeds directory (resolve)', () => {
   });
 
   it('reports an unreachable address rather than pretending it has no feeds', async () => {
-    const context = contextReturning('', false, 404);
+    const context = contextReturning('', 404);
     await expect(query({ query: 'https://gone.test', limit: 10 }, context)).rejects.toThrow(/404/);
   });
 

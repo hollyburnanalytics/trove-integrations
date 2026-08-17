@@ -112,7 +112,7 @@ const EMPHASIS_MARKERS = { em: '*', i: '*', strong: '**', b: '**' };
 /**
  * Render a fragment in isolation and return it as a string.
  *
- * `atBlockStart` seeds the sink's line position. It matters because a nested
+ * `isAtBlockStart` seeds the sink's line position. It matters because a nested
  * render begins with a fresh sink, and a sink that believes it is at the start
  * of a line eats leading whitespace and escapes leading `#`. Correct for a list
  * item or a blockquote, wrong for a fragment spliced back INTO a line: the
@@ -120,10 +120,10 @@ const EMPHASIS_MARKERS = { em: '*', i: '*', strong: '**', b: '**' };
  * into `ab`.
  * @param {import('node-html-parser').HTMLElement} node - The subtree to render.
  * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
- * @param {boolean} [atBlockStart] - Whether the output starts a block.
+ * @param {boolean} [isAtBlockStart] - Whether the output starts a block.
  */
-function renderToString(node, context, atBlockStart = false) {
-  const sink = createSink(atBlockStart ? '\n' : 'x');
+function renderToString(node, context, isAtBlockStart = false) {
+  const sink = createSink(isAtBlockStart ? '\n' : 'x');
   renderChildren(node, sink, context);
   return sink.toString();
 }
@@ -219,8 +219,8 @@ function renderLink(node, context) {
  * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
  */
 function renderList(tag, node, sink, context) {
-  const ordered = tag === 'ol';
-  const start = Number.parseInt(node.getAttribute('start') ?? '1', 10);
+  const isOrdered = tag === 'ol';
+  const start = Number(node.getAttribute('start') ?? '1');
   const depth = context.listDepth ?? 0;
   const inner = { ...context, listDepth: depth + 1 };
   const indent = '  '.repeat(depth);
@@ -240,7 +240,7 @@ function renderList(tag, node, sink, context) {
     // audit corpus contain one — the Guardian ships empty `<li>` as spacing —
     // and a marker with no content is a list item that says nothing.
     if (!body) continue;
-    const marker = ordered ? `${ordinal}. ` : '- ';
+    const marker = isOrdered ? `${ordinal}. ` : '- ';
     // Continuation lines align under the marker, or Markdown reads them as a new
     // block that ends the list.
     const pad = ' '.repeat(marker.length);

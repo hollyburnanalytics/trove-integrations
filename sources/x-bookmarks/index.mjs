@@ -1,4 +1,4 @@
-import { deadlineReached, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
+import { hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
 
 /**
  * X (Twitter) Bookmarks — your saved posts, synced into Trove.
@@ -99,7 +99,6 @@ async function refreshAccessToken(context) {
   const credentials = context.credentials ?? {};
   const clientId = credentials.X_OAUTH_CLIENT_ID;
   const refreshToken = credentials.X_OAUTH_REFRESH_TOKEN;
-  const clientSecret = credentials.X_OAUTH_CLIENT_SECRET;
   if (!clientId || !refreshToken) {
     throw new Error(
       'X Bookmarks needs X_OAUTH_CLIENT_ID and X_OAUTH_REFRESH_TOKEN in ctx.credentials. ' +
@@ -107,6 +106,7 @@ async function refreshAccessToken(context) {
     );
   }
 
+  const clientSecret = credentials.X_OAUTH_CLIENT_SECRET;
   const form = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
@@ -157,6 +157,30 @@ async function fetchUserId(accessToken) {
 }
 
 /**
+ * The tweets on one page that are new, stopping at the first already stored.
+ *
+ * The bookmarks timeline is newest-first, so the first familiar id means every
+ * tweet below it on this page — and on every later page — is already here.
+ * Counting those as skipped rather than walking them is what keeps a routine
+ * sync to one page.
+ *
+ * @param {XTweet[]} tweets - The page, newest first.
+ * @param {Set<string>} seenIds - Bookmark ids already stored.
+ * @returns {{ tweets: XTweet[], skipped: number, reachedSeen: boolean }} The new
+ *   tweets, how many were passed over, and whether the page ran into the
+ *   already-stored ones.
+ */
+function freshBookmarks(tweets, seenIds) {
+  for (const [index, tweet] of tweets.entries()) {
+    if (seenIds.has(tweet.id)) {
+      // This id and every older one on the page.
+      return { tweets: tweets.slice(0, index), skipped: tweets.length - index, reachedSeen: true };
+    }
+  }
+  return { tweets, skipped: 0, reachedSeen: false };
+}
+
+/**
  * Fetch one page of bookmarks (newest-first).
  *
  * @param {string} accessToken - The user-context token.
@@ -187,7 +211,8 @@ async function fetchBookmarksPage(accessToken, userId, paginationToken) {
 function indexUsers(includes) {
   /** @type {Map<string, XUser>} */
   const usersById = new Map();
-  for (const user of includes?.users ?? []) {
+  const users = includes?.users ?? [];
+  for (const user of users) {
     if (user?.id) usersById.set(user.id, user);
   }
   return usersById;
@@ -217,9 +242,9 @@ function mapBookmark(tweet, usersById) {
   const author = usersById.get(tweet.author_id ?? '');
   const handle = author?.username;
   const text = htmlToText(tweet.text ?? '');
-  const hashtags = (tweet.entities?.hashtags ?? []).flatMap((entry) =>
-    entry.tag ? [entry.tag] : [],
-  );
+  const hashtags = (tweet.entities?.hashtags ?? [])
+    .map((entry) => entry.tag)
+    .filter((tag) => tag !== undefined);
   return {
     id: stableId('x-bm', tweet.id),
     title: buildTitle(text, handle),
@@ -256,7 +281,7 @@ async function collectNewBookmarks(context, accessToken, userId, seenIds) {
   let paginationToken;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    if (deadlineReached(context)) {
+    if (hasDeadlinePassed(context)) {
       context.log.info('Time budget reached — resuming next run');
       break;
     }
@@ -264,18 +289,16 @@ async function collectNewBookmarks(context, accessToken, userId, seenIds) {
     const usersById = indexUsers(body.includes);
     const tweets = Array.isArray(body.data) ? body.data : [];
 
-    let hitSeen = false;
-    for (const [index, tweet] of tweets.entries()) {
-      if (seenIds.has(tweet.id)) {
-        skipped += tweets.length - index; // this id + every older one on the page
-        hitSeen = true;
-        break;
-      }
+    const fresh = freshBookmarks(tweets, seenIds);
+    for (const tweet of fresh.tweets) {
       documents.push(mapBookmark(tweet, usersById));
       newIdsNewestFirst.push(tweet.id);
     }
+    skipped += fresh.skipped;
     context.progress(documents.length, `${documents.length} new bookmarks`);
-    if (hitSeen) break;
+    // A page that reached an id already stored is the end of what is new: the
+    // timeline is newest-first, so everything below it is older and already here.
+    if (fresh.reachedSeen) break;
 
     paginationToken = body.meta?.next_token;
     if (!paginationToken) break;

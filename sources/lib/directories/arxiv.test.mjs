@@ -21,12 +21,12 @@ function listSets(...pairs) {
  * A directory context whose fetch answers with `body` as text.
  *
  * @param {string} body - The response body.
- * @param {boolean} [ok] - Whether the request succeeded.
- * @param {number} [status] - The status code.
+ * @param {number} [status] - The status code; `ok` follows from it, as it does
+ *   on a real Response — there is no such thing as a 404 that succeeded.
  * @returns {ReturnType<typeof makeDirectoryContext>} The context.
  */
-function contextReturning(body, ok = true, status = 200) {
-  return makeDirectoryContext({ ok, status, text: async () => body });
+function contextReturning(body, status = 200) {
+  return makeDirectoryContext({ ok: status < 400, status, text: async () => body });
 }
 
 describe('specToCategory', () => {
@@ -111,7 +111,7 @@ describe('arxiv directory', () => {
 
   it('reports an unreachable archive rather than an empty taxonomy', async () => {
     // "arXiv is down" and "arXiv has no such subject" are different claims.
-    const context = contextReturning('', false, 503);
+    const context = contextReturning('', 503);
     await expect(query({ query: 'cs', limit: 5 }, context)).rejects.toThrow(/503/);
   });
 });

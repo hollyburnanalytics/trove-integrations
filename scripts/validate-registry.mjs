@@ -72,7 +72,8 @@ function ok(message) {
 function discoverSources() {
   /** @type {{ manifest: Record<string, any>, hasCode: boolean, path: string, directory: string }[]} */
   const sources = [];
-  for (const name of readdirSync(join(ROOT, 'sources'))) {
+  const sourceDirectories = readdirSync(join(ROOT, 'sources'));
+  for (const name of sourceDirectories) {
     if (name === 'lib') continue;
     const directory = join(ROOT, 'sources', name);
     if (!statSync(directory).isDirectory()) continue;
@@ -121,7 +122,7 @@ for (const c of fsSources) {
 for (const [id, paths] of idCounts) {
   if (paths.length > 1) {
     warn(
-      `Source id "${id}" is used by ${paths.length} sources (${paths.join(', ')}) — ids must be unique across the catalog, since identity is {catalog.id}/{id}`,
+      `Source id "${id}" is used by ${paths.length} sources (${paths.join(', ')}) — ids must be unique across the catalog, since a source's identity is its catalog id and its own id together`,
     );
   }
 }
@@ -183,8 +184,43 @@ for (const { manifest, hasCode, path } of fsSources) {
   for (const error of validateDirectories(manifest, directoryProviderExists)) {
     warn(`${path}/manifest.json: ${error}`);
   }
-  for (const error of validateManifest(manifest, { implemented: hasCode })) {
+  const manifestErrors = validateManifest(manifest, { implemented: hasCode });
+  for (const error of manifestErrors) {
     warn(`${path}/manifest.json: ${error}`);
+  }
+}
+
+/**
+ * Report (and with `--fix`, correct) every registry field that disagrees with
+ * the manifest.
+ *
+ * @param {string} id - The source id, for the message.
+ * @param {Record<string, unknown>} regEntry - The registry's copy.
+ * @param {Record<string, unknown>} desired - What the manifest says it should be.
+ * @returns {void} Nothing; it warns, and writes when fixing.
+ */
+function syncEntryFields(id, regEntry, desired) {
+  for (const [key, value] of Object.entries(desired)) {
+    if (JSON.stringify(regEntry[key]) === JSON.stringify(value)) continue;
+    warn(`${id}: registry ${key} out of sync with manifest`);
+    if (fix) regEntry[key] = value;
+  }
+}
+
+/**
+ * Report (and with `--fix`, remove) registry keys the manifest no longer
+ * declares — e.g. the renamed `auth`.
+ *
+ * @param {string} id - The source id, for the message.
+ * @param {Record<string, unknown>} regEntry - The registry's copy.
+ * @param {Record<string, unknown>} desired - What the manifest declares.
+ * @returns {void} Nothing; it warns, and deletes when fixing.
+ */
+function dropStaleFields(id, regEntry, desired) {
+  for (const key of Object.keys(regEntry)) {
+    if (Object.hasOwn(desired, key) || DERIVED_KEYS.has(key)) continue;
+    warn(`${id}: registry has stale field "${key}"`);
+    if (fix) Reflect.deleteProperty(regEntry, key);
   }
 }
 
@@ -204,33 +240,24 @@ for (const [id, regEntry] of registryById) {
   const desired = { ...fsEntry.manifest, path: fsEntry.path };
   for (const key of DERIVED_KEYS) delete desired[key];
 
-  for (const [key, value] of Object.entries(desired)) {
-    if (JSON.stringify(regEntry[key]) !== JSON.stringify(value)) {
-      warn(`${id}: registry ${key} out of sync with manifest`);
-      if (fix) regEntry[key] = value;
-    }
-  }
-  // Drop registry keys the manifest no longer declares (e.g. the renamed `auth`).
-  for (const key of Object.keys(regEntry)) {
-    if (!(key in desired) && !DERIVED_KEYS.has(key)) {
-      warn(`${id}: registry has stale field "${key}"`);
-      if (fix) Reflect.deleteProperty(regEntry, key);
-    }
-  }
+  syncEntryFields(id, regEntry, desired);
+  dropStaleFields(id, regEntry, desired);
 }
 
 // --- Check 5: orphans ---
 for (const [id, fsEntry] of fsById) {
-  if (!registryById.has(id)) {
-    warn(`Manifest "${id}" at ${fsEntry.path} not found in registry`);
-    if (fix) {
-      registry.sources.push({
-        ...fsEntry.manifest,
-        path: fsEntry.path,
-        has_code: fsEntry.hasCode,
-      });
-      ok(`Added "${id}" to registry`);
-    }
+  if (registryById.has(id)) {
+    continue;
+  }
+
+  warn(`Manifest "${id}" at ${fsEntry.path} not found in registry`);
+  if (fix) {
+    registry.sources.push({
+      ...fsEntry.manifest,
+      path: fsEntry.path,
+      has_code: fsEntry.hasCode,
+    });
+    ok(`Added "${id}" to registry`);
   }
 }
 
@@ -277,4 +304,4 @@ if (fix && issues.length > 0) {
   console.log(`\n✓ Fixed ${issues.length} issue(s) and wrote registry.json`);
 }
 
-process.exit(issues.length > 0 && !fix ? 1 : 0);
+process.exit(!fix && issues.length > 0 ? 1 : 0);

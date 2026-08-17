@@ -18,7 +18,7 @@ const wcatPage = (items) => `<html><body><ul>${items.join('')}</ul></body></html
 
 // Serve a first WCAT page then empty pages (pagination terminator).
 const wcatResponder = (items) => (url) => ({
-  text: /\/page\/[2-9]/.test(url) ? wcatPage([]) : wcatPage(items),
+  text: wcatPage(/\/page\/[2-9]/.test(url) ? [] : items),
 });
 
 const WSBC_LANDING = {
@@ -93,9 +93,9 @@ describe('bc-workers-comp-decisions MCP server', () => {
         (url) => {
           seenUrl = url;
           return {
-            text: /\/page\/[2-9]/.test(url)
-              ? wcatPage([])
-              : wcatPage([wcatItem('2007-04002', 'Dec 20, 2007', 'x')]),
+            text: wcatPage(
+              /\/page\/[2-9]/.test(url) ? [] : [wcatItem('2007-04002', 'Dec 20, 2007', 'x')],
+            ),
           };
         },
       );

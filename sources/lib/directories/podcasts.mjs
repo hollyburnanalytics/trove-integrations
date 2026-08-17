@@ -146,7 +146,7 @@ export async function lookup(url, context) {
   const endpoint = new URL(`${BASE}/podcasts/byfeedurl`);
   endpoint.searchParams.set('url', url);
 
-  const response = await context.fetch(endpoint.toString());
+  const response = await context.fetch(endpoint.href);
   // 404 is a real answer here — the index has never heard of this feed — and is
   // not worth failing a repair attempt over.
   if (response.status === 404) return;

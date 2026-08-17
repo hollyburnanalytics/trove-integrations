@@ -22,7 +22,7 @@ function installFetch() {
 
 // Faithful by default: this registry entry is process-global, so a hard-coded
 // `false` would silently disable deadline handling in every other suite that
-// reaches `deadlineReached` through this specifier. Tests override explicitly.
+// reaches `hasDeadlinePassed` through this specifier. Tests override explicitly.
 
 // Spread the real module first — anything omitted here becomes `undefined` for
 // every OTHER source importing this specifier, not just for this suite.
@@ -35,7 +35,7 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => {
   return {
     ...real,
     /** @type {(context: import('../lib/types.d.ts').SyncContext) => boolean} */
-    deadlineReached: vi.fn((context) => real.deadlineReached(context)),
+    hasDeadlinePassed: vi.fn((context) => real.hasDeadlinePassed(context)),
     // The REAL implementation, not a stand-in.
     //
     // This was a tag-stripper — `parse(html).textContent` — and it broke the
@@ -66,7 +66,7 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => {
 
 // The spy lives in the mocked module now — `vi.mock` is hoisted, so it cannot
 // be a module-scope binding declared beside it.
-const { deadlineReached } = await import('../lib/feeds.mjs');
+const { hasDeadlinePassed } = await import('../lib/feeds.mjs');
 const { sync } = await import('./index.mjs');
 
 const RELEASE = {
@@ -191,7 +191,7 @@ describe('openstax source', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     installFetch();
-    vi.mocked(deadlineReached).mockReturnValue(false);
+    vi.mocked(hasDeadlinePassed).mockReturnValue(false);
     route({});
   });
   afterEach(() => {
@@ -238,7 +238,7 @@ describe('openstax source', () => {
   });
 
   it('stops before any book when the deadline has already passed', async () => {
-    vi.mocked(deadlineReached).mockReturnValue(true);
+    vi.mocked(hasDeadlinePassed).mockReturnValue(true);
     const result = await sync(context());
     expect(result.documents).toHaveLength(0);
     expect(checkpoint(result.cursor).partial).toBeUndefined();
@@ -246,7 +246,7 @@ describe('openstax source', () => {
 
   it('records a page-level partial cursor when the deadline interrupts a book', async () => {
     // false (sync pre-book), false (page 0), true (page 1 → interrupt)
-    vi.mocked(deadlineReached)
+    vi.mocked(hasDeadlinePassed)
       .mockReturnValueOnce(false)
       .mockReturnValueOnce(false)
       .mockReturnValueOnce(true);

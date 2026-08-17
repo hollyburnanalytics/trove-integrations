@@ -112,10 +112,10 @@ function pagedSeries(total, { aggregated = false, preAggregationCount = 99_999 }
     const offset = Number(parameters.get('offset') ?? 0);
     const limit = Number(parameters.get('limit') ?? 24);
     const slice = all.slice(offset, offset + limit);
-    const fits = slice.length < limit;
+    const isFits = slice.length < limit;
     return {
       json: {
-        count: aggregated && !fits ? preAggregationCount : total,
+        count: aggregated && !isFits ? preAggregationCount : total,
         observations: slice,
       },
     };
@@ -487,14 +487,14 @@ describe('fred MCP server', () => {
     });
 
     it('rejects upsampling by name instead of forwarding a doomed request', async () => {
-      let fetchedObservations = false;
+      let isFetchedObservations = false;
       const result = await callTool(
         server,
         'get_observations',
         { series_ids: ['UNRATE'], frequency: 'd' },
         fredRoutes({
           onUrl: (url) => {
-            if (url.includes('/series/observations')) fetchedObservations = true;
+            if (url.includes('/series/observations')) isFetchedObservations = true;
           },
         }),
       );
@@ -502,7 +502,7 @@ describe('fred MCP server', () => {
       expect(result.retryable).toBe(false);
       expect(result.error).toContain('monthly');
       expect(result.error).toContain('daily');
-      expect(fetchedObservations).toBe(false);
+      expect(isFetchedObservations).toBe(false);
     });
 
     // Measured against the live API: with `frequency` set, FRED reports the
@@ -756,7 +756,7 @@ describe('fred MCP server', () => {
         declaredTotal ??= block.availableInRange;
         dates.push(...block.observations.map((o) => o.date));
         pages += 1;
-        if (!block.truncated || !Number.isInteger(block.nextOffset)) break;
+        if (!block.truncated || !Number.isSafeInteger(block.nextOffset)) break;
         offset = block.nextOffset;
         expect(pages).toBeLessThan(20);
       }
@@ -783,7 +783,7 @@ describe('fred MCP server', () => {
         expect(block.availableInRange).not.toBe(99_999);
         dates.push(...block.observations.map((o) => o.date));
         pages += 1;
-        if (!block.truncated || !Number.isInteger(block.nextOffset)) break;
+        if (!block.truncated || !Number.isSafeInteger(block.nextOffset)) break;
         offset = block.nextOffset;
         expect(pages).toBeLessThan(10);
       }

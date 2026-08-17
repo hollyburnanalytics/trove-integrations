@@ -112,8 +112,8 @@ const INDICATOR_SEARCH = {
       indicator_id: 1_269_972,
       snippet: '',
       description: '',
-      score: 0.852_968_811_988_830_6,
-      popularity: 0.568_736,
+      score: 0.8529688119888306,
+      popularity: 0.568736,
       n_charts: 1,
       catalog_path: 'grapher/animal_welfare/2026-06-11/eggs/eggs#n_eggs_free_range',
       metadata: {
@@ -784,7 +784,7 @@ describe('owid MCP server', () => {
       const result = await callTool(
         server,
         'get_chart_data',
-        { slug: 'blank-country', countries: ['   '] },
+        { slug: 'blank-country', countries: [' '.repeat(3)] },
         (url) => {
           if (url.includes('.csv')) {
             seen = url;
@@ -1059,14 +1059,14 @@ describe('owid MCP server', () => {
       // The chart CSV 403s for this data and the catalog omits the table, but
       // the indicator endpoint hands it over regardless. Reading it here would
       // make this toolkit the one way around a licence its other tools respect.
-      let fetchedData = false;
+      let isFetchedData = false;
       const result = await callTool(
         server,
         'get_indicator_data',
         { indicator_id: 777_002 },
         (url) => {
           if (url.includes('.data.json')) {
-            fetchedData = true;
+            isFetchedData = true;
             return { json: DATA };
           }
           return { json: META({ id: 777_002, nonRedistributable: true }) };
@@ -1076,7 +1076,7 @@ describe('owid MCP server', () => {
       expect(result.error).toMatch(/non-redistributable/i);
       expect(result.retryable).toBe(false);
       // The gate is checked BEFORE the data is fetched, not after.
-      expect(fetchedData).toBe(false);
+      expect(isFetchedData).toBe(false);
     });
 
     it('filters years for real, with no snapping', async () => {

@@ -45,7 +45,7 @@ const MAX_LINKS = 20;
  * @returns {string | undefined} The absolute feed URL.
  */
 function feedLinkUrl(link, baseUrl) {
-  const [declared = ''] = (link.getAttribute('type') || '').toLowerCase().split(';');
+  const [declared = ''] = (link.getAttribute('type') || '').toLowerCase().split(';', 1);
   const type = declared.trim();
   const href = link.getAttribute('href');
   if (!href || !FEED_LINK_TYPES.has(type)) return;
