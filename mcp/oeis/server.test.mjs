@@ -84,41 +84,27 @@ describe('oeis MCP server', () => {
       expect(result.result.text).toMatch(/no oeis sequences matched/i);
     });
 
-    it('maps a 500 to a retryable TOOL_ERROR', async () => {
-      const result = await callTool(
-        server,
-        'search_sequences',
-        { query: 'fib' },
-        { status: 500, text: 'boom' },
-      );
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
-      expect(result.retryable).toBe(true);
-    });
-
-    it('maps a 429 to a retryable TOOL_ERROR', async () => {
-      const result = await callTool(
-        server,
-        'search_sequences',
-        { query: 'fib' },
-        { status: 429, text: 'slow down' },
-      );
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
-      expect(result.retryable).toBe(true);
-    });
-
-    it('maps a 400 to a non-retryable TOOL_ERROR', async () => {
-      const result = await callTool(
-        server,
-        'search_sequences',
-        { query: 'fib' },
-        { status: 400, text: 'bad' },
-      );
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
-      expect(result.retryable).toBe(false);
-    });
+    // One claim per status, tabulated: whether an upstream code is worth
+    // retrying is the whole contract here, and a table shows the mapping at a
+    // glance where three near-identical blocks hid it.
+    it.each([
+      { status: 500, text: 'boom', retryable: true },
+      { status: 429, text: 'slow down', retryable: true },
+      { status: 400, text: 'bad', retryable: false },
+    ])(
+      'maps a $status to a $retryable-to-retry TOOL_ERROR',
+      async ({ status, text, retryable }) => {
+        const result = await callTool(
+          server,
+          'search_sequences',
+          { query: 'fib' },
+          { status, text },
+        );
+        expect(result.ok).toBe(false);
+        expect(result.code).toBe('TOOL_ERROR');
+        expect(result.retryable).toBe(retryable);
+      },
+    );
 
     it('rejects a limit above the maximum before fetching', async () => {
       const result = await callTool(server, 'search_sequences', { query: 'fib', limit: 50 });

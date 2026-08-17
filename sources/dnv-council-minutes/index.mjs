@@ -54,6 +54,32 @@ const EARLIEST_MEETING_DAY = '2026-01-01';
  */
 
 /**
+ * The documents one meeting still owes, skipping videos and anything already
+ * stored or already queued by an earlier meeting that listed the same paper.
+ *
+ * @param {Meeting} meeting - The meeting to read.
+ * @param {Set<string>} seenNumbers - Document numbers already synced.
+ * @param {Set<string>} queued - Numbers this run has already queued, mutated here.
+ * @returns {WorkItem[]} Its pending documents.
+ */
+function pendingForMeeting(meeting, seenNumbers, queued) {
+  /** @type {WorkItem[]} */
+  const items = [];
+  const meetingDocuments = meeting.meetingDocuments ?? [];
+  for (const document of meetingDocuments) {
+    const { docNumber, docType } = document;
+    // A video is a link, not a document, and a number already stored (or
+    // already queued by an earlier meeting that listed the same paper) is not
+    // work.
+    if (!docNumber || docType === 'Video') continue;
+    if (seenNumbers.has(docNumber) || queued.has(docNumber)) continue;
+    queued.add(docNumber);
+    items.push({ meeting, document });
+  }
+  return items;
+}
+
+/**
  * Flatten the meeting index into per-document work items: video links (external,
  * not documents) and already-synced document numbers are dropped, and the rest
  * are ordered oldest-first so the backfill advances chronologically.
@@ -71,13 +97,7 @@ function pendingDocuments(meetings, seenNumbers) {
     // now; it decides what happens if that ever stops being true, and an
     // undated meeting cannot be shown to fall inside the window.
     if (!meeting.date || meeting.date < EARLIEST_MEETING_DAY) continue;
-    for (const document of meeting.meetingDocuments ?? []) {
-      const { docNumber, docType } = document;
-      if (!docNumber || docType === 'Video') continue;
-      if (seenNumbers.has(docNumber) || queued.has(docNumber)) continue;
-      queued.add(docNumber);
-      items.push({ meeting, document });
-    }
+    items.push(...pendingForMeeting(meeting, seenNumbers, queued));
   }
   return items.toSorted((a, b) => a.meeting.date.localeCompare(b.meeting.date));
 }

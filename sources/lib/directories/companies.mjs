@@ -58,12 +58,12 @@ export function parseRegistry(payload) {
  */
 export function matchRank(row, term) {
   const ticker = row.ticker.toLowerCase();
-  const name = row.name.toLowerCase();
   if (ticker === term) return 0;
   if (ticker.startsWith(term)) return 1;
-  if (name.toLowerCase().startsWith(term)) return 2;
+  const name = row.name.toLowerCase();
+  if (name.startsWith(term)) return 2;
   if (name.includes(term)) return 3;
-  return Number.POSITIVE_INFINITY;
+  return Infinity;
 }
 
 /**

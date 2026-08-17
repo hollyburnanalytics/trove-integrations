@@ -148,7 +148,7 @@ describe('dnv-council-minutes source', () => {
   it('throws when the meeting index is unreachable', async () => {
     fetchPage.mockRejectedValue(new Error('HTTP 503 fetching index'));
 
-    expect(sync(makeContext())).rejects.toThrow('HTTP 503');
+    await expect(sync(makeContext())).rejects.toThrow('HTTP 503');
   });
 
   // --- the 2026 cutoff ---

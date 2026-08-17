@@ -105,46 +105,18 @@ describe('hathitrust MCP server', () => {
       expect(result.result.text).toMatch(/no digitised copy/i);
     });
 
-    it('maps a 404 to a non-retryable tool error', async () => {
-      const result = await callTool(
-        server,
-        'lookup_volume',
-        { isbn: '9780262033848' },
-        {
-          status: 404,
-        },
-      );
+    // One claim per status, tabulated: whether an upstream code is worth
+    // retrying is the whole contract here, and a table shows the mapping at a
+    // glance where three near-identical blocks hid it.
+    it.each([
+      { status: 404, retryable: false },
+      { status: 400, retryable: false },
+      { status: 500, retryable: true },
+    ])('maps a $status to a $retryable-to-retry tool error', async ({ status, retryable }) => {
+      const result = await callTool(server, 'lookup_volume', { isbn: '9780262033848' }, { status });
       expect(result.ok).toBe(false);
       expect(result.code).toBe('TOOL_ERROR');
-      expect(result.retryable).toBe(false);
-    });
-
-    it('maps a 400 to a non-retryable tool error', async () => {
-      const result = await callTool(
-        server,
-        'lookup_volume',
-        { isbn: '9780262033848' },
-        {
-          status: 400,
-        },
-      );
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
-      expect(result.retryable).toBe(false);
-    });
-
-    it('maps a 500 to a retryable tool error', async () => {
-      const result = await callTool(
-        server,
-        'lookup_volume',
-        { isbn: '9780262033848' },
-        {
-          status: 500,
-        },
-      );
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
-      expect(result.retryable).toBe(true);
+      expect(result.retryable).toBe(retryable);
     });
 
     it('rejects when no identifier is provided', async () => {

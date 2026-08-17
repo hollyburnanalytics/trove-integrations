@@ -67,7 +67,8 @@ const NEEDS_INPUT = {
 function discoverSources() {
   /** @type {Source[]} */
   const found = [];
-  for (const entry of readdirSync(SOURCES_DIR, { withFileTypes: true })) {
+  const entries = readdirSync(SOURCES_DIR, { withFileTypes: true });
+  for (const entry of entries) {
     if (!entry.isDirectory() || entry.name === 'lib') continue;
     const directory = path.join(SOURCES_DIR, entry.name);
     const manifest = JSON.parse(readFileSync(path.join(directory, 'manifest.json'), 'utf8'));
@@ -158,9 +159,15 @@ for (const source of sources) {
 if (asJson) {
   console.log(JSON.stringify(results, undefined, 2));
 } else {
-  // flatMap, not filter: only the former carries the `status === 'ok'` narrowing
-  // out to the reductions below, which read counts only that arm has.
-  const ran = results.flatMap((r) => (r.status === 'ok' && r.fetched > 0 ? [r] : []));
+  // Collected in a loop rather than filtered: the reductions below read counts
+  // that only the `status === 'ok'` arm has, and neither `filter` nor `flatMap`
+  // carries that narrowing out of the callback without a type predicate. The
+  // loop narrows where it stands, and says what it keeps.
+  /** @type {CountedRow[]} */
+  const ran = [];
+  for (const row of results) {
+    if (row.status === 'ok' && row.fetched > 0) ran.push(row);
+  }
   const totalDocuments = ran.reduce((sum, r) => sum + r.fetched, 0);
   const totalDated = ran.reduce((sum, r) => sum + r.dated, 0);
   const gaps = ran.filter((r) => r.undated > 0);

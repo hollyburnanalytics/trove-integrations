@@ -247,8 +247,9 @@ function processFiling(context, filing, cik, companyName, upperTicker) {
  * @returns {Promise<TickerEntry | undefined>} The entry, or nothing for an unknown ticker.
  */
 async function resolveTicker(context, upperTicker, cachedTickers, tickerMapReference) {
-  if (cachedTickers[upperTicker]) {
-    return cachedTickers[upperTicker];
+  const alreadyResolved = cachedTickers[upperTicker];
+  if (alreadyResolved) {
+    return alreadyResolved;
   }
   if (!tickerMapReference.map) {
     context.log.info('Loading SEC ticker map...');

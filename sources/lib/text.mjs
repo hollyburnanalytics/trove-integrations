@@ -18,13 +18,13 @@ import { createHash } from 'node:crypto';
  */
 export function stripHtmlTags(input) {
   let result = '';
-  let inTag = false;
+  let isInTag = false;
   for (const char of input) {
     if (char === '<') {
-      inTag = true;
+      isInTag = true;
     } else if (char === '>') {
-      inTag = false;
-    } else if (!inTag) {
+      isInTag = false;
+    } else if (!isInTag) {
       result += char;
     }
   }
@@ -114,7 +114,7 @@ const NAMED_ENTITIES = {
 };
 
 /** @type {(match: string, digits: string) => string} */
-const fromDecimal = (_, digits) => String.fromCodePoint(Number.parseInt(digits, 10));
+const fromDecimal = (_, digits) => String.fromCodePoint(Number(digits));
 
 /** @type {(match: string, hex: string) => string} */
 const fromHex = (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16));
@@ -127,14 +127,18 @@ const fromHex = (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16));
  */
 export function decodeHtmlEntities(string_) {
   let result = string_
-    .replaceAll(/&#(\d+);/g, fromDecimal)
-    .replaceAll(/&#x([0-9a-fA-F]+);/g, fromHex)
+    .replaceAll(/&#(\d+);/g, (match, digits) => fromDecimal(match, digits))
+    .replaceAll(/&#x([0-9a-fA-F]+);/g, (match, hex) => fromHex(match, hex))
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')
     .replaceAll('&quot;', '"')
     .replaceAll('&apos;', "'");
   for (const [entity, char] of Object.entries(NAMED_ENTITIES)) {
-    result = result.replaceAll(entity, char);
+    // A replacer function, not the string: a bare replacement is scanned for
+    // `$&`-style patterns, and these characters come from a table rather than a
+    // literal. None of them holds a `$` today, and nothing stops one being
+    // added.
+    result = result.replaceAll(entity, () => char);
   }
   return result.replaceAll('&amp;', '&'); // amp last so we don't double-decode
 }

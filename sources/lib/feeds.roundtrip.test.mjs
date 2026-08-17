@@ -28,11 +28,11 @@ function streamBody(content) {
     headers: new Headers(),
     body: {
       getReader: () => {
-        let done = false;
+        let isDone = false;
         return {
           read: () => {
-            if (done) return Promise.resolve({ done: true, value: undefined });
-            done = true;
+            if (isDone) return Promise.resolve({ done: true, value: undefined });
+            isDone = true;
             return Promise.resolve({ done: false, value: encoded });
           },
         };

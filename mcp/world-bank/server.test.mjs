@@ -494,7 +494,7 @@ describe('world-bank MCP server', () => {
         declaredTotal ??= structured.total;
         years.push(...structured.observations.map((o) => o.year));
         pages += 1;
-        if (!structured.truncated || !Number.isInteger(structured.nextPage)) break;
+        if (!structured.truncated || !Number.isSafeInteger(structured.nextPage)) break;
         page = structured.nextPage;
         expect(pages).toBeLessThan(10);
       }

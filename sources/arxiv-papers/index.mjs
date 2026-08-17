@@ -1,5 +1,5 @@
 import { stringList } from '../lib/constants.mjs';
-import { deadlineReached, decodeHtmlEntities, fetchPage, safeDate } from '../lib/feeds.mjs';
+import { decodeHtmlEntities, fetchPage, hasDeadlinePassed, safeDate } from '../lib/feeds.mjs';
 import { advanceDateWatermark, readDateWatermark } from '../lib/watermark.mjs';
 
 /** Results per arXiv API page. */
@@ -52,7 +52,7 @@ function entryToDocument(entryXml) {
 
   return {
     documentId: `arxiv-${paperId}`,
-    publishedMs: published ? new Date(published).getTime() : Number.NaN,
+    publishedMs: published ? new Date(published).getTime() : NaN,
     doc: {
       id: `arxiv-${paperId}`,
       title,
@@ -128,7 +128,7 @@ async function syncQuery(context, query, accumulators) {
   const encoded = encodeURIComponent(query);
 
   for (let page = 0; page < MAX_PAGES_PER_QUERY; page++) {
-    if (deadlineReached(context)) {
+    if (hasDeadlinePassed(context)) {
       context.log.info('Time budget reached while paging arXiv — resuming next run');
       return;
     }
@@ -172,13 +172,13 @@ export async function sync(context) {
   /** @type {Set<string>} */
   const seenIds = new Set();
   const accumulators = { lastDate, seenIds, documents, publishedTimes };
-  let anyFailed = false;
+  let isAnyFailed = false;
 
   for (const query of queries) {
     try {
       await syncQuery(context, query, accumulators);
     } catch (error) {
-      anyFailed = true;
+      isAnyFailed = true;
       context.log.warn(
         `Failed query "${query}": ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -192,7 +192,7 @@ export async function sync(context) {
     previous: context.cursor,
     maxIso:
       publishedTimes.length > 0 ? new Date(Math.max(...publishedTimes)).toISOString() : undefined,
-    anyFailed,
+    anyFailed: isAnyFailed,
   });
 
   return { documents, cursor, stats: { fetched: documents.length } };

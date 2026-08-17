@@ -118,7 +118,7 @@ const AQHI_STATIONS_BODY = {
   features: [
     {
       id: 'JBRIK',
-      geometry: { type: 'Point', coordinates: [-123.113_889, 49.261_111] },
+      geometry: { type: 'Point', coordinates: [-123.113889, 49.261111] },
       properties: { location_id: 'JBRIK', location_name_en: 'Metro Vancouver - NW' },
     },
     {
@@ -187,7 +187,7 @@ const SWOB_STATIONS_BODY = {
   features: [
     {
       id: 'PT-ATK',
-      geometry: { type: 'Point', coordinates: [-123.264_704, 49.330_352] },
+      geometry: { type: 'Point', coordinates: [-123.264704, 49.330352] },
       properties: { name: 'POINT ATKINSON' },
     },
     {

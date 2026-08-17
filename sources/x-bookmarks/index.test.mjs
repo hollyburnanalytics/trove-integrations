@@ -69,14 +69,14 @@ function tweet(id, text, authorId, hashtags = []) {
  * A JSON response, as far as this source reads one.
  *
  * @param {unknown} body - What `.json()` resolves to.
- * @param {boolean} [ok] - Whether the request succeeded.
- * @param {number} [status] - The status code.
+ * @param {number} [status] - The status code; `ok` follows from it, as it does
+ *   on a real Response — there is no such thing as a 404 that succeeded.
  * @returns {Promise<Response>} The response.
  */
-function jsonResponse(body, ok = true, status = 200) {
+function jsonResponse(body, status = 200) {
   return Promise.resolve(
     /** @type {Response} */ (
-      /** @type {unknown} */ ({ ok, status, json: () => Promise.resolve(body) })
+      /** @type {unknown} */ ({ ok: status < 400, status, json: () => Promise.resolve(body) })
     ),
   );
 }
@@ -85,18 +85,18 @@ function jsonResponse(body, ok = true, status = 200) {
  * Install a fetch mock answering token / users-me / bookmarks (paged).
  *
  * @param {object} [options] - What the mock should answer with.
- * @param {boolean} [options.tokenOk] - Whether the refresh grant succeeds.
- * @param {number} [options.tokenStatus] - The grant's status code.
+ * @param {number} [options.tokenStatus] - The grant's status code; whether it
+ *   succeeded follows from it.
  * @param {Page[]} [options.pages] - One body per bookmarks request, in order.
  * @returns {string[]} Every URL requested, in call order.
  */
-function installFetch({ tokenOk = true, tokenStatus = 200, pages = [] } = {}) {
+function installFetch({ tokenStatus = 200, pages = [] } = {}) {
   /** @type {string[]} */
   const calls = [];
   let pageIndex = 0;
   setFetch((url) => {
     calls.push(url);
-    if (url.includes('/2/oauth2/token')) return jsonResponse(TOKEN_BODY, tokenOk, tokenStatus);
+    if (url.includes('/2/oauth2/token')) return jsonResponse(TOKEN_BODY, tokenStatus);
     if (url.includes('/bookmarks')) {
       const body = pages[pageIndex] ?? { data: [] };
       pageIndex += 1;
@@ -228,7 +228,7 @@ describe('x-bookmarks source', () => {
   });
 
   it('throws a token-free error when the refresh grant is rejected', async () => {
-    installFetch({ tokenOk: false, tokenStatus: 400 });
+    installFetch({ tokenStatus: 400 });
     await expect(sync(makeContext())).rejects.toThrow(/X_OAUTH_REFRESH_TOKEN/);
     await expect(sync(makeContext())).rejects.not.toThrow(/refresh-token-abc/);
   });

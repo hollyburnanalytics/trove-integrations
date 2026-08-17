@@ -38,7 +38,7 @@ export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * @param {import('./types.d.ts').SyncContext} context - The harness context.
  * @returns {boolean} True once the soft budget is spent.
  */
-export function deadlineReached(context) {
+export function hasDeadlinePassed(context) {
   return typeof context.deadline === 'number' && Date.now() >= context.deadline;
 }
 
@@ -325,11 +325,11 @@ export async function syncFeedArticles(
   const documents = [];
   /** @type {number[]} */
   const dates = [];
-  let stoppedEarly = false;
+  let isStoppedEarly = false;
   for (const [index, item] of fresh.entries()) {
-    if (deadlineReached(context)) {
+    if (hasDeadlinePassed(context)) {
       context.log.info('Time budget reached — resuming next run');
-      stoppedEarly = true;
+      isStoppedEarly = true;
       break;
     }
     documents.push(
@@ -350,7 +350,7 @@ export async function syncFeedArticles(
     cursor,
     stats: {
       fetched: documents.length,
-      remaining: stoppedEarly ? fresh.length - documents.length : 0,
+      remaining: isStoppedEarly ? fresh.length - documents.length : 0,
       ...undatedStats(documents),
     },
   };

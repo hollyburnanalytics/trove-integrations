@@ -169,16 +169,14 @@ async function exchangeCode({ code, clientId, clientSecret, redirectUri, codeVer
  */
 async function main() {
   const clientId = readOption('client-id', 'X_OAUTH_CLIENT_ID');
-  const clientSecret = readOption('client-secret', 'X_OAUTH_CLIENT_SECRET');
-  const redirectUri = readOption('redirect-uri', 'X_OAUTH_REDIRECT_URI') ?? DEFAULT_REDIRECT_URI;
-  const manual = argv.includes('--manual');
-
   if (!clientId) {
     throw new Error(
       'Set X_OAUTH_CLIENT_ID (env or --client-id=...). See the header of this file for usage.',
     );
   }
 
+  const clientSecret = readOption('client-secret', 'X_OAUTH_CLIENT_SECRET');
+  const redirectUri = readOption('redirect-uri', 'X_OAUTH_REDIRECT_URI') ?? DEFAULT_REDIRECT_URI;
   const codeVerifier = base64Url(randomBytes(48));
   const codeChallenge = base64Url(createHash('sha256').update(codeVerifier).digest());
   const state = base64Url(randomBytes(16));
@@ -195,11 +193,12 @@ async function main() {
   }).toString();
 
   stdout.write('\n1) Open this URL in a browser and approve access:\n\n');
-  stdout.write(`${authorizeUrl.toString()}\n`);
+  stdout.write(`${authorizeUrl.href}\n`);
 
+  const manual = argv.includes('--manual');
   const isLocalhost = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(redirectUri).hostname);
-  const useListener = isLocalhost && !manual;
-  const redirect = await (useListener ? awaitRedirect(redirectUri) : promptRedirect());
+  const isUseListener = isLocalhost && !manual;
+  const redirect = await (isUseListener ? awaitRedirect(redirectUri) : promptRedirect());
 
   if (!redirect.code) throw new Error('No authorization code was returned.');
   if (redirect.state && redirect.state !== state) {

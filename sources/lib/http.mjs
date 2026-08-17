@@ -36,7 +36,7 @@ function isPrivateHost(host) {
   const octets = host.split('.');
   if (octets.length !== 4) return false;
   const numbers = octets.map(Number);
-  if (numbers.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  if (numbers.some((part) => !Number.isSafeInteger(part) || part < 0 || part > 255)) return false;
   // Defaults that match nothing below: the length check above already
   // guarantees four octets, and destructuring cannot see that.
   const [first = -1, second = -1] = numbers;
@@ -135,14 +135,14 @@ async function fetchFollowing(url, signal, extraHeaders) {
   // header does not silently drop the honest User-Agent or Accept.
   const headers = extraHeaders ? { ...HEADERS, ...extraHeaders } : HEADERS;
   let current = url;
-  let permanentSoFar = true;
+  let isPermanentSoFar = true;
   /** @type {string | undefined} */
   let movedPermanentlyTo;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const response = await fetch(current, { headers, signal, redirect: 'manual' });
     if (!REDIRECTS.has(response.status)) {
-      return { response, url: current, ...(movedPermanentlyTo ? { movedPermanentlyTo } : {}) };
+      return { response, url: current, ...(movedPermanentlyTo && { movedPermanentlyTo }) };
     }
 
     const location = response.headers.get('location');
@@ -150,7 +150,7 @@ async function fetchFollowing(url, signal, extraHeaders) {
 
     let next;
     try {
-      next = new URL(location, current).toString();
+      next = new URL(location, current).href;
     } catch {
       throw new Error(`HTTP ${response.status} with an unusable Location fetching ${current}`);
     }
@@ -159,8 +159,8 @@ async function fetchFollowing(url, signal, extraHeaders) {
     // to the URL a caller supplied.
     assertPublicHttpUrl(next);
 
-    if (permanentSoFar && PERMANENT_REDIRECTS.has(response.status)) movedPermanentlyTo = next;
-    else permanentSoFar = false;
+    if (isPermanentSoFar && PERMANENT_REDIRECTS.has(response.status)) movedPermanentlyTo = next;
+    else isPermanentSoFar = false;
 
     current = next;
   }
@@ -182,7 +182,7 @@ async function fetchCappedBytes(url, maxBytes, signal, headers) {
   if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
 
   const contentLength = response.headers.get('content-length');
-  if (contentLength && Number.parseInt(contentLength, 10) > maxBytes) {
+  if (contentLength && Number(contentLength) > maxBytes) {
     throw tooLargeError(`Response too large (${contentLength} bytes) for ${url}`);
   }
 
@@ -253,7 +253,7 @@ export async function fetchPageWithMeta(url, { maxBytes = MAX_RESPONSE_BYTES, he
     );
     return {
       text: new TextDecoder().decode(bytes),
-      ...(movedPermanentlyTo ? { movedPermanentlyTo } : {}),
+      ...(movedPermanentlyTo && { movedPermanentlyTo }),
     };
   } finally {
     clearTimeout(timer);

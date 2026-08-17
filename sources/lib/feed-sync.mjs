@@ -2,10 +2,10 @@ import { parse as parseHtmlDocument } from 'node-html-parser';
 import { feedRelocation, feedSelfTitle, selfReport } from './feed-identity.mjs';
 import {
   countUndated,
-  deadlineReached,
   decodeHtmlEntities,
   fetchPage,
   fetchPageWithMeta,
+  hasDeadlinePassed,
   htmlToText,
   isTooLargeError,
   itemIdentity,
@@ -39,11 +39,11 @@ const FEED_LINK_TYPES = new Set([
 export function discoverFeedUrl(html, baseUrl) {
   const root = parseHtmlDocument(html);
   for (const link of root.querySelectorAll('link[rel="alternate"]')) {
-    const type = ((link.getAttribute('type') || '').toLowerCase().split(';')[0] ?? '').trim();
+    const type = ((link.getAttribute('type') || '').toLowerCase().split(';', 1)[0] ?? '').trim();
     const href = link.getAttribute('href');
     if (!href || !FEED_LINK_TYPES.has(type)) continue;
     try {
-      return new URL(href, baseUrl).toString();
+      return new URL(href, baseUrl).href;
     } catch {
       // Malformed href — keep scanning; a later link may be valid.
     }
@@ -163,7 +163,7 @@ function collectFeedItems(items, { feed, seenIdentities, lastDate, toDocument })
     if (!url || seenIdentities.has(identity)) continue;
     seenIdentities.add(identity);
 
-    const ms = item.pubDate ? new Date(item.pubDate).getTime() : Number.NaN;
+    const ms = item.pubDate ? new Date(item.pubDate).getTime() : NaN;
     if (lastDate && Number.isFinite(ms) && ms <= lastDate.getTime()) {
       skipped++;
       continue;
@@ -392,7 +392,7 @@ async function fetchAllFeeds(
   let unreached = 0;
 
   for (let start = 0; start < feeds.length; start += concurrency) {
-    if (deadlineReached(context)) {
+    if (hasDeadlinePassed(context)) {
       unreached = feeds.length - start;
       context.log.warn(
         `Soft deadline reached — ${unreached} of ${feeds.length} ${label} not fetched; ` +
@@ -552,7 +552,7 @@ export async function syncFeeds(
       skipped,
       // Only meaningful — and only reported — when a cap is in play, so
       // uncapped sources keep the stats shape they have always returned.
-      ...(maxDocuments ? { remaining } : {}),
+      ...(maxDocuments && { remaining }),
       ...undatedStats(documents),
     },
   };

@@ -694,19 +694,19 @@ describe('seats-aero MCP server', () => {
     });
 
     it('rejects a bad airport before spending an API call', async () => {
-      let called = false;
+      let isCalled = false;
       const result = await callTool(
         server,
         'search_awards',
         { origin_airport: ['San Francisco'], destination_airport: ['LHR'] },
         withSecret(KEY, () => {
-          called = true;
+          isCalled = true;
           return { json: SEARCH };
         }),
       );
       expect(result.ok).toBe(false);
       expect(result.error).toMatch(/not a 3-letter IATA/);
-      expect(called).toBe(false);
+      expect(isCalled).toBe(false);
     });
 
     it('renders embedded trips when include_trips is on', async () => {

@@ -431,7 +431,7 @@ describe('arxiv MCP server', () => {
         { id: '2510.30005' },
         paperResponder({
           atom: feed([entry({ id: '2510.30005' })]),
-          onFetch: (url) => calls.push(String(url)),
+          onFetch: (url) => void calls.push(String(url)),
           onIngest: (b) => {
             ingested = b;
           },
@@ -474,7 +474,7 @@ describe('arxiv MCP server', () => {
         { id: '2510.30005', paper },
         paperResponder({
           atom: feed([entry({ id: '2510.30005' })]),
-          onFetch: (url) => calls.push(String(url)),
+          onFetch: (url) => void calls.push(String(url)),
           onIngest: (b) => {
             ingested = b;
           },

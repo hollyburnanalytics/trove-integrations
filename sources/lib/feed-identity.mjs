@@ -75,7 +75,7 @@ export function feedRelocation(items, fetchedUrl, redirectedTo) {
 export function selfReport({ feedCount, titles, relocations }) {
   if (feedCount !== 1) return {};
   return {
-    ...(titles.length === 1 && titles[0] ? { feedName: titles[0] } : {}),
-    ...(relocations.length === 1 && relocations[0] ? { feedUrl: relocations[0] } : {}),
+    ...(titles.length === 1 && titles[0] && { feedName: titles[0] }),
+    ...(relocations.length === 1 && relocations[0] && { feedUrl: relocations[0] }),
   };
 }

@@ -343,7 +343,7 @@ describe('validateManifest', () => {
  *
  * @type {(name: string) => boolean}
  */
-const providerExists = (name) => name === 'podcasts';
+const isKnownProvider = (name) => name === 'podcasts';
 
 /**
  * A manifest whose one `url[]` field declares the given directory descriptor.
@@ -357,12 +357,12 @@ const withDirectory = (directory) => ({
 describe('validateDirectories', () => {
   it('accepts a well-formed directory', () => {
     expect(
-      validateDirectories(withDirectory({ provider: 'podcasts', mode: 'search' }), providerExists),
+      validateDirectories(withDirectory({ provider: 'podcasts', mode: 'search' }), isKnownProvider),
     ).toEqual([]);
   });
 
   it('accepts a manifest with no directory at all', () => {
-    expect(validateDirectories({ config: { feeds: { type: 'url[]' } } }, providerExists)).toEqual(
+    expect(validateDirectories({ config: { feeds: { type: 'url[]' } } }, isKnownProvider)).toEqual(
       [],
     );
   });
@@ -370,7 +370,7 @@ describe('validateDirectories', () => {
   it('rejects a provider with no module on disk', () => {
     const errors = validateDirectories(
       withDirectory({ provider: 'nope', mode: 'search' }),
-      providerExists,
+      isKnownProvider,
     );
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('has no module in sources/lib/directories/');
@@ -379,14 +379,14 @@ describe('validateDirectories', () => {
   it('rejects a mode no client can render', () => {
     const errors = validateDirectories(
       withDirectory({ provider: 'podcasts', mode: 'browse' }),
-      providerExists,
+      isKnownProvider,
     );
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('mode must be');
   });
 
   it('rejects a non-object directory', () => {
-    expect(validateDirectories(withDirectory('podcasts'), providerExists)).toEqual([
+    expect(validateDirectories(withDirectory('podcasts'), isKnownProvider)).toEqual([
       'config.feeds.directory must be an object',
     ]);
   });

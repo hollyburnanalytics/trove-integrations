@@ -320,7 +320,7 @@ describe('gutenberg MCP server', () => {
       expect(s.totalLength).toBe(STRIPPED.length);
       // STRIPPED is shorter than 200 chars, so the whole body comes back and
       // there is nothing left to read.
-      expect(s.length).toBe(STRIPPED.length);
+      expect(s).toHaveLength(STRIPPED.length);
       expect(s.nextOffset).toBeNull();
       expect(result.result.text).toContain('You will rejoice');
     });

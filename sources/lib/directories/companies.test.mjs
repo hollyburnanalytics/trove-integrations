@@ -15,12 +15,12 @@ const REGISTRY = {
  * A directory context whose fetch returns a canned JSON payload.
  *
  * @param {unknown} payload - What `.json()` resolves to.
- * @param {boolean} [ok] - Whether the request succeeded.
- * @param {number} [status] - The status code.
+ * @param {number} [status] - The status code; `ok` follows from it, as it does
+ *   on a real Response — there is no such thing as a 404 that succeeded.
  * @returns {ReturnType<typeof makeDirectoryContext>} The context.
  */
-function contextReturning(payload, ok = true, status = 200) {
-  return makeDirectoryContext({ ok, status, json: async () => payload });
+function contextReturning(payload, status = 200) {
+  return makeDirectoryContext({ ok: status < 400, status, json: async () => payload });
 }
 
 describe('parseRegistry', () => {
@@ -52,7 +52,7 @@ describe('matchRank', () => {
   });
 
   it('reports no match as infinite', () => {
-    expect(matchRank(shop, 'zzz')).toBe(Number.POSITIVE_INFINITY);
+    expect(matchRank(shop, 'zzz')).toBe(Infinity);
   });
 });
 
@@ -88,7 +88,7 @@ describe('companies directory', () => {
   });
 
   it('reports an unreachable registry rather than no companies', async () => {
-    const context = contextReturning({}, false, 403);
+    const context = contextReturning({}, 403);
     await expect(query({ query: 'apple', limit: 5 }, context)).rejects.toThrow(/403/);
   });
 });

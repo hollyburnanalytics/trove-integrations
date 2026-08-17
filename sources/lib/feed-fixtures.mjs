@@ -35,11 +35,11 @@ export function okResponse(text, { contentLength } = {}) {
       headers: new Headers({ 'content-length': String(contentLength ?? bytes.length) }),
       body: {
         getReader() {
-          let done = false;
+          let isDone = false;
           return {
             read() {
-              if (done) return Promise.resolve({ done: true, value: undefined });
-              done = true;
+              if (isDone) return Promise.resolve({ done: true, value: undefined });
+              isDone = true;
               return Promise.resolve({ done: false, value: bytes });
             },
             cancel() {},
@@ -120,7 +120,7 @@ export function fetchedUrls(fetchMock) {
  * Twenty-four test files each built their own, and all twenty-four were the
  * same four fields — `log.info`, `log.warn`, `progress`, `config` — with no
  * `credentials`, no `log.error`, and **no `deadline`**. That last one is not
- * cosmetic: `deadlineReached()` compares `Date.now()` against `context.deadline`,
+ * cosmetic: `hasDeadlinePassed()` compares `Date.now()` against `context.deadline`,
  * so an absent deadline compares against `undefined` and is never reached. Every
  * soft-deadline branch in `syncFeeds` was unreachable in every one of those
  * files. The default here is thirty seconds out, which keeps that branch

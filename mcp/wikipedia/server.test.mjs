@@ -173,7 +173,7 @@ describe('wikipedia MCP server', () => {
       );
       expect(result.ok).toBe(true);
       expect(result.result.structured.truncated).toBe(true);
-      expect(result.result.structured.extract.length).toBe(12_001); // 12_000 chars + ellipsis
+      expect(result.result.structured.extract).toHaveLength(12_001); // 12_000 chars + ellipsis
       expect(result.result.structured.extract.endsWith('…')).toBe(true);
       expect(result.result.structured.description).toBeNull();
     });

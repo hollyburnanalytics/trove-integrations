@@ -29,13 +29,70 @@ import { runSource } from '../sources/lib/harness.mjs';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 
-/** Parse argv into the runner options. */
 /**
+ * What the runner was asked to do.
+ *
+ * The source path is optional while the arguments are being read and required
+ * once they have been: {@link parseArguments} refuses a run without one, and
+ * says so in its return type rather than leaving every reader to re-check.
+ *
+ * @typedef {{ method: string, timeoutMs: number, cursor: unknown,
+ *   config: Record<string, string>, json: boolean,
+ *   sourcePath: string | undefined }} Options
+ * @typedef {Options & { sourcePath: string }} ParsedOptions
+ */
+
+/**
+ * Apply one command-line argument to `options`.
+ *
+ * Returns how many arguments it consumed, because the value-taking options
+ * consume the one after them — which is the whole reason the caller walks an
+ * index rather than iterating the array.
+ *
+ * @param {Options} options - The options being built, mutated in place.
+ * @param {string} argument - The argument to apply.
+ * @param {string} next - The argument after it, for the options that take a value.
+ * @returns {number} How many arguments were consumed: 1, or 2 with a value.
+ */
+function applyArgument(options, argument, next) {
+  switch (argument) {
+    case '--method': {
+      options.method = next;
+      return 2;
+    }
+    case '--timeout': {
+      options.timeoutMs = Number(next);
+      return 2;
+    }
+    case '--cursor': {
+      options.cursor = JSON.parse(next || 'null');
+      return 2;
+    }
+    case '--config': {
+      const [key = '', ...rest] = next.split('=');
+      options.config[key] = rest.join('=');
+      return 2;
+    }
+    case '--json': {
+      options.json = true;
+      return 1;
+    }
+    default: {
+      if (argument.startsWith('--')) throw new Error(`Unknown option: ${argument}`);
+      options.sourcePath = argument;
+      return 1;
+    }
+  }
+}
+
+/**
+ * Parse argv into the runner options.
+ *
  * @param {string[]} argv - The raw process arguments.
- * @returns {Record<string, any>} The parsed options.
+ * @returns {ParsedOptions} The parsed options, source path included.
  */
 function parseArguments(argv) {
-  /** @type {{ method: string, timeoutMs: number, cursor: unknown, config: Record<string, string>, json: boolean, sourcePath: string | undefined }} */
+  /** @type {Options} */
   const options = {
     method: 'sync',
     timeoutMs: DEFAULT_TIMEOUT_MS,
@@ -45,40 +102,14 @@ function parseArguments(argv) {
     sourcePath: undefined,
   };
   for (let index = 0; index < argv.length; index++) {
-    const argument = argv[index] ?? '';
-    switch (argument) {
-      case '--method': {
-        options.method = argv[++index] ?? '';
-        break;
-      }
-      case '--timeout': {
-        options.timeoutMs = Number(argv[++index]);
-        break;
-      }
-      case '--cursor': {
-        options.cursor = JSON.parse(argv[++index] ?? 'null');
-        break;
-      }
-      case '--config': {
-        const [key = '', ...rest] = (argv[++index] ?? '').split('=');
-        options.config[key] = rest.join('=');
-        break;
-      }
-      case '--json': {
-        options.json = true;
-        break;
-      }
-      default: {
-        if (argument.startsWith('--')) throw new Error(`Unknown option: ${argument}`);
-        options.sourcePath = argument;
-      }
-    }
+    index += applyArgument(options, argv[index] ?? '', argv[index + 1] ?? '') - 1;
   }
-  if (!options.sourcePath) throw new Error('Usage: run-source <source-dir> [options]');
+  const { sourcePath } = options;
+  if (!sourcePath) throw new Error('Usage: run-source <source-dir> [options]');
   if (!['sync', 'query'].includes(options.method)) {
     throw new Error(`--method must be sync or query, got ${options.method}`);
   }
-  return options;
+  return { ...options, sourcePath };
 }
 
 /** Read a source's manifest.json, or {} if absent. */
@@ -93,11 +124,11 @@ function readManifest(sourcePath) {
 }
 
 const COLOR = {
-  info: '\u001B[36m',
-  warn: '\u001B[33m',
-  error: '\u001B[31m',
-  dim: '\u001B[2m',
-  reset: '\u001B[0m',
+  info: '\u{1B}[36m',
+  warn: '\u{1B}[33m',
+  error: '\u{1B}[31m',
+  dim: '\u{1B}[2m',
+  reset: '\u{1B}[0m',
 };
 
 /**

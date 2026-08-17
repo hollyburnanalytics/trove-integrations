@@ -127,41 +127,27 @@ describe('openalex MCP server', () => {
       expect(result.result.text).toMatch(/no works/i);
     });
 
-    it('maps a 429 to a retryable TOOL_ERROR', async () => {
-      const result = await callTool(
-        server,
-        'search_works',
-        { query: 'attention' },
-        withSecret(KEY, { status: 429, text: 'rate limited' }),
-      );
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
-      expect(result.retryable).toBe(true);
-    });
-
-    it('maps a 403 to a non-retryable TOOL_ERROR', async () => {
-      const result = await callTool(
-        server,
-        'search_works',
-        { query: 'attention' },
-        withSecret(KEY, { status: 403, text: 'forbidden' }),
-      );
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
-      expect(result.retryable).toBe(false);
-    });
-
-    it('maps a 500 to a retryable TOOL_ERROR', async () => {
-      const result = await callTool(
-        server,
-        'search_works',
-        { query: 'attention' },
-        withSecret(KEY, { status: 500, text: 'boom' }),
-      );
-      expect(result.ok).toBe(false);
-      expect(result.code).toBe('TOOL_ERROR');
-      expect(result.retryable).toBe(true);
-    });
+    // One claim per status, tabulated: whether an upstream code is worth
+    // retrying is the whole contract here, and a table shows the mapping at a
+    // glance where three near-identical blocks hid it.
+    it.each([
+      { status: 429, text: 'rate limited', retryable: true },
+      { status: 403, text: 'forbidden', retryable: false },
+      { status: 500, text: 'boom', retryable: true },
+    ])(
+      'maps a $status to a $retryable-to-retry TOOL_ERROR',
+      async ({ status, text, retryable }) => {
+        const result = await callTool(
+          server,
+          'search_works',
+          { query: 'attention' },
+          withSecret(KEY, { status, text }),
+        );
+        expect(result.ok).toBe(false);
+        expect(result.code).toBe('TOOL_ERROR');
+        expect(result.retryable).toBe(retryable);
+      },
+    );
 
     it('rejects an empty query before fetching', async () => {
       const result = await callTool(server, 'search_works', { query: '' });

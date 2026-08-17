@@ -200,7 +200,9 @@ export async function sync(context) {
 
   const processed = documents.length + skipped;
   const remaining = rows.length - processed;
-  const lastProcessed = processed > 0 ? rows[processed - 1] : undefined;
+  // `rows[-1]` is already undefined under `noUncheckedIndexedAccess`, so the
+  // zero case needs no arm of its own.
+  const lastProcessed = rows[processed - 1];
 
   return {
     documents,

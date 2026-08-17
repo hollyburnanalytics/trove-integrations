@@ -195,7 +195,7 @@ describe('get_podcast', () => {
     const result = await callTool(server, 'get_podcast', { uuid: SERIES.uuid }, responder);
     expect(result.ok).toBe(true);
     // One request, not two: the whole point of the GraphQL shape.
-    expect(responder.calls.filter((c) => c.query).length).toBe(1);
+    expect(responder.calls.filter((c) => c.query)).toHaveLength(1);
     const { structured, text } = result.result;
     expect(structured.podcast.name).toBe('Build Your SaaS');
     expect(structured.episodes).toHaveLength(1);

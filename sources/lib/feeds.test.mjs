@@ -30,11 +30,11 @@ function mockFetch(xml) {
     headers: new Headers(),
     body: {
       getReader: () => {
-        let done = false;
+        let isDone = false;
         return {
           read: () => {
-            if (done) return Promise.resolve({ done: true, value: undefined });
-            done = true;
+            if (isDone) return Promise.resolve({ done: true, value: undefined });
+            isDone = true;
             return Promise.resolve({ done: false, value: encoded });
           },
         };
@@ -310,7 +310,7 @@ describe('parseRSS', () => {
       <id>test-1</id>
     </entry>`;
     const items = parseRSS(xml);
-    expect(at(items, 0).description.length).toBe(1000);
+    expect(at(items, 0).description).toHaveLength(1000);
   });
 
   it('uses updated date as fallback for Atom published', () => {
@@ -353,11 +353,11 @@ describe('fetchPage', () => {
       headers: new Headers({ 'content-length': String(encoded.length) }),
       body: {
         getReader: () => {
-          let done = false;
+          let isDone = false;
           return {
             read: () => {
-              if (done) return Promise.resolve({ done: true, value: undefined });
-              done = true;
+              if (isDone) return Promise.resolve({ done: true, value: undefined });
+              isDone = true;
               return Promise.resolve({ done: false, value: encoded });
             },
             cancel: vi.fn(),
@@ -386,7 +386,7 @@ describe('fetchPage', () => {
       '172.16.0.1/',
       '[::1]/',
       'service.internal/',
-    ].map((host) => `${'http'}://${host}`);
+    ].map((host) => `http://${host}`);
     blocked.push('file:///etc/passwd', 'not a url');
     for (const url of blocked) {
       await expect(fetchPage(url)).rejects.toThrow(/Refusing|Invalid URL/);
@@ -410,11 +410,11 @@ describe('fetchPage', () => {
       headers: new Headers(),
       body: {
         getReader: () => {
-          let done = false;
+          let isDone = false;
           return {
             read: () => {
-              if (done) return Promise.resolve({ done: true, value: undefined });
-              done = true;
+              if (isDone) return Promise.resolve({ done: true, value: undefined });
+              isDone = true;
               return Promise.resolve({ done: false, value: bigChunk });
             },
             cancel: vi.fn(),
@@ -466,7 +466,7 @@ describe('syncRSS', () => {
     });
 
     const document = at(result.documents);
-    expect(document.title).toBe('Watch now | \u{1F399}\uFE0F Testing Google\u2019s Gemini');
+    expect(document.title).toBe('Watch now | \u{1F399}\u{FE0F} Testing Google\u{2019}s Gemini');
     expect(document.text).not.toMatch(/&#\d+;|&[a-z]+;|<[a-z]/);
     expect(document.text).toContain('Episode & notes');
   });
@@ -792,11 +792,11 @@ function streamBody(text) {
     headers: new Headers(),
     body: {
       getReader: () => {
-        let done = false;
+        let isDone = false;
         return {
           read: () => {
-            if (done) return Promise.resolve({ done: true, value: undefined });
-            done = true;
+            if (isDone) return Promise.resolve({ done: true, value: undefined });
+            isDone = true;
             return Promise.resolve({ done: false, value: encoded });
           },
         };

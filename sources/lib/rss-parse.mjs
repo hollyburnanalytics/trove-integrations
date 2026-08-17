@@ -185,7 +185,7 @@ function plainText(html) {
  * @returns {string} The resolved URL, or `''`.
  */
 function atomLink(value, feedHost = '') {
-  const withHref = records(value).filter((l) => Boolean(l['@_href']));
+  const withHref = records(value).filter((l) => l['@_href']);
   const alternate = withHref.find((l) => (l['@_rel'] ?? 'alternate') === 'alternate');
   const chosen = alternate ?? withHref[0];
   if (!chosen) return nodeText(value);
@@ -256,7 +256,7 @@ function hostOf(url) {
 function authorName(value) {
   for (const author of asArray(value)) {
     const node = record(author);
-    const name = node?.name === undefined ? nodeText(author) : nodeText(node.name);
+    const name = nodeText(node?.name === undefined ? author : node.name);
     if (!name) continue;
     // RSS 2.0 <author> is an email address ("a@b.com (Name)") — extract the
     // parenthesized display name when present, and never store a bare email.
@@ -280,11 +280,11 @@ function authorName(value) {
  * @returns {import('./types.d.ts').FeedEnclosure} The normalized enclosure.
  */
 function enclosureOf(url, type, length) {
-  const bytes = Number.parseInt(String(length ?? ''), 10);
+  const bytes = Math.trunc(Number(length ?? ''));
   /** @type {import('./types.d.ts').FeedEnclosure} */
   const enclosure = {
     url,
-    type: (String(type ?? '').split(';')[0] ?? '').trim().toLowerCase(),
+    type: (String(type ?? '').split(';', 1)[0] ?? '').trim().toLowerCase(),
   };
   if (Number.isFinite(bytes) && bytes > 0) enclosure.length = bytes;
   return enclosure;

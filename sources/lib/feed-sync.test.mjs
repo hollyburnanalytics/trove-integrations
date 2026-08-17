@@ -364,7 +364,7 @@ describe('syncFeeds feed autodiscovery', () => {
       feeds: [{ url: 'https://blog.test/' }],
       toDocument: STD(),
     });
-    expect(result.documents.length).toBe(1);
+    expect(result.documents).toHaveLength(1);
     expect(at(result.documents, 0).title).toBe('Found');
   });
 
