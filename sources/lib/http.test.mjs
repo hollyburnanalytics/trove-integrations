@@ -45,10 +45,16 @@ describe('http helpers', () => {
     await expect(fetchPage('https://example.com/down')).rejects.toThrow('HTTP 503');
   });
 
-  it('fetchBytes returns the raw response bytes', async () => {
+  it('fetchBytes returns the raw response bytes as a plain Uint8Array', async () => {
+    // A `Uint8Array`, not a Node `Buffer`: the seam joins its chunks by hand so
+    // the same code runs where there is no `Buffer` at all. Asserted on the
+    // type as well as the bytes, because the two compare unequal and a caller
+    // reaching for a Buffer method would find it missing.
     const payload = new Uint8Array([37, 80, 68, 70, 0, 255]);
     setFetch(() => Promise.resolve(streamingResponse([payload])));
-    expect(await fetchBytes('https://example.com/file.pdf')).toEqual(Buffer.from(payload));
+    const bytes = await fetchBytes('https://example.com/file.pdf');
+    expect(bytes).toEqual(payload);
+    expect(Buffer.isBuffer(bytes)).toBe(false);
   });
 
   it('rejects a declared Content-Length above the cap with a too-large error', async () => {

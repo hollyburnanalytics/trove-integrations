@@ -18,11 +18,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {
-  VALID_SCHEDULES,
-  validateDirectories,
-  validateManifest,
-} from '../sources/lib/constants.mjs';
+import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/sdk';
 
 /** Directory provider modules that exist on disk, resolved once. */
 const DIRECTORY_PROVIDER_DIR = new URL('../sources/lib/directories/', import.meta.url);
@@ -173,19 +169,21 @@ for (const { manifest, path } of fsSources) {
 }
 
 // --- Check 3b: cross-cutting manifest invariants ---
-// Type-system fields (kind/transport/watermark/documentSemantics, held to the
-// MVP cut when implemented), `location` + the cloud-eligibility predicate, and
-// the optional `fanOut` reference. See sources/lib/constants.mjs.
+// One call, owned by `@ontrove/sdk`: identity (`id`/`name`/`version`), the
+// credential lint over `config`, the four type-system fields (held to the MVP
+// cut when the source has code), `location` + the cloud-eligibility predicate,
+// and the optional `schedule`, `fanOut`, `formatting` and `directory`
+// declarations.
+//
+// `directoryProviderExists` is injected rather than assumed, because only this
+// script knows the repo layout — and a provider typo caught at build time beats
+// one surfacing to a user as an empty search result.
 for (const { manifest, hasCode, path } of fsSources) {
-  // A manifest's directory provider must have a module on disk. Checked here
-  // rather than inside validateManifest because only the script knows the repo
-  // layout; a typo caught at build time beats one surfacing to a user as an
-  // empty search result.
-  for (const error of validateDirectories(manifest, directoryProviderExists)) {
-    warn(`${path}/manifest.json: ${error}`);
-  }
-  const manifestErrors = validateManifest(manifest, { implemented: hasCode });
-  for (const error of manifestErrors) {
+  const { errors } = validateSourceManifest(manifest, {
+    implemented: hasCode,
+    directoryProviderExists,
+  });
+  for (const error of errors) {
     warn(`${path}/manifest.json: ${error}`);
   }
 }

@@ -360,7 +360,7 @@ describe('fetchPage', () => {
               isDone = true;
               return Promise.resolve({ done: false, value: encoded });
             },
-            cancel: vi.fn(),
+            cancel: vi.fn(() => Promise.resolve()),
           };
         },
       },
@@ -417,7 +417,11 @@ describe('fetchPage', () => {
               isDone = true;
               return Promise.resolve({ done: false, value: bigChunk });
             },
-            cancel: vi.fn(),
+            // Resolves, because a real reader's `cancel()` returns a promise
+            // and the seam awaits it — freeing the connection before it throws.
+            // A bare `vi.fn()` returns undefined and fails on `.catch`, which
+            // would report the stub's shape instead of the size cap.
+            cancel: vi.fn(() => Promise.resolve()),
           };
         },
       },

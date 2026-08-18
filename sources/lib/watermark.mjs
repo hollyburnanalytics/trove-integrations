@@ -1,146 +1,38 @@
 /**
- * Typed watermark values for source-adapter cursors.
+ * Typed watermark values for source adapters — re-exported from `@ontrove/sdk`.
  *
- * The cloud stores `feeds.cursor` as an opaque JSON string; these helpers give
- * every source adapter a single, tagged shape to read and write. See
- * docs/source-adapter-taxonomy.md §4.3 for the full union.
+ * The SDK's `watermark` module was written from THIS file, so what follows is
+ * the same code under a new owner rather than a substitute for it. Keeping the
+ * specifier `sources/lib/watermark.mjs` means every adapter and every test goes
+ * on importing what it always did while the implementation lives in one place
+ * for all three runtimes (Trove's deployed shim, the CLI's local shim, and the
+ * Mac harness) instead of once per catalog.
  *
- * MVP implements three strategies: `date`, `idSet` (bounded), and `none`
- * (no cursor at all — the source adapter returns `undefined`).
+ * `sources/lib/watermark.test.mjs` still runs against these exports, and that
+ * is the point of it: it is this catalog's proof that the SDK's behaviour is
+ * the behaviour these sources need. If it ever fails, the two have diverged.
+ *
+ * The full union is `docs/source-adapter-taxonomy.md` §4.3. MVP implements
+ * three strategies: `date`, `idSet` (bounded), and `none` — the last being no
+ * cursor at all, which an adapter expresses by returning `undefined`.
+ *
+ * One thing worth restating locally, because it is the reason `MAX_ID_SET_BYTES`
+ * exists at all: the platform refuses a cursor over 65,536 bytes, and
+ * {@link DEFAULT_ID_SET_MAX} counts ENTRIES, not bytes. A scrape source in the
+ * private catalog reached the byte limit after 571 posts and every run after
+ * that was refused, so it could not advance past the point where it broke. This
+ * catalog has never hit it — but only because the one id set it writes today
+ * happens to be short, not because anything here prevents it.
+ *
+ * @module
  */
 
-/**
- * Default cap on an `idSet` watermark. Keeps the cursor finite so a long-lived
- * scrape can't grow it without bound. Evicting an old id at worst
- * causes that page to be re-scraped once and deduped server-side by external id.
- */
-export const DEFAULT_ID_SET_MAX = 10_000;
-
-/**
- * Read a `date` watermark as a `Date`, or `undefined` when absent/unparseable.
- *
- * @param {unknown} [cursor] - the source adapter's previous cursor (`ctx.cursor`)
- * @returns {Date | undefined}
- */
-export function readDateWatermark(cursor) {
-  const wm = /** @type {{ type?: string; value?: string } | undefined} */ (cursor);
-  const iso = wm?.type === 'date' ? wm.value : undefined;
-  if (!iso) return;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-/**
- * Build a typed `date` watermark from an ISO-8601 string. Pass `inclusive` when
- * the boundary item itself should be re-emitted (a `>=` comparison) rather than
- * skipped (the default strict `>`).
- *
- * @param {string} valueIso
- * @param {{ inclusive?: boolean }} [options]
- * @returns {{ type: 'date', value: string, inclusive?: true }}
- */
-export function dateWatermark(valueIso, { inclusive = false } = {}) {
-  return inclusive
-    ? { type: 'date', value: valueIso, inclusive: true }
-    : { type: 'date', value: valueIso };
-}
-
-/**
- * The date cursor to return from a run whose sub-sources (feeds, sections,
- * tickers, channels, meeting types) may have individually failed.
- *
- * Two safety rules, both protecting the invariant that a date watermark never
- * moves past unfetched work:
- *
- * 1. **Hold on failure.** When any sub-source failed, return the previous
- *    cursor unchanged. Advancing on the healthy sub-sources' max date would
- *    permanently skip the failed sub-source's items older than that date —
- *    per-sub-source try/catch "resilience" silently trading availability for
- *    data loss. Held back, the next run re-fetches the window and the
- *    server's (source, external id) dedup absorbs the re-emitted documents.
- *
- * 2. **Clamp to now.** A future-dated item (a scheduled meeting, a post-dated
- *    article) must not drag the watermark past the present, which would make
- *    everything published between now and that future date invisible.
- *
- * @param {object} args
- * @param {import('./types.d.ts').Cursor | undefined} args.previous - the incoming `ctx.cursor`, returned when holding
- * @param {string | undefined} args.maxIso - max ISO date across this run's items
- * @param {boolean} args.anyFailed - whether any sub-source failed this run
- * @param {boolean} [args.inclusive] - see {@link dateWatermark}
- * @returns {import('./types.d.ts').Cursor | undefined} the cursor to return from `sync`
- */
-export function advanceDateWatermark({ previous, maxIso, anyFailed, inclusive = false }) {
-  if (anyFailed || !maxIso) return previous;
-  const nowIso = new Date().toISOString();
-  // Lexicographic min of two ISO-8601 strings — Math.min would coerce to NaN.
-  // eslint-disable-next-line unicorn/prefer-math-min-max
-  const advanceTo = maxIso > nowIso ? nowIso : maxIso;
-  return dateWatermark(advanceTo, { inclusive });
-}
-
-/**
- * Cap on the SERIALIZED size of an `idSet` watermark.
- *
- * The real bound, and the one the platform enforces: a deployed source's cursor
- * must fit in 65,536 bytes. {@link DEFAULT_ID_SET_MAX} counts ENTRIES, and a
- * blog URL runs 60–120 bytes, so ten thousand of them is roughly 800 KB —
- * twelve times over a limit a count can never see. In the private catalog a
- * scrape source reached it after 571 posts and every run after that was
- * refused, so the source could not advance past the point where it broke. This
- * helper had no byte cap at all until that happened there; the same helper here
- * would have failed the same way, and only the shortness of the one id set this
- * catalog writes today has hidden it.
- *
- * Held under the limit rather than at it, because the cursor is serialized
- * inside a larger envelope.
- */
-export const MAX_ID_SET_BYTES = 56 * 1024;
-
-/**
- * The newest entries that fit the byte budget, counted from the end.
- *
- * Walks backwards because the newest ids are the ones worth keeping: an evicted
- * old id at worst re-ingests a document the store already dedupes, while
- * evicting a new one re-fetches something this run just did.
- *
- * @param {string[]} values - The entries, oldest first.
- * @returns {string[]} The suffix that fits.
- */
-function withinByteBudget(values) {
-  // 2 bytes of JSON overhead per entry: the quotes and the comma.
-  let bytes = 2;
-  let index = values.length;
-  while (index > 0) {
-    const size = new TextEncoder().encode(values[index - 1]).length + 3;
-    if (bytes + size > MAX_ID_SET_BYTES) break;
-    bytes += size;
-    index -= 1;
-  }
-  return index === 0 ? values : values.slice(index);
-}
-
-/**
- * Read an `idSet` watermark as a string array (empty when absent).
- *
- * @param {unknown} [cursor] - the source adapter's previous cursor (`ctx.cursor`)
- * @returns {string[]}
- */
-export function readIdSet(cursor) {
-  const wm = /** @type {{ type?: string; values?: string[] } | undefined} */ (cursor);
-  return wm?.type === 'idSet' ? (wm.values ?? []) : [];
-}
-
-/**
- * Build a typed `idSet` watermark, deduped and bounded to `max` entries
- * (the newest are kept). Input order is oldest-first, newest-last.
- *
- * @param {string[]} values - ids/URLs seen so far (oldest first)
- * @param {number} [max] - cap on retained entries (default {@link DEFAULT_ID_SET_MAX})
- * @returns {{ type: 'idSet', values: string[], max: number }}
- */
-export function idSetWatermark(values, max = DEFAULT_ID_SET_MAX) {
-  const unique = [...new Set(values)];
-  const byCount = unique.length > max ? unique.slice(unique.length - max) : unique;
-  return { type: 'idSet', values: withinByteBudget(byCount), max };
-}
+export {
+  advanceDateWatermark,
+  DEFAULT_ID_SET_MAX,
+  dateWatermark,
+  idSetWatermark,
+  MAX_ID_SET_BYTES,
+  readDateWatermark,
+  readIdSet,
+} from '@ontrove/sdk';
