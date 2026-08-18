@@ -33,6 +33,15 @@ function isPrivateHost(host) {
   ) {
     return true;
   }
+  // Every IPv6 address beginning `::` is refused, and the reason is a bypass
+  // rather than tidiness: `https://[::ffff:127.0.0.1]/` has its hostname
+  // NORMALIZED by `new URL()` to `::ffff:7f00:1`, which is not `::1`, does not
+  // start with `fe80:`/`fc`/`fd`, and — having no dots left — never reaches the
+  // dotted-quad test below. It was therefore allowed. The same trick carries
+  // `::ffff:10.0.0.1`, `::127.0.0.1` and the unspecified `::`. Global unicast
+  // is 2000::/3, so nothing reachable on the public web starts this way and
+  // refusing the whole prefix costs nothing.
+  if (host.startsWith('::')) return true;
   const octets = host.split('.');
   if (octets.length !== 4) return false;
   const numbers = octets.map(Number);
