@@ -136,15 +136,9 @@ export default [
     // Test-only relaxations. Each of these is a rule that is right about
     // production code and wrong about the way these tests are written.
     // The fixture modules are test support, not production code: they are
-    // imported only from tests, and `sources/lib/feed-fixtures.mjs` /
-    // `sources/lib/test-fixtures.mjs` are where the `globalThis.fetch` stub
-    // lives for every source suite that needs one.
-    files: [
-      '**/*.test.mjs',
-      'mcp/lib/test-harness.mjs',
-      'sources/lib/feed-fixtures.mjs',
-      'sources/lib/test-fixtures.mjs',
-    ],
+    // imported only from tests, and `sources/lib/test-fixtures.mjs` is where
+    // the `globalThis.fetch` stub lives for every source suite that needs one.
+    files: ['**/*.test.mjs', 'mcp/lib/test-harness.mjs', 'sources/lib/test-fixtures.mjs'],
     rules: {
       // Test helpers — fake responders, fixture builders — are defined in the
       // `describe` that uses them, next to the assertions that explain them.

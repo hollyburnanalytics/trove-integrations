@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { at, fetchMock, makeSyncContext, setFetch } from './feed-fixtures.mjs';
 import { stableId, syncRSS } from './feeds.mjs';
+import { at, fetchMock, makeSyncContext, setFetch } from './test-fixtures.mjs';
 
 // Multi-run / watermark round-trip tests.
 //

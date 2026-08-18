@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { at, enclosureOf } from './feed-fixtures.mjs';
 import { parseRSS, xmlText } from './rss-parse.mjs';
+import { at, enclosureOf } from './test-fixtures.mjs';
 
 describe('xmlText', () => {
   it('reads CDATA and plain-text bodies, treating tag names as literals', () => {

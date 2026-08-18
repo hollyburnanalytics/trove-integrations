@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { at, fetchMock, makeSyncContext, setFetch } from '../lib/feed-fixtures.mjs';
+import { at, fetchMock, makeSyncContext, setFetch } from '../lib/test-fixtures.mjs';
 import { sync } from './index.mjs';
 
 const makeContext = () => makeSyncContext();

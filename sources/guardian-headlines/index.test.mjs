@@ -8,7 +8,7 @@ import {
   rssFeedXml,
   rssItemXml,
   setFetch,
-} from '../lib/feed-fixtures.mjs';
+} from '../lib/test-fixtures.mjs';
 import { sync } from './index.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;

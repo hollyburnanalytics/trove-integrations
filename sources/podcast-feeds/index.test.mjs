@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { validateResult } from '../lib/harness.mjs';
 import {
   at,
   dateCursorValue,
@@ -7,8 +8,7 @@ import {
   makeSyncContext,
   okResponse as ok,
   setFetch,
-} from '../lib/feed-fixtures.mjs';
-import { validateResult } from '../lib/harness.mjs';
+} from '../lib/test-fixtures.mjs';
 import { episodeDocument, sync } from './index.mjs';
 
 /**

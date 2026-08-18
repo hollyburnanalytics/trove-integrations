@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { at, makeSyncContext, okResponse, setFetch } from '../lib/feed-fixtures.mjs';
+import { at, makeSyncContext, okResponse, setFetch } from '../lib/test-fixtures.mjs';
 import { PAGE_SIZE, sync } from './index.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;

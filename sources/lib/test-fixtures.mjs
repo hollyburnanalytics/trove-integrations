@@ -1,5 +1,10 @@
 /**
- * Test fixtures for feed source adapters.
+ * Test fixtures shared across this catalog's source adapters.
+ *
+ * The twin of `sources/lib/test-fixtures.mjs` in trove-matt-helm, and named to
+ * match it: the two catalogs meet the same platform, so their tests should be
+ * wrong in the same ways or in neither, and a helper worth having in one is
+ * worth copying into the other under the same name.
  *
  * Source tests drive the REAL `syncFeeds` with only `fetch` mocked, rather than
  * stubbing `lib/feed-sync.mjs`. That is not a style preference: Bun's

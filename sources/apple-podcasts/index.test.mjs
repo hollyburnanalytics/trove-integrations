@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { at, dateCursorValue, makeSyncContext } from '../lib/feed-fixtures.mjs';
 import { stableId } from '../lib/feeds.mjs';
+import { at, dateCursorValue, makeSyncContext } from '../lib/test-fixtures.mjs';
 import { sync } from './index.mjs';
 
 const APPLE_EPOCH_OFFSET_SECONDS = 978_307_200;

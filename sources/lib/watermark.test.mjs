@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dateCursorValue } from './feed-fixtures.mjs';
+import { dateCursorValue } from './test-fixtures.mjs';
 import {
   advanceDateWatermark,
   DEFAULT_ID_SET_MAX,
