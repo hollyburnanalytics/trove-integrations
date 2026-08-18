@@ -261,3 +261,28 @@ describe('redirects', () => {
     expect([...(await fetchBytes('https://old.test/f.pdf'))]).toEqual([1, 2, 3]);
   });
 });
+
+describe('the IPv4-mapped IPv6 bypass', () => {
+  // `new URL()` normalizes `[::ffff:127.0.0.1]` to `::ffff:7f00:1`. The dotted
+  // quad the guard checks is gone by the time it looks, so every one of these
+  // was permitted until the `::` prefix was refused outright.
+  it.each([
+    'https://[::ffff:127.0.0.1]/mapped-loopback',
+    'https://[::ffff:10.0.0.1]/mapped-private',
+    'https://[::ffff:169.254.169.254]/mapped-link-local',
+    'https://[::127.0.0.1]/compatible-loopback',
+    'https://[::]/unspecified',
+  ])('refuses %s', async (url) => {
+    // Asserted through `fetchPage`, which is how a source reaches the guard,
+    // and proves the request is refused before any fetch is attempted.
+    const mock = setFetch();
+    await expect(fetchPage(url)).rejects.toThrow(/private or loopback/i);
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  it('still permits a real public address', async () => {
+    const mock = setFetch(() => Promise.resolve(new Response('ok')));
+    await expect(fetchPage('https://[2606:4700:4700::1111]/dns')).resolves.toBe('ok');
+    expect(mock).toHaveBeenCalled();
+  });
+});
