@@ -11,7 +11,7 @@ import { advanceDateWatermark, readDateWatermark } from '../lib/watermark.mjs';
  * The Podcasts app's library (a Core Data SQLite store in its group container)
  * already holds the user's subscriptions, every episode's metadata, and the
  * audio enclosure URL — so the subscription list IS the configuration; there
- * is nothing to ask the user. Documents are emitted with `audio_url` and no
+ * is nothing to ask the user. Documents are emitted with `audioUrl` and no
  * `text`: the server's transcription Workflow (Whisper) downloads the audio,
  * transcribes it, and indexes the transcript asynchronously.
  */
@@ -136,7 +136,7 @@ function collectEpisodes(rows, context) {
       author: row.showTitle || undefined,
       url: row.webpageUrl || row.enclosureUrl,
       date: appleDateToIso(row.pubdate),
-      audio_url: row.enclosureUrl,
+      audioUrl: row.enclosureUrl,
     });
     const show = row.showTitle ? ` — ${row.showTitle}` : '';
     context.progress(

@@ -145,7 +145,7 @@ describe('apple-podcasts source', () => {
 
     expect(result.documents).toHaveLength(1);
     const document = at(result.documents);
-    expect(document.audio_url).toBe('https://cdn.example/ep-1.mp3');
+    expect(document.audioUrl).toBe('https://cdn.example/ep-1.mp3');
     expect(document.text).toBeUndefined();
     expect(document.title).toBe('A great episode');
     expect(document.author).toBe('Sharp Tech');
@@ -292,7 +292,7 @@ describe('apple-podcasts source', () => {
     const result = await sync(context);
 
     expect(result.documents).toHaveLength(1);
-    expect(at(result.documents, 0).audio_url).toBe('https://a/free.mp3');
+    expect(at(result.documents, 0).audioUrl).toBe('https://a/free.mp3');
     expect(result.stats?.skipped).toBe(1);
     expect(context.log.warn).toHaveBeenCalledWith(expect.stringContaining('Text only'));
     // The skipped episode sits behind the watermark — it is never re-offered.

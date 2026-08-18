@@ -107,15 +107,15 @@ function validateDocument(document, index) {
       );
     }
   }
-  // A document may carry its body as inline `text`, an `audio_url` enclosure
-  // the server transcribes, or a `file_url` (e.g. a PDF) the server retains
+  // A document may carry its body as inline `text`, an `audioUrl` enclosure
+  // the server transcribes, or a `fileUrl` (e.g. a PDF) the server retains
   // and extracts — at least one is required.
   const hasText = typeof record.text === 'string';
-  const hasAudio = typeof record.audio_url === 'string' && record.audio_url !== '';
-  const hasFile = typeof record.file_url === 'string' && record.file_url !== '';
+  const hasAudio = typeof record.audioUrl === 'string' && record.audioUrl !== '';
+  const hasFile = typeof record.fileUrl === 'string' && record.fileUrl !== '';
   if (!hasText && !hasAudio && !hasFile) {
     throw new InvalidSourceResponseError(
-      `document at index ${index} has none of \`text\`, \`audio_url\`, or \`file_url\``,
+      `document at index ${index} has none of \`text\`, \`audioUrl\`, or \`fileUrl\``,
     );
   }
 }

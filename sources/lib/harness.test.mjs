@@ -140,31 +140,31 @@ describe('validateResult', () => {
   it('accepts an audio-only document (enclosure in place of text)', () => {
     expect(() =>
       validateResult({
-        documents: [{ id: 'ep1', title: 'Episode', audio_url: 'https://cdn.example/ep1.mp3' }],
+        documents: [{ id: 'ep1', title: 'Episode', audioUrl: 'https://cdn.example/ep1.mp3' }],
       }),
     ).not.toThrow();
   });
 
-  it('accepts a file_url-only document (a file the server retains and extracts)', () => {
+  it('accepts a fileUrl-only document (a file the server retains and extracts)', () => {
     expect(() =>
       validateResult({
-        documents: [{ id: 'p1', title: 'Paper', file_url: 'https://cdn.example/p1.pdf' }],
+        documents: [{ id: 'p1', title: 'Paper', fileUrl: 'https://cdn.example/p1.pdf' }],
       }),
     ).not.toThrow();
   });
 
-  it('rejects a document with no text, audio_url, or file_url body', () => {
+  it('rejects a document with no text, audioUrl, or fileUrl body', () => {
     expect(() => validateResult({ documents: [{ id: 'a', title: 'b' }] })).toThrow(
-      'none of `text`, `audio_url`, or `file_url`',
+      'none of `text`, `audioUrl`, or `fileUrl`',
     );
     expect(() => validateResult({ documents: [{ id: 'a', title: 'b', text: 1 }] })).toThrow(
-      'none of `text`, `audio_url`, or `file_url`',
+      'none of `text`, `audioUrl`, or `fileUrl`',
     );
-    expect(() => validateResult({ documents: [{ id: 'a', title: 'b', audio_url: '' }] })).toThrow(
-      'none of `text`, `audio_url`, or `file_url`',
+    expect(() => validateResult({ documents: [{ id: 'a', title: 'b', audioUrl: '' }] })).toThrow(
+      'none of `text`, `audioUrl`, or `fileUrl`',
     );
-    expect(() => validateResult({ documents: [{ id: 'a', title: 'b', file_url: '' }] })).toThrow(
-      'none of `text`, `audio_url`, or `file_url`',
+    expect(() => validateResult({ documents: [{ id: 'a', title: 'b', fileUrl: '' }] })).toThrow(
+      'none of `text`, `audioUrl`, or `fileUrl`',
     );
   });
 });
@@ -211,7 +211,7 @@ describe('runSource', () => {
     ['undefined', 'returned undefined'],
     ['documents-not-array', 'missing a `documents` array'],
     ['doc-not-object', 'index 0 is not an object'],
-    ['bad-text', 'none of `text`, `audio_url`, or `file_url`'],
+    ['bad-text', 'none of `text`, `audioUrl`, or `fileUrl`'],
   ])('rejects an invalid %s result', async (mode, expected) => {
     await expect(runSource({ sourcePath: fixture('bad-shape'), config: { mode } })).rejects.toThrow(
       expected,

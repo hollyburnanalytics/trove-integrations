@@ -10,7 +10,7 @@
  * lookup is needed.
  *
  * Content: the filing itself is handed to the server as an HTML artifact
- * (`file_url`), not flattened here. The platform retains it — so the filing is
+ * (`fileUrl`), not flattened here. The platform retains it — so the filing is
  * readable in the app — and its HTML pass turns the markup into Markdown, which
  * keeps the headings and tables a local text-scrape destroys. That also costs
  * one fewer EDGAR request per filing, which matters against an API that answers
@@ -210,7 +210,7 @@ function processFiling(context, filing, cik, companyName, upperTicker) {
     id: stableId('sec', filing.accessionNumber),
     title: `${companyName} ${filing.form} (${dateLabel})`,
     // The header only. The filing itself is the body, extracted server-side —
-    // see `file_url` below.
+    // see `fileUrl` below.
     text: header,
     // Hand over the filing rather than a flattened copy of it.
     //
@@ -221,8 +221,8 @@ function processFiling(context, filing, cik, companyName, upperTicker) {
     // retrievable copy of the filing, and it spent one EDGAR request per filing
     // on work the server would do anyway — against an API that answers a
     // generic client with 403.
-    file_url: documentUrl,
-    mime_type: 'text/html',
+    fileUrl: documentUrl,
+    mimeType: 'text/html',
     url: documentUrl,
     author: companyName,
     // EDGAR reports a bare filing day (`YYYY-MM-DD`) on Eastern time. Anchor it

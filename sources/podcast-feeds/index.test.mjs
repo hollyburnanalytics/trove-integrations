@@ -284,7 +284,7 @@ describe('episodeDocument', () => {
       author: 'The Test Show',
       url: 'https://show.test/12',
       date: '2026-07-06T10:00:00.000Z',
-      audio_url: 'https://cdn.test/12.mp3',
+      audioUrl: 'https://cdn.test/12.mp3',
     });
     expect(document?.text).toBeUndefined();
   });
@@ -327,7 +327,7 @@ describe('episodeDocument', () => {
 
   it('accepts an untyped enclosure whose URL is audio, through a tracking prefix', () => {
     const enclosure = { url: 'https://chrt.fm/track/ABC/cdn.test/12.mp3?updated=99', type: '' };
-    expect(episodeDocument({ ...ITEM, enclosure })?.audio_url).toBe(enclosure.url);
+    expect(episodeDocument({ ...ITEM, enclosure })?.audioUrl).toBe(enclosure.url);
   });
 
   it('skips an untyped enclosure with no audio extension', () => {

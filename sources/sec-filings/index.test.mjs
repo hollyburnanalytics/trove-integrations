@@ -371,8 +371,8 @@ describe('sec-filings hands over the filing as an artifact', () => {
     mockFetchForSync();
     const result = await sync(makeContext(undefined, { tickers: ['TEST'] }));
     const document = at(result.documents);
-    expect(document.file_url).toContain('/Archives/edgar/data/');
-    expect(document.mime_type).toBe('text/html');
+    expect(document.fileUrl).toContain('/Archives/edgar/data/');
+    expect(document.mimeType).toBe('text/html');
   });
 
   it('carries only the header as text, leaving the body to extraction', async () => {

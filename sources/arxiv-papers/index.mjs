@@ -67,11 +67,11 @@ function entryToDocument(entryXml) {
       // two-column layout welds paragraphs together. For a paper the maths IS
       // most of the meaning, so the better rendering is worth preferring and
       // the PDF is worth keeping for the papers that predate it.
-      file_url: `https://arxiv.org/html/${paperId}`,
-      mime_type: 'text/html',
+      fileUrl: `https://arxiv.org/html/${paperId}`,
+      mimeType: 'text/html',
       fallback: {
-        file_url: `https://arxiv.org/pdf/${paperId}`,
-        mime_type: 'application/pdf',
+        fileUrl: `https://arxiv.org/pdf/${paperId}`,
+        mimeType: 'application/pdf',
       },
       url: id,
       author: authors.slice(0, 3).join(', ') + (authors.length > 3 ? ' et al.' : ''),

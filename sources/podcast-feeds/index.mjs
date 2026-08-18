@@ -11,7 +11,7 @@ import { decodeHtmlEntities, safeDate, stableId } from '../lib/feeds.mjs';
  * only covers shows followed in that app; this one takes podcast feed URLs the
  * same way `rss-feeds` takes blog feed URLs, and runs on Trove's servers.
  *
- * Documents carry `audio_url` and no `text`: the server's transcription
+ * Documents carry `audioUrl` and no `text`: the server's transcription
  * workflow downloads the enclosure, transcribes it, and indexes the transcript
  * asynchronously. That makes each emitted episode genuinely expensive, which is
  * why this source is capped and lookback-limited (see below) where `rss-feeds`
@@ -106,7 +106,7 @@ export function episodeDocument(item) {
     // The episode page when the feed links one, else the audio itself.
     url: item.link || item.enclosure.url,
     date: safeDate(item.pubDate),
-    audio_url: item.enclosure.url,
+    audioUrl: item.enclosure.url,
   };
 }
 
