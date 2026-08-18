@@ -100,3 +100,36 @@ describe('advanceDateWatermark', () => {
     expect(result?.type === 'date' && result.inclusive).toBe(true);
   });
 });
+
+describe('the cursor byte budget', () => {
+  it('keeps the cursor under the platform limit, however many URLs it has seen', () => {
+    // The entry cap counts ENTRIES (10,000) while the platform limits BYTES
+    // (65,536). A blog URL runs 60–120 bytes, so the count cap alone allows a
+    // cursor roughly twelve times over the limit. A scrape source in the
+    // private catalog reached it after 571 posts and every run afterwards was
+    // refused, leaving it unable to advance past the point where it broke —
+    // this helper had the same gap until now, hidden only by the shortness of
+    // the one id set this catalog writes today.
+    const urls = Array.from(
+      { length: 5000 },
+      (_, index) => `https://example.com/a-fairly-long-article-slug-${String(index)}`,
+    );
+    const cursor = idSetWatermark(urls);
+    const bytes = new TextEncoder().encode(JSON.stringify(cursor)).length;
+    expect(bytes).toBeLessThan(65_536);
+    expect(cursor.values.length).toBeLessThan(urls.length);
+  });
+
+  it('evicts the OLDEST, since the newest are what a scrape meets next', () => {
+    // Evicting is safe — the page is re-scraped once and deduped server-side by
+    // external id — but evicting the wrong end would re-scrape the whole front
+    // page every run.
+    const urls = Array.from(
+      { length: 3000 },
+      (_, index) => `https://example.com/a-fairly-long-article-slug-number-${String(index)}`,
+    );
+    const cursor = idSetWatermark(urls);
+    expect(cursor.values.at(-1)).toBe(urls.at(-1));
+    expect(cursor.values).not.toContain(urls[0]);
+  });
+});
