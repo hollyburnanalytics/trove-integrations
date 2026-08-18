@@ -302,15 +302,15 @@ describe('arxiv stores the paper, not just its abstract', () => {
     // A PDF turns an equation into glyph soup and welds two-column paragraphs;
     // the HTML carries each formula's LaTeX in `alttext`, which the server
     // renders as readable `$…$`.
-    expect(document?.file_url).toBe('https://arxiv.org/html/2401.12345v1');
-    expect(document?.mime_type).toBe('text/html');
+    expect(document?.fileUrl).toBe('https://arxiv.org/html/2401.12345v1');
+    expect(document?.mimeType).toBe('text/html');
   });
 
   it('falls back to the PDF for papers that predate LaTeXML', async () => {
     const document = await firstDocument(ENTRY);
     expect(document?.fallback).toEqual({
-      file_url: 'https://arxiv.org/pdf/2401.12345v1',
-      mime_type: 'application/pdf',
+      fileUrl: 'https://arxiv.org/pdf/2401.12345v1',
+      mimeType: 'application/pdf',
     });
   });
 

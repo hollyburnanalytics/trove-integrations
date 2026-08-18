@@ -1,7 +1,7 @@
 /**
  * District of North Vancouver council meetings — agendas, minutes, notices,
  * staff reports, and related documents from the District's council search API.
- * Each meeting document is a PDF, emitted as a `file_url` document: the ingest
+ * Each meeting document is a PDF, emitted as a `fileUrl` document: the ingest
  * pipeline downloads it, retains the original (rendered in the app), and
  * extracts its text into the body, with our `text` riding along as the header.
  *
@@ -127,8 +127,8 @@ function toDocument({ meeting, document }) {
     id: `dnv-council-${document.docNumber}`,
     title,
     text: header,
-    file_url: `${DOCUMENT_URL}${document.docNumber}`,
-    mime_type: 'application/pdf',
+    fileUrl: `${DOCUMENT_URL}${document.docNumber}`,
+    mimeType: 'application/pdf',
     url: `${DOCUMENT_URL}${document.docNumber}`,
     author: AUTHOR,
     // The API gives a bare meeting day (`YYYY-MM-DD`). Anchor it to noon in

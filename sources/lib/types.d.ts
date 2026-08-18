@@ -106,7 +106,7 @@ export interface DirectoryEntry {
 /**
  * One document a source hands to the platform.
  *
- * At least one of `text`, `audio_url` or `file_url` must be present — a
+ * At least one of `text`, `audioUrl` or `fileUrl` must be present — a
  * document with none of them has no body, and the harness rejects it.
  */
 export interface TroveDocument {
@@ -121,19 +121,19 @@ export interface TroveDocument {
   date?: string;
   tags?: string[];
   /** An audio enclosure the platform transcribes. */
-  audio_url?: string;
+  audioUrl?: string;
   /** A file (e.g. a PDF) the platform retains and extracts. */
-  file_url?: string;
-  mime_type?: string;
+  fileUrl?: string;
+  mimeType?: string;
   /**
-   * A second artifact to try when {@link file_url} cannot be retrieved or
+   * A second artifact to try when {@link fileUrl} cannot be retrieved or
    * extracted — the rendering that always exists, behind the one that is
    * better. arXiv is the case this exists for: its LaTeXML HTML carries every
    * formula's source, but only for papers new enough to have been converted,
    * and the PDF is there for the rest.
    */
-  fallback?: { file_url: string; mime_type: string };
-  content_type?: string;
+  fallback?: { fileUrl: string; mimeType: string };
+  contentType?: string;
   metadata?: Record<string, unknown>;
 }
 

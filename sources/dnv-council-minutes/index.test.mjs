@@ -51,7 +51,7 @@ describe('dnv-council-minutes source', () => {
     globalThis.fetch = ORIGINAL_FETCH;
   });
 
-  it('maps a meeting document to a file_url document the server extracts', async () => {
+  it('maps a meeting document to a fileUrl document the server extracts', async () => {
     fetchPage.mockResolvedValue(JSON.stringify([meeting()]));
 
     const result = await sync(makeContext());
@@ -61,8 +61,8 @@ describe('dnv-council-minutes source', () => {
     expect(document.id).toBe('dnv-council-101');
     expect(document.title).toBe('Minutes — Regular Meeting, 2026-02-10');
     expect(document.text).toBe('Minutes — Regular Meeting, 2026-02-10');
-    expect(document.file_url).toBe('https://app.dnv.org/OpenDocument/Default.aspx?docNum=101');
-    expect(document.mime_type).toBe('application/pdf');
+    expect(document.fileUrl).toBe('https://app.dnv.org/OpenDocument/Default.aspx?docNum=101');
+    expect(document.mimeType).toBe('application/pdf');
     expect(document.url).toBe('https://app.dnv.org/OpenDocument/Default.aspx?docNum=101');
     expect(document.author).toBe('District of North Vancouver');
     // Noon in the District's own timezone, so the meeting renders on its own
