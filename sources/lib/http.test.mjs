@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fetchMock, setFetch } from './feed-fixtures.mjs';
 import { fetchBytes, fetchPage, fetchPageWithMeta, isTooLargeError } from './http.mjs';
+import { fetchMock, setFetch } from './test-fixtures.mjs';
 
 /**
  * A Response whose body streams `chunks` without a Content-Length header.

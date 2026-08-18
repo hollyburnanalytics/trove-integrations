@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { discoverFeedUrl, feedItemDocument, syncFeeds } from './feed-sync.mjs';
 import {
   at,
   dateCursorValue,
@@ -7,8 +8,7 @@ import {
   makeSyncContext,
   okResponse as ok,
   setFetch,
-} from './feed-fixtures.mjs';
-import { discoverFeedUrl, feedItemDocument, syncFeeds } from './feed-sync.mjs';
+} from './test-fixtures.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 

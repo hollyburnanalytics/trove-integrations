@@ -5,7 +5,7 @@ import {
   fetchMock,
   makeSyncContext,
   setFetch,
-} from '../lib/feed-fixtures.mjs';
+} from '../lib/test-fixtures.mjs';
 import { filterFilings, sync } from './index.mjs';
 
 /**

@@ -5,7 +5,7 @@ import { htmlToText } from '../lib/html-markdown.mjs';
 
 afterAll(() => vi.restoreAllMocks());
 
-import { at, makeSyncContext, okResponse, setFetch } from '../lib/feed-fixtures.mjs';
+import { at, makeSyncContext, okResponse, setFetch } from '../lib/test-fixtures.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 

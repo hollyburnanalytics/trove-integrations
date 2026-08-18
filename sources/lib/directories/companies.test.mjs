@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeDirectoryContext } from '../feed-fixtures.mjs';
+import { makeDirectoryContext } from '../test-fixtures.mjs';
 import { matchRank, parseRegistry, query } from './companies.mjs';
 
 /** EDGAR's registry shape: an object keyed by row number, not an array. */

@@ -17,6 +17,26 @@ data from an external system and returns structured documents. Each lives in
 
 Sources are loaded by an external harness that calls `sync(ctx)` and handles storage, scheduling, and auth flows. The source adapter's only job is: given a context, fetch data and return documents.
 
+## The twin rule
+
+This repo and the private `trove-matt-helm` catalog meet the same platform and
+are written to the same conventions, so **a rule that is right about one is right
+about the other**. These files are shared **byte for byte** and must be changed
+in both in the same pass:
+
+`eslint.config.mjs` · `biome.json` · `vitest.config.mjs` · `tsconfig.sources.json` ·
+`mcp/tsconfig.json` · `mise.toml` · `.gitignore`
+
+The same goes for the versions of `typescript`, `vitest`, `@biomejs/biome`,
+`eslint`, `eslint-plugin-unicorn`, `eslint-plugin-sonarjs`, `bun-types` and
+`node-html-parser`. They drifted once — unicorn 63 against unicorn 73 — and this
+repo read as clean while looking for almost nothing.
+
+Shared vocabulary lives in `sources/lib/constants.mjs`, `sources/lib/watermark.mjs`,
+`sources/lib/types.d.ts` and `sources/lib/test-fixtures.mjs`. Those are twins, not
+copies: they may differ where the catalogs genuinely differ, but a helper worth
+having in one is worth porting to the other under the same name.
+
 ## Dev Commands
 
 ```bash
@@ -29,7 +49,7 @@ bun run test          # Run tests
 bun run test:watch    # Run tests in watch mode
 bun run test:coverage # Run tests with coverage report
 bun run typecheck     # Typecheck both halves (toolkits + sources)
-bun run check         # Full check: lint + lint:sonar + test with coverage + typecheck
+bun run check         # the whole gate: lint + lint:sonar + lint:baseline + coverage + typecheck + validate
 bun run validate      # Validate registry.json consistency
 bun run audit:dates   # Live publish-date coverage per source (hits real upstreams)
 ```

@@ -11,8 +11,8 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => ({
   syncFeedArticles: vi.fn(),
 }));
 
-import { makeSyncContext } from '../lib/feed-fixtures.mjs';
 import { syncFeedArticles } from '../lib/feeds.mjs';
+import { makeSyncContext } from '../lib/test-fixtures.mjs';
 import { sync } from './index.mjs';
 
 describe('quanta-magazine source', () => {

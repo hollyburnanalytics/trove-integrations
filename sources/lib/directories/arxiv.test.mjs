@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeDirectoryContext } from '../feed-fixtures.mjs';
+import { makeDirectoryContext } from '../test-fixtures.mjs';
 import { parseCategories, query, specToCategory } from './arxiv.mjs';
 
 /**
