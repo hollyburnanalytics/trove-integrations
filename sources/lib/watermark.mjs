@@ -80,6 +80,47 @@ export function advanceDateWatermark({ previous, maxIso, anyFailed, inclusive = 
 }
 
 /**
+ * Cap on the SERIALIZED size of an `idSet` watermark.
+ *
+ * The real bound, and the one the platform enforces: a deployed source's cursor
+ * must fit in 65,536 bytes. {@link DEFAULT_ID_SET_MAX} counts ENTRIES, and a
+ * blog URL runs 60–120 bytes, so ten thousand of them is roughly 800 KB —
+ * twelve times over a limit a count can never see. In the private catalog a
+ * scrape source reached it after 571 posts and every run after that was
+ * refused, so the source could not advance past the point where it broke. This
+ * helper had no byte cap at all until that happened there; the same helper here
+ * would have failed the same way, and only the shortness of the one id set this
+ * catalog writes today has hidden it.
+ *
+ * Held under the limit rather than at it, because the cursor is serialized
+ * inside a larger envelope.
+ */
+export const MAX_ID_SET_BYTES = 56 * 1024;
+
+/**
+ * The newest entries that fit the byte budget, counted from the end.
+ *
+ * Walks backwards because the newest ids are the ones worth keeping: an evicted
+ * old id at worst re-ingests a document the store already dedupes, while
+ * evicting a new one re-fetches something this run just did.
+ *
+ * @param {string[]} values - The entries, oldest first.
+ * @returns {string[]} The suffix that fits.
+ */
+function withinByteBudget(values) {
+  // 2 bytes of JSON overhead per entry: the quotes and the comma.
+  let bytes = 2;
+  let index = values.length;
+  while (index > 0) {
+    const size = new TextEncoder().encode(values[index - 1]).length + 3;
+    if (bytes + size > MAX_ID_SET_BYTES) break;
+    bytes += size;
+    index -= 1;
+  }
+  return index === 0 ? values : values.slice(index);
+}
+
+/**
  * Read an `idSet` watermark as a string array (empty when absent).
  *
  * @param {unknown} [cursor] - the source adapter's previous cursor (`ctx.cursor`)
@@ -100,6 +141,6 @@ export function readIdSet(cursor) {
  */
 export function idSetWatermark(values, max = DEFAULT_ID_SET_MAX) {
   const unique = [...new Set(values)];
-  const bounded = unique.length > max ? unique.slice(unique.length - max) : unique;
-  return { type: 'idSet', values: bounded, max };
+  const byCount = unique.length > max ? unique.slice(unique.length - max) : unique;
+  return { type: 'idSet', values: withinByteBudget(byCount), max };
 }
