@@ -4,11 +4,11 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "target": "es2022",
+    "target": "es2023",
     "module": "esnext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "lib": ["es2022", "dom"],
+    "lib": ["es2023", "dom"],
     "types": [],
     "noEmit": true
   },
