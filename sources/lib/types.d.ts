@@ -13,6 +13,8 @@
  * @module
  */
 
+import type { Watermark } from '@ontrove/sdk';
+
 /**
  * One user-supplied setting. The manifest's field types are `text`, `url`,
  * `url[]`, `text[]`, `number` and `boolean`; this is their union.
@@ -212,13 +214,18 @@ export type FeedOutcome =
  *
  * The PLATFORM treats this as opaque — it stores whatever a source returns and
  * hands it back untouched. Within the catalog it is not opaque at all: these
- * are the two watermark shapes `watermark.mjs` reads and writes, and declaring
- * them is what lets a source (or its tests) assert on the cursor it produced
- * instead of reaching into an `unknown`.
+ * are the watermark shapes `watermark.mjs` reads and writes, and declaring them
+ * is what lets a source (or its tests) assert on the cursor it produced instead
+ * of reaching into an `unknown`.
+ *
+ * It is now an ALIAS of the SDK's `Watermark` rather than a second declaration
+ * of the same union, because `watermark.mjs` re-exports the SDK's writer and a
+ * near-copy would have made the writer's own output unassignable here — over
+ * `readonly values` and an optional `max` that the local copy spelled
+ * differently. One name, one type, and the arms below are the SDK's: `date`,
+ * `idSet`, and the `none` this catalog's sources express by returning nothing.
  */
-export type Cursor =
-  | { type: 'date'; value: string; inclusive?: true }
-  | { type: 'idSet'; values: string[]; max: number };
+export type Cursor = Watermark;
 
 /** What a source's `sync()` returns. */
 export interface SyncResult {

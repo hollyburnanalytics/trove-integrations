@@ -12,8 +12,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/sdk';
 import { describe, expect, it } from 'vitest';
-import { VALID_SCHEDULES, validateManifest } from '../sources/lib/constants.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(here, '..');
@@ -62,8 +62,13 @@ describe('source contract', () => {
       }
     });
 
-    it('manifest invariants (type system, location, fanOut) are valid', () => {
-      expect(validateManifest(manifest, { implemented })).toEqual([]);
+    it('manifest invariants (identity, type system, location, fanOut) are valid', () => {
+      // `implemented` is passed, not inferred, and passing it at all is what
+      // makes the five declarations required — this is a catalog, so a source
+      // that has not said how it collects is incomplete rather than unfinished.
+      // The directory provider check is left to `scripts/validate-registry.mjs`,
+      // which is the one that knows what is on disk.
+      expect(validateSourceManifest(manifest, { implemented }).errors).toEqual([]);
     });
 
     it('schedule (when present) is one of the allowed values', () => {

@@ -47,7 +47,12 @@ export function okResponse(text, { contentLength } = {}) {
               isDone = true;
               return Promise.resolve({ done: false, value: bytes });
             },
-            cancel() {},
+            // A real reader's `cancel()` returns a promise, and the HTTP seam
+            // awaits it when it abandons an over-cap body. Returning undefined
+            // here made the fake fail on `.catch` instead.
+            cancel() {
+              return Promise.resolve();
+            },
           };
         },
       },
@@ -262,7 +267,7 @@ export function dateCursorValue(cursor) {
  * and a reader that wants to say whether the set is full needs both.
  *
  * @param {import('./types.d.ts').Cursor | undefined} cursor - What `sync` returned.
- * @returns {{ type: 'idSet', values: string[], max: number }} The watermark.
+ * @returns {Extract<import('./types.d.ts').Cursor, { type: 'idSet' }>} The watermark.
  */
 export function idSetCursor(cursor) {
   if (cursor?.type !== 'idSet') {
@@ -296,7 +301,8 @@ export function asMock(sink) {
  * result that caused it. This says the real thing.
  *
  * @template T
- * @param {T[]} items - The array to read.
+ * @param {readonly T[]} items - The array to read. Readonly because a watermark's
+ *   `values` is, and reading an entry out of one never needed to mutate it.
  * @param {number} [index] - Which entry.
  * @returns {T} The entry, guaranteed present.
  */
