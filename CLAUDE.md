@@ -32,7 +32,7 @@ The same goes for the versions of `typescript`, `vitest`, `@biomejs/biome`,
 `node-html-parser`. They drifted once — unicorn 63 against unicorn 73 — and this
 repo read as clean while looking for almost nothing.
 
-Shared vocabulary lives in `sources/lib/constants.mjs`, `sources/lib/watermark.mjs`,
+Shared vocabulary lives in `sources/lib/constants.mjs`, `sources/lib/cursor.mjs`,
 `sources/lib/types.d.ts` and `sources/lib/test-fixtures.mjs`. Those are twins, not
 copies: they may differ where the catalogs genuinely differ, but a helper worth
 having in one is worth porting to the other under the same name.
@@ -115,11 +115,11 @@ formalization and the MVP scope decision.
 
 - **`kind`** — execution contract: `scheduled-sync` (only built kind) · `on-demand-fetch` · `on-demand-query` (reserved).
 - **`transport`** — mechanism: `feed` · `scrape` · `api` · `browser` · `local` (all built).
-- **`watermark`** — resume strategy: `date` · `idSet` · `none` (built) · `highWaterId` · `opaqueToken` · `snapshot` · `mtime` · `rowid` (reserved).
-- **`documentSemantics`** — `append` (built) · `upsert` (reserved).
+- **`cursor`** — resume strategy: `date` · `idSet` · `none` (built) · `highWaterId` · `opaqueToken` · `snapshot` · `mtime` · `rowid` (reserved).
+- **`ingest`** — `append` (built) · `upsert` (reserved).
 
 Implemented sources must stay within the **MVP cut** (`scheduled-sync` / `append` /
-watermark ∈ {`date`, `idSet`, `none`} / transport ∈ {`feed`, `scrape`, `api`, `browser`, `local`}).
+cursor ∈ {`date`, `idSet`, `none`} / transport ∈ {`feed`, `scrape`, `api`, `browser`, `local`}).
 Stubs may declare reserved values to encode where a shape is headed.
 
 ### `available` — temporarily hide a built source
@@ -159,7 +159,7 @@ The harness provides:
 ```javascript
 {
   documents: [{ id, title, text, url, author, date?, tags? }],
-  cursor: { type: 'date', value } | undefined,  // typed Watermark value — see docs/source-adapter-taxonomy.md §4.3
+  cursor: { type: 'date', value } | undefined,  // typed Cursor value — see docs/source-adapter-taxonomy.md §4.3
   stats: { fetched, skipped?, undated? }
 }
 ```
@@ -200,7 +200,7 @@ alongside `file_url` becomes the extraction header, so use it for metadata
 - `syncRSS(ctx, { feedUrl, idPrefix, defaultAuthor })` — complete RSS/Atom sync with cursor support. Returns the full `{ documents, cursor, stats }` envelope. Most RSS sources are 8 lines.
 - `parseRSS(xml)` — parse RSS `<item>` or Atom `<entry>` XML into `[{ title, link, description, content, pubDate, author, guid, categories }]`.
 - `htmlToText(html)` — reduce an HTML (or already-plain) fragment to clean plain text (decode entities, strip tags). Used to store feed bodies.
-- `syncFeedArticles(ctx, { feedUrl, idPrefix, defaultAuthor, articleSelector })` — for **CC/public-domain** feeds that carry only excerpts: fetch each new article page, extract `articleSelector`'s text, store the full body. Oldest-first, deadline-bounded, resumes via the `date` watermark.
+- `syncFeedArticles(ctx, { feedUrl, idPrefix, defaultAuthor, articleSelector })` — for **CC/public-domain** feeds that carry only excerpts: fetch each new article page, extract `articleSelector`'s text, store the full body. Oldest-first, deadline-bounded, resumes via the `date` cursor.
 - `fetchArticleText(url, selector)` — fetch one page and extract the selected container as plain text (falls back to `<article>`/`<main>`).
 - `fetchPage(url)` — fetch with our honest bot UA + timeout + size cap, throws on non-200.
 - `decodeHtmlEntities(text)` / `safeDate(str)` / `stableId(prefix, input)` — small text/date/id helpers.
@@ -229,13 +229,13 @@ mkdir -p sources/{source-id}
   "author": "Hollyburn Analytics Inc.",
   "kind": "scheduled-sync",
   "transport": "feed",
-  "watermark": "date",
-  "documentSemantics": "append",
+  "cursor": "date",
+  "ingest": "append",
   "location": "cloud",
   "schedule": "daily",
   "status": "implemented",
   "config": {},
-  "needs_browser": false,
+  "needsBrowser": false,
   "live": false
 }
 ```
@@ -307,7 +307,7 @@ export async function sync(ctx) {
   });
 }
 ```
-Cursor: automatic — a typed `date` watermark (`{ type: 'date', value }`).
+Cursor: automatic — a typed `date` cursor (`{ type: 'date', value }`).
 
 ### Direct JSON API
 ```javascript

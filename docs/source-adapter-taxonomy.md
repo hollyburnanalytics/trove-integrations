@@ -10,9 +10,9 @@
 
 The SDK gives every source adapter one uniform contract — `sync(ctx) → { documents, cursor, stats }`.
 That contract is expressive enough that every source in this repo shares it cleanly, but
-on its own it treats **collection shape and watermark semantics as an undeclared,
+on its own it treats **collection shape and cursor semantics as an undeclared,
 adapter-private detail.** The manifest captures *cadence*
-(`schedule`), *browser-need* (`needs_browser`), *default executor* (`location`), and
+(`schedule`), *browser-need* (`needsBrowser`), *default executor* (`location`), and
 *user preferences* (`config`) — but nothing about *how* a
 source adapter collects or *how* it resumes. This doc names that taxonomy explicitly so we can
 (a) reason about sync health, (b) decide what is in and out of MVP, and (c) evolve the
@@ -32,18 +32,18 @@ the axes that actually vary across source adapters:
 `browser` (Playwright session) · `local` (on-device library / filesystem read with the
 user's own OS permission)
 
-### ② Watermark — how it avoids re-ingesting (the resume strategy)
+### ② Cursor — how it avoids re-ingesting (the resume strategy)
 - `date` — date high-water mark; dateless items always pass. Owned by `syncRSS()` /
   `syncFeedArticles()` (strict `>`; an inclusive `>=` variant is available for feeds whose
   boundary needs it).
 - `idSet` — an accumulating set of already-seen ids, bounded by `max` so it cannot grow
   without limit.
-- `none` — no watermark; full head re-scan each run, relying on the harness's
+- `none` — no cursor; full head re-scan each run, relying on the harness's
   `UNIQUE(feed_id, external_id)` dedup (e.g. `hacker-news`).
 
-The watermark logic lives in the **shared helpers**, not the source adapters — most adapters
-just delegate. The adapter returns a tagged `Watermark` value (§4.3), stored as JSON on the
-feed's cursor; the harness parses it to reason about the watermark's strategy and progress.
+The cursor logic lives in the **shared helpers**, not the source adapters — most adapters
+just delegate. The adapter returns a tagged `Cursor` value (§4.3), stored as JSON on the
+feed's cursor; the harness parses it to reason about the cursor's strategy and progress.
 
 ### ③ Fan-out — cardinality per run
 `single` (one feed/page) · `multi-entity` (N companies, N queries) · `paged-scroll` (a scroll
@@ -57,7 +57,7 @@ loop with **no within-run checkpoint**)
 The recurring dimension-combinations collapse into a handful of recognizable classes. The
 ones below are the shapes the repo actually exercises:
 
-| Class | Transport × Watermark × Fan-out | Helper | Exemplars |
+| Class | Transport × Cursor × Fan-out | Helper | Exemplars |
 |---|---|---|---|
 | **Feed-poll** | feed × `date` × single | `syncRSS()` | `stratechery`, `rss-feeds` |
 | **Full-text feed** | scrape × `date` × single | `syncFeedArticles()` | `quanta-magazine` |
@@ -103,7 +103,7 @@ capability later means implementing an already-named type, not redesigning.
 
 ```ts
 type SourceKind =
-  | 'scheduled-sync'    // [built]    timer-driven, watermarked, append. The only built kind.
+  | 'scheduled-sync'    // [built]    timer-driven, cursor-tracked, append. The only built kind.
   | 'on-demand-fetch'   // [reserved] retrieve ONE record by id/url ("fetch this paper")
   | 'on-demand-query';  // [reserved] parameterized search → result set
 ```
@@ -118,13 +118,13 @@ type Transport =
 `local` reads an on-device library or filesystem with the user's own OS permission (e.g.
 `apple-podcasts`); it carries a `localPerms` auth requirement rather than a network credential.
 
-### 4.3 `watermark` — typed resume strategy (discriminated union)
+### 4.3 `cursor` — typed resume strategy (discriminated union)
 
 The **manifest declares the strategy** (static enum); the **feed's cursor stores the value**
 (dynamic, the tagged object below).
 
 ```ts
-type Watermark =
+type Cursor =
   | { type: 'date';        value: string;    inclusive?: boolean }  // [built] strict '>'; inclusive '>='
   | { type: 'idSet';       values: string[]; max?: number }         // [built] bounded by `max`
   | { type: 'none' }                                                // [built] full re-scan + dedup
@@ -140,12 +140,12 @@ so it cannot grow without limit), and `none`. `highWaterId` and `opaqueToken` ar
 union but not yet wired — a source adapter that needs them today should use `none` (dedup is
 the safety net).
 
-### 4.4 `documentSemantics` — ingest behavior
+### 4.4 `ingest` — ingest behavior
 
 ```ts
 type DocumentSemantics =
   | 'append'    // [built]    immutable; INSERT … ON CONFLICT(feed_id, external_id) DO NOTHING
-  | 'upsert';   // [reserved] mutable; replace on conflict. Unlocks the snapshot watermark.
+  | 'upsert';   // [reserved] mutable; replace on conflict. Unlocks the snapshot cursor.
 ```
 
 ### 4.5 Entrypoints — the sync / fetch split
@@ -155,12 +155,12 @@ export function sync(ctx: SyncContext): Promise<SyncResult>;                    
 export function fetch(ctx: FetchContext, target: FetchTarget): Promise<FetchResult>;  // [reserved]
 export function query(ctx: FetchContext, params: QueryParams): Promise<QueryResult>;  // [reserved]
 
-interface SyncContext { cursor: Watermark | undefined; config; credentials; log; progress; browser? }
-interface SyncResult  { documents: Document[]; cursor: Watermark | undefined; stats }
+interface SyncContext { cursor: Cursor | undefined; config; credentials; log; progress; browser? }
+interface SyncResult  { documents: Document[]; cursor: Cursor | undefined; stats }
 type     FetchTarget  = { url: string } | { id: string };
 ```
 
-A source declares `{ kind, transport, watermark, documentSemantics }`; the harness uses
+A source declares `{ kind, transport, cursor, ingest }`; the harness uses
 `kind` to pick the entrypoint. **Today the harness only calls `sync`** — `fetch` / `query` are
 typed now but unimplemented, so on-demand can be added later without a redesign.
 
@@ -170,12 +170,12 @@ typed now but unimplemented, so on-demand can be added later without a redesign.
 |---|---|---|
 | `kind` | `scheduled-sync` | `on-demand-fetch`, `on-demand-query` |
 | `transport` | feed, scrape, api, browser, local | — |
-| `watermark` | date, idSet (bounded), none | highWaterId, opaqueToken, snapshot, mtime, rowid |
-| `documentSemantics` | append | upsert |
+| `cursor` | date, idSet (bounded), none | highWaterId, opaqueToken, snapshot, mtime, rowid |
+| `ingest` | append | upsert |
 | entrypoints | `sync` | `fetch`, `query` |
 
 `validate-registry.mjs` enforces this cut: an implemented source must be `scheduled-sync` /
-`append`, with `watermark ∈ {date, idSet, none}` and `transport ∈ {feed, scrape, api, browser,
+`append`, with `cursor ∈ {date, idSet, none}` and `transport ∈ {feed, scrape, api, browser,
 local}`.
 
 ### 4.7 Manifest example
@@ -185,10 +185,10 @@ local}`.
   "id": "simon-willison", "name": "Simon Willison",
   "kind": "scheduled-sync",        // execution contract
   "transport": "feed",             // mechanism
-  "watermark": "date",             // strategy only; the value lives in the feed's cursor
-  "documentSemantics": "append",
+  "cursor": "date",             // strategy only; the value lives in the feed's cursor
+  "ingest": "append",
   "location": "cloud",             // default executor (cloud | client)
-  "needs_browser": false, "config": {}, "schedule": "daily", "status": "implemented"
+  "needsBrowser": false, "config": {}, "schedule": "daily", "status": "implemented"
 }
 ```
 
@@ -198,7 +198,7 @@ local}`.
   for whatever drives the source, not authoritative state. The harness is the sole
   executor; it ticks the source, calls `sync`, stores the returned documents, and advances
   the cursor.
-- **The cursor is a typed `Watermark` value** (JSON), advanced by the harness via
+- **The cursor is a typed `Cursor` value** (JSON), advanced by the harness via
   compare-and-swap as it ingests documents. Because the strategy is declared and the value is
   tagged, the harness can project sync state (strategy + synced-through date / tracked-id
   count) for display.
