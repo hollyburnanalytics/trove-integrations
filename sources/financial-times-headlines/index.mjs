@@ -15,7 +15,7 @@
  * markets/equities, markets/fund-management, markets/trading, etc.
  */
 
-import { stringList } from '../lib/constants.mjs';
+import { stringList } from '@ontrove/sdk';
 import { feedItemDocument, syncFeeds } from '../lib/feed-sync.mjs';
 
 const BASE_URL = 'https://www.ft.com';

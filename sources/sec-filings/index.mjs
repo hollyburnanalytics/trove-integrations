@@ -19,8 +19,7 @@
  * Config: tickers[] — array of stock ticker symbols (e.g., SHOP, SNOW, OKTA).
  */
 
-import { advanceDateWatermark, readDateWatermark } from '@ontrove/sdk';
-import { stringList } from '../lib/constants.mjs';
+import { advanceDateWatermark, readDateWatermark, stringList } from '@ontrove/sdk';
 import { dayToLocalNoonIso, fetchPage, stableId } from '../lib/feeds.mjs';
 
 const FILING_TYPES = new Set([

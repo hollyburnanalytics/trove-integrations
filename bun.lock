@@ -5,8 +5,8 @@
     "": {
       "name": "trove-integrations",
       "dependencies": {
-        "@ontrove/mcp": "^0.12.0",
-        "@ontrove/sdk": "^0.12.0",
+        "@ontrove/mcp": "^0.13.0",
+        "@ontrove/sdk": "^0.13.0",
         "fast-xml-parser": "^5.10.1",
         "node-html-parser": "^9.0.1",
       },
@@ -84,9 +84,9 @@
 
     "@nodable/entities": ["@nodable/entities@3.0.0", "", {}, "sha512-8L9xFeTYKhm49xfIypoe2W5wV1m/3Z58kT+7kR9A8OyFxcPduI4VmxaUMQyKYrRjUoLLSXv6EKKID5Tvj9cUVw=="],
 
-    "@ontrove/mcp": ["@ontrove/mcp@0.12.0", "", { "peerDependencies": { "zod": "^4" } }, "sha512-BpmNfwm0YOcUcVJSIyocD9xhJRPFItLLJSnLDDVfwsrnjAZXSy15VCEwmgP29EKWTQhpB3ADv6Gwlv38ws+dKg=="],
+    "@ontrove/mcp": ["@ontrove/mcp@0.13.0", "", { "peerDependencies": { "zod": "^4" } }, "sha512-TlhLRpQBdYf4GgaMeljQqlOcokyxHvaKl6xiGCwi0IWz2slENaIhY3SMtj6EAjkH4ao7YQsHLKCBTfKVOMWdXQ=="],
 
-    "@ontrove/sdk": ["@ontrove/sdk@0.12.0", "", {}, "sha512-hJpWGuQv7dhimxWPR03iF9Y/OSxWh4tqWaxCWHSpSp1wOJ0jcalCGW72+t09nm34B/umeHNh9vzRXGwfkEHrdA=="],
+    "@ontrove/sdk": ["@ontrove/sdk@0.13.0", "", {}, "sha512-qIQPNNB/r0pJBJ1Dw+/oK7t43VwIWo/05t223ylPHvnf2jm42rTApwbZmP0IK7wpJ3S5pFBokPv9LArCzwFqSg=="],
 
     "@oxc-project/types": ["@oxc-project/types@0.144.0", "", {}, "sha512-nuhZIOLuI6TFQ32I/WnUx+SCPY7SdSKwgnFHydAuoS1+Z4BRcaP+RRJmGzl9lw+0OFF7UmaESf7KQRXaNLHypg=="],
 

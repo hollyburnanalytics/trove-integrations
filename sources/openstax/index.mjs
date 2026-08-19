@@ -1,5 +1,5 @@
+import { stringList } from '@ontrove/sdk';
 import { parse } from 'node-html-parser';
-import { stringList } from '../lib/constants.mjs';
 import { fetchPage, hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
 
 /**
