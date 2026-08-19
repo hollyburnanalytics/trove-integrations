@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { advanceDateWatermark, readDateWatermark } from '@ontrove/sdk';
 import { stableId } from '../lib/feeds.mjs';
-import { advanceDateWatermark, readDateWatermark } from '../lib/watermark.mjs';
 
 /**
  * Apple Podcasts source: the episodes of every show the user follows in the

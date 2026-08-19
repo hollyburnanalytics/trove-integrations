@@ -1,5 +1,33 @@
+/**
+ * This catalog's proof that `@ontrove/sdk`'s HTTP guard refuses everything this
+ * catalog needs refused.
+ *
+ * These do not test catalog code. `http.mjs` used to re-export the SDK's
+ * helpers under a local specifier and was deleted — a file with no definitions
+ * of its own is a name to look up rather than a thing to read. The tests stay,
+ * because the guard is the thing a scraper cannot be wrong about: a source does
+ * not choose most of what it fetches, the address comes from a feed or a page,
+ * and the SSRF cases below (including the IPv4-mapped-IPv6 form) are the ones
+ * an attacker reaches for.
+ *
+ * The SDK's `http` module was written FROM the file this replaced — the honest
+ * bot User-Agent, the hard per-request timeout, the size cap enforced on both
+ * the declared Content-Length and the streaming body, the by-hand redirect walk
+ * that tells a permanent move from a routine one, and the guard applied to the
+ * URL given AND to every hop. Two things changed in the move, both deliberate
+ * and both the SDK's call: the User-Agent names the product rather than this
+ * catalog (`TroveBot/1.0 (+https://ontrove.sh)`), so an operator who
+ * allow-listed the old string sees a new one; and `fetchBytes` returns a plain
+ * `Uint8Array` rather than a Node `Buffer`, so the same code runs where there
+ * is no `Buffer`.
+ *
+ * Each helper takes the `fetch` it should use and falls back to the global one
+ * READ AT CALL TIME, which is what lets these tests keep stubbing
+ * `globalThis.fetch` through `test-fixtures.mjs`.
+ */
+
+import { fetchBytes, fetchPage, fetchPageWithMeta, isTooLargeError } from '@ontrove/sdk';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fetchBytes, fetchPage, fetchPageWithMeta, isTooLargeError } from './http.mjs';
 import { fetchMock, setFetch } from './test-fixtures.mjs';
 
 /**

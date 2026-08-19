@@ -1,6 +1,6 @@
+import { advanceDateWatermark, readDateWatermark } from '@ontrove/sdk';
 import { stringList } from '../lib/constants.mjs';
 import { decodeHtmlEntities, fetchPage, hasDeadlinePassed, safeDate } from '../lib/feeds.mjs';
-import { advanceDateWatermark, readDateWatermark } from '../lib/watermark.mjs';
 
 /** Results per arXiv API page. */
 export const PAGE_SIZE = 100;
