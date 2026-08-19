@@ -9,7 +9,7 @@
  * Science, Health, Sports, Arts, Books, etc.
  */
 
-import { stringList } from '../lib/constants.mjs';
+import { stringList } from '@ontrove/sdk';
 import { feedItemDocument, syncFeeds } from '../lib/feed-sync.mjs';
 
 const FEED_BASE = 'https://rss.nytimes.com/services/xml/rss/nyt';
