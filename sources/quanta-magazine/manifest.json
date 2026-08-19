@@ -2,17 +2,17 @@
   "id": "quanta-magazine",
   "name": "Quanta Magazine",
   "description": "In-depth journalism on math, physics, biology and computer science (CC-BY-NC-ND)",
-  "icon": "🔬",
+  "icon": "\ud83d\udd2c",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "kind": "scheduled-sync",
   "transport": "scrape",
-  "watermark": "date",
-  "documentSemantics": "append",
-  "location": "client",
+  "cursor": "date",
+  "ingest": "append",
+  "runsIn": "mac",
   "schedule": "daily",
   "status": "implemented",
-  "needs_browser": false,
+  "needsBrowser": false,
   "historyReach": {
     "kind": "window",
     "note": "This source reads an index page, so it reaches back as far as that page lists and no further."
@@ -20,5 +20,5 @@
   "egress": [
     "www.quantamagazine.org"
   ],
-  "egressNote": "The feed and every article page it links are on www.quantamagazine.org — this source fetches the page, not just the feed entry."
+  "egressNote": "The feed and every article page it links are on www.quantamagazine.org \u2014 this source fetches the page, not just the feed entry."
 }

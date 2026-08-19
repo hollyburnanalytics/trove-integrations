@@ -19,7 +19,7 @@ import { decodeHtmlEntities, safeDate, stableId } from '../lib/feeds.mjs';
  */
 
 /**
- * First-run lookback: how far back to reach when a feed has no watermark yet.
+ * First-run lookback: how far back to reach when a feed has no cursor yet.
  * A podcast feed routinely carries hundreds of back episodes, and every one we
  * emit buys a transcription — so a newly added show starts with its recent
  * episodes rather than its archive. Reset the cursor to reach further back.
@@ -28,7 +28,7 @@ const FIRST_RUN_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
  * Max episodes emitted per run, across all configured feeds. The rest are held
- * by the date watermark and drain over subsequent runs, oldest first.
+ * by the date cursor and drain over subsequent runs, oldest first.
  */
 const MAX_EPISODES_PER_RUN = 25;
 

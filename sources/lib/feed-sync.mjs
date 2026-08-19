@@ -1,4 +1,4 @@
-import { advanceDateWatermark, readDateWatermark } from '@ontrove/sdk';
+import { advanceDateCursor, readDateCursor } from '@ontrove/sdk';
 import { parse as parseHtmlDocument } from 'node-html-parser';
 import { feedRelocation, feedSelfTitle, selfReport } from './feed-identity.mjs';
 import {
@@ -128,9 +128,9 @@ async function fetchFeedItems(context, feed, parseFeed, maxBytes) {
 /**
  * Process one feed's items into dated document entries: dedupe by identity
  * against `seenIdentities` (shared across feeds) and drop items at or before the
- * date watermark. `toDocument` may return `undefined` to reject an item it
+ * date cursor. `toDocument` may return `undefined` to reject an item it
  * cannot represent (e.g. a podcast entry carrying no audio); rejects count as
- * skipped and contribute no date, so the watermark never advances on their
+ * skipped and contribute no date, so the cursor never advances on their
  * behalf.
  *
  * Dedupe is keyed on {@link itemIdentity} — the SAME value a document's stable
@@ -145,7 +145,7 @@ async function fetchFeedItems(context, feed, parseFeed, maxBytes) {
  * @param {object} options - The shared accumulator state.
  * @param {import('./types.d.ts').Feed} options.feed - The feed these items came from.
  * @param {Set<string>} options.seenIdentities - Identities already emitted, across all feeds.
- * @param {Date} [options.lastDate] - The date watermark; items at or before it are skipped.
+ * @param {Date} [options.lastDate] - The date cursor; items at or before it are skipped.
  * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} options.toDocument -
  *   Build a document, or return undefined to reject the item.
  * @returns {{ entries: Array<{document: import('./types.d.ts').TroveDocument, ms: number}>, skipped: number }} Its entries.
@@ -184,18 +184,18 @@ function collectFeedItems(items, { feed, seenIdentities, lastDate, toDocument })
  *
  * Uncapped (the default), every entry is emitted in feed order — the order
  * sources have always produced. Capped, entries are re-ordered OLDEST-FIRST and
- * truncated, which is what makes the cap safe to combine with a date watermark:
+ * truncated, which is what makes the cap safe to combine with a date cursor:
  * everything held back is strictly newer than everything emitted, so advancing
  * the cursor to the newest emitted item strands nothing.
  *
  * KNOWN LIMIT — undated entries. They carry no date, so they always survive the
- * watermark filter and the cursor can never record having passed them. If a
+ * cursor filter and the cursor can never record having passed them. If a
  * source carries MORE undated entries than the cap, the same prefix is selected
  * every run and the remainder is unreachable forever. No ordering fixes this:
  * sorting undated first merely moves the starvation onto the dated backlog,
- * which — unlike the undated items — a date watermark *can* resume. So undated
+ * which — unlike the undated items — a date cursor *can* resume. So undated
  * sort last (the dated backlog always drains) and {@link syncFeeds} warns by
- * name when any are held back. The real repair is a watermark that can address
+ * name when any are held back. The real repair is a cursor that can address
  * individual items (`idSet`), not a different sort. Measured against 22 live
  * podcast feeds this is unreached: 0 of 12,213 episodes lacked a date.
  *
@@ -219,11 +219,11 @@ function selectEntries(entries, maxDocuments) {
  * user the other twenty. The caller decides what a given failure count means.
  *
  * Two kinds of failure are counted separately. A `transient` one (timeout,
- * 5xx, connection reset) holds the watermark back, because the feed's older
+ * 5xx, connection reset) holds the cursor back, because the feed's older
  * items may still be coming. An oversized response is `permanent`: it will be
  * oversized again next run, and every run after that. Counting it as transient
  * would hold the cursor forever — freezing not just that feed but every OTHER
- * feed in the source, since they share one watermark. So it is warned, skipped,
+ * feed in the source, since they share one cursor. So it is warned, skipped,
  * and left out of the hold decision.
  *
  * Feeds are fetched `concurrency` at a time but COLLECTED strictly in feed
@@ -237,7 +237,7 @@ function selectEntries(entries, maxDocuments) {
  *
  * Feeds past the soft deadline are left `unreached` rather than fetched, which
  * the caller must treat as a hold: their older items would otherwise be
- * stranded behind the watermark the fetched feeds advanced.
+ * stranded behind the cursor the fetched feeds advanced.
  *
  * @returns {Promise<{entries: Array<{document: object, ms: number}>, skipped: number, transient: number, permanent: number, unreached: number}>}
  */
@@ -264,10 +264,10 @@ function warnFetchFailure(context, outcome) {
  * @param {object} state - The shared accumulator.
  * @param {import('./types.d.ts').FeedEntry[]} state.entries - Where collected entries go.
  * @param {Set<string>} state.seenIdentities - Identities already emitted.
- * @param {Date} [state.lastDate] - The date watermark.
+ * @param {Date} [state.lastDate] - The date cursor.
  * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} state.toDocument -
  *   Build a document, or reject the item.
- * @returns {number} How many items this feed's watermark skipped.
+ * @returns {number} How many items this feed's cursor skipped.
  */
 function absorbFeedItems(context, outcome, { entries, seenIdentities, lastDate, toDocument }) {
   const origin = outcome.feed.label || outcome.feed.url;
@@ -302,7 +302,7 @@ function absorbFeedItems(context, outcome, { entries, seenIdentities, lastDate, 
  * @param {string[]} state.feedTitles - Titles the feeds gave themselves.
  * @param {string[]} state.relocations - 301 targets the feeds reported.
  * @param {Set<string>} state.seenIdentities - Identities already emitted.
- * @param {Date} [state.lastDate] - The date watermark.
+ * @param {Date} [state.lastDate] - The date cursor.
  * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} state.toDocument -
  *   Build a document, or reject the item.
  * @param {number} state.total - How many feeds this source has, for progress lines.
@@ -366,7 +366,7 @@ function absorbBatch(context, outcomes, state) {
  * @param {import('./types.d.ts').Feed[]} options.feeds - The feeds to fetch, in order.
  * @param {string} options.label - The noun for log lines.
  * @param {(xml: string) => import('./types.d.ts').FeedItem[]} options.parseFeed - The parser.
- * @param {Date} [options.lastDate] - The date watermark.
+ * @param {Date} [options.lastDate] - The date cursor.
  * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} options.toDocument -
  *   Build a document, or reject the item.
  * @param {number} [options.maxBytes] - Per-feed response-size cap.
@@ -435,8 +435,8 @@ async function fetchAllFeeds(
 
 /**
  * Generic multi-feed sync. Fetches each feed, dedupes items by URL across all
- * feeds, drops items at or before the `date` watermark, maps survivors to
- * documents, and advances a `date` watermark that is held back whenever any
+ * feeds, drops items at or before the `date` cursor, maps survivors to
+ * documents, and advances a `date` cursor that is held back whenever any
  * feed failed (so a transient failure never strands the failed feed's older
  * items behind the healthy feeds' high-water mark).
  *
@@ -491,7 +491,7 @@ export async function syncFeeds(
   }
 
   const lastDate =
-    readDateWatermark(context.cursor) ??
+    readDateCursor(context.cursor) ??
     (firstRunLookbackMs ? new Date(Date.now() - firstRunLookbackMs) : undefined);
   context.log.info(`Fetching ${feeds.length} ${label}...`);
 
@@ -515,24 +515,24 @@ export async function syncFeeds(
   const dates = selected.map((entry) => entry.ms).filter((ms) => Number.isFinite(ms));
   const remaining = entries.length - selected.length;
 
-  // Held-back DATED items resume next run via the watermark; held-back UNDATED
+  // Held-back DATED items resume next run via the cursor; held-back UNDATED
   // items cannot be resumed at all — see {@link selectEntries}. Name them, so a
   // feed that stops emitting dates surfaces as a warning instead of as a
   // silently truncated archive.
   const undatedHeld = countUndated(entries) - countUndated(selected);
   if (undatedHeld > 0) {
     context.log.warn(
-      `${undatedHeld} undated item(s) exceed the ${maxDocuments}-item cap and a date watermark ` +
+      `${undatedHeld} undated item(s) exceed the ${maxDocuments}-item cap and a date cursor ` +
         'cannot resume past them — they stay unreachable until the dated backlog clears and the ' +
         `source carries fewer than ${maxDocuments} undated items.`,
     );
   }
 
   const maxIso = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : undefined;
-  const cursor = advanceDateWatermark({
+  const cursor = advanceDateCursor({
     previous: context.cursor,
     maxIso,
-    // A transient failure or a feed we never reached holds the watermark — see
+    // A transient failure or a feed we never reached holds the cursor — see
     // {@link fetchAllFeeds}. A permanent failure does not.
     anyFailed: transient > 0 || unreached > 0,
   });

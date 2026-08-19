@@ -19,7 +19,7 @@
  * Config: tickers[] — array of stock ticker symbols (e.g., SHOP, SNOW, OKTA).
  */
 
-import { advanceDateWatermark, readDateWatermark, stringList } from '@ontrove/sdk';
+import { advanceDateCursor, readDateCursor, stringList } from '@ontrove/sdk';
 import { dayToLocalNoonIso, fetchPage, stableId } from '../lib/feeds.mjs';
 
 const FILING_TYPES = new Set([
@@ -265,7 +265,7 @@ async function resolveTicker(context, upperTicker, cachedTickers, tickerMapRefer
  *
  * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
  * @param {string} upperTicker - The ticker, uppercased.
- * @param {Date | undefined} lastDate - The previous run's watermark, when resuming.
+ * @param {Date | undefined} lastDate - The previous run's cursor, when resuming.
  * @param {Record<string, TickerEntry>} cachedTickers - Tickers resolved on a previous run.
  * @param {{ map: Record<string, TickerEntry> | undefined }} tickerMapReference - The
  *   run's lazily-loaded ticker file.
@@ -325,7 +325,7 @@ async function syncTicker(
  * the previous cursor date when nothing new was collected.
  *
  * @param {number[]} rawDates - Filing dates collected this round, in epoch ms.
- * @param {Date | undefined} lastDate - The incoming watermark.
+ * @param {Date | undefined} lastDate - The incoming cursor.
  * @returns {number} The newest time known, or 0 when there is none.
  */
 function newestTime(rawDates, lastDate) {
@@ -348,7 +348,7 @@ export async function sync(context) {
     return { documents: [], cursor: undefined, stats: { fetched: 0 } };
   }
 
-  const lastDate = readDateWatermark(context.cursor);
+  const lastDate = readDateCursor(context.cursor);
   /** @type {Record<string, TickerEntry>} */
   const cachedTickers = {};
   /** @type {{ map: Record<string, TickerEntry> | undefined }} */
@@ -379,7 +379,7 @@ export async function sync(context) {
   // Held when a ticker or an individual filing failed: advancing on the
   // healthy items' dates would permanently skip the failed ones.
   const maxTime = newestTime(state.rawDates, lastDate);
-  const cursor = advanceDateWatermark({
+  const cursor = advanceDateCursor({
     previous: context.cursor || undefined,
     maxIso: maxTime > 0 ? new Date(maxTime).toISOString() : undefined,
     anyFailed: state.anyFailed,

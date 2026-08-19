@@ -883,7 +883,7 @@ describe('syncFeedArticles', () => {
     expect(result.cursor).toEqual({ type: 'date', value: '2024-01-10T00:00:00.000Z' });
   });
 
-  it('skips items at or before the date watermark', async () => {
+  it('skips items at or before the date cursor', async () => {
     mockFetchByUrl({ '/feed': ARTICLE_FEED, '/new': ARTICLE_HTML });
     const result = await syncFeedArticles(
       makeContext({ type: 'date', value: '2023-01-01T00:00:00.000Z' }),

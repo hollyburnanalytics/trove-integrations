@@ -25,7 +25,7 @@ const ROOT = new URL('..', import.meta.url);
  * @typedef {import('../sources/lib/types.d.ts').ConfigValue} ConfigValue
  * @typedef {{ config?: Record<string, ConfigValue>, timeout?: number, skip?: string }} Override
  * @typedef {{ id: string, path: string, status?: string, has_code?: boolean,
- *   needs_browser?: boolean }} RegistryEntry
+ *   needsBrowser?: boolean }} RegistryEntry
  * @typedef {{ id: string, path: string, needsBrowser: boolean, scraper: boolean,
  *   config: Record<string, ConfigValue>, timeout: number, skip?: string }} SourceEntry
  * @typedef {{ status: 'PASS' | 'FAIL' | 'TIMEOUT', docs: number, elapsed: string,
@@ -71,7 +71,7 @@ function discoverSources() {
       return {
         id: entry.id,
         path: entry.path,
-        needsBrowser: Boolean(entry.needs_browser),
+        needsBrowser: Boolean(entry.needsBrowser),
         scraper,
         config: override.config || {},
         timeout: override.timeout || (scraper ? SCRAPER_TIMEOUT : DEFAULT_TIMEOUT),

@@ -87,7 +87,7 @@ function discoverSources() {
  */
 function skipReason({ id, manifest }) {
   if (manifest.transport === 'local') return 'reads on-disk data (local transport)';
-  if (manifest.needs_browser) return 'needs a browser session';
+  if (manifest.needsBrowser) return 'needs a browser session';
   return NEEDS_INPUT[id];
 }
 

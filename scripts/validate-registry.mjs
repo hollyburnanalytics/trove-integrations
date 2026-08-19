@@ -225,7 +225,7 @@ function dropStaleFields(id, regEntry, desired) {
 // --- Check 3c: registry entries are a faithful mirror of their manifest ---
 // The manifest is the source of truth for every descriptive field; the registry
 // carries a copy plus the filesystem-derived `path`. Syncing all manifest fields
-// (not a hand-picked list) kills drift — e.g. a stale `needs_browser`/`version`,
+// (not a hand-picked list) kills drift — e.g. a stale `needsBrowser`/`version`,
 // or a renamed key like the old `auth` — and carries new fields (location,
 // fanOut, config) automatically. `status` and `has_code` are derived from the
 // filesystem (checks 1–2), so they are excluded here.

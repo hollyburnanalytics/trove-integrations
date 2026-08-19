@@ -1,8 +1,8 @@
 /**
- * This catalog's proof that `@ontrove/sdk`'s watermark writers behave the way
+ * This catalog's proof that `@ontrove/sdk`'s cursor writers behave the way
  * its sources need them to.
  *
- * These do not test catalog code — `watermark.mjs` was a re-export of the SDK's
+ * These do not test catalog code — `cursor.mjs` was a re-export of the SDK's
  * writers under a local specifier, and was deleted so a reader follows one hop
  * instead of two. What the tests pin is the behaviour, not the wrapper.
  *
@@ -15,38 +15,38 @@
  */
 
 import {
-  advanceDateWatermark,
+  advanceDateCursor,
   DEFAULT_ID_SET_MAX,
-  dateWatermark,
-  idSetWatermark,
-  readDateWatermark,
+  dateCursor,
+  idSetCursor,
+  readDateCursor,
   readIdSet,
 } from '@ontrove/sdk';
 import { describe, expect, it } from 'vitest';
 import { dateCursorValue } from './test-fixtures.mjs';
 
-describe('date watermark', () => {
+describe('date cursor', () => {
   it('reads the typed shape', () => {
-    expect(readDateWatermark({ type: 'date', value: '2024-01-10T00:00:00.000Z' })).toEqual(
+    expect(readDateCursor({ type: 'date', value: '2024-01-10T00:00:00.000Z' })).toEqual(
       new Date('2024-01-10T00:00:00.000Z'),
     );
   });
 
   it('returns undefined for an absent, empty, or unparseable cursor', () => {
-    expect(readDateWatermark()).toBeUndefined();
-    expect(readDateWatermark({})).toBeUndefined();
-    expect(readDateWatermark({ type: 'date', value: 'not-a-date' })).toBeUndefined();
+    expect(readDateCursor()).toBeUndefined();
+    expect(readDateCursor({})).toBeUndefined();
+    expect(readDateCursor({ type: 'date', value: 'not-a-date' })).toBeUndefined();
   });
 
   it('builds the typed shape', () => {
-    expect(dateWatermark('2024-01-10T00:00:00.000Z')).toEqual({
+    expect(dateCursor('2024-01-10T00:00:00.000Z')).toEqual({
       type: 'date',
       value: '2024-01-10T00:00:00.000Z',
     });
   });
 });
 
-describe('idSet watermark', () => {
+describe('idSet cursor', () => {
   it('reads the typed shape', () => {
     expect(readIdSet({ type: 'idSet', values: ['a', 'b'] })).toEqual(['a', 'b']);
   });
@@ -57,7 +57,7 @@ describe('idSet watermark', () => {
   });
 
   it('builds a deduped, tagged shape with the default cap', () => {
-    expect(idSetWatermark(['a', 'b', 'a'])).toEqual({
+    expect(idSetCursor(['a', 'b', 'a'])).toEqual({
       type: 'idSet',
       values: ['a', 'b'],
       max: DEFAULT_ID_SET_MAX,
@@ -66,7 +66,7 @@ describe('idSet watermark', () => {
 
   it('bounds the set to `max`, keeping the newest entries', () => {
     const values = Array.from({ length: 12 }, (_, index) => `id-${index}`);
-    const result = idSetWatermark(values, 10);
+    const result = idSetCursor(values, 10);
     expect(result.values).toHaveLength(10);
     expect(result.max).toBe(10);
     expect(result.values.at(0)).toBe('id-2'); // oldest two evicted
@@ -74,13 +74,13 @@ describe('idSet watermark', () => {
   });
 });
 
-describe('advanceDateWatermark', () => {
+describe('advanceDateCursor', () => {
   /** @type {import('./types.d.ts').Cursor} */
   const previous = { type: 'date', value: '2026-01-01T00:00:00.000Z' };
 
   it('advances to the max date when every sub-source succeeded', () => {
     expect(
-      advanceDateWatermark({ previous, maxIso: '2026-02-01T00:00:00.000Z', anyFailed: false }),
+      advanceDateCursor({ previous, maxIso: '2026-02-01T00:00:00.000Z', anyFailed: false }),
     ).toEqual({ type: 'date', value: '2026-02-01T00:00:00.000Z' });
   });
 
@@ -89,25 +89,25 @@ describe('advanceDateWatermark', () => {
     // failed sub-source's older items; the next run re-fetches the window and
     // the server dedups what was already stored.
     expect(
-      advanceDateWatermark({ previous, maxIso: '2026-02-01T00:00:00.000Z', anyFailed: true }),
+      advanceDateCursor({ previous, maxIso: '2026-02-01T00:00:00.000Z', anyFailed: true }),
     ).toBe(previous);
   });
 
   it('holds the previous cursor when there is nothing to advance to', () => {
-    expect(advanceDateWatermark({ previous, maxIso: undefined, anyFailed: false })).toBe(previous);
+    expect(advanceDateCursor({ previous, maxIso: undefined, anyFailed: false })).toBe(previous);
   });
 
   it('clamps a future max date to now (scheduled items)', () => {
     const future = new Date(Date.now() + 5 * 86_400_000).toISOString();
     const before = Date.now();
-    const result = advanceDateWatermark({ previous, maxIso: future, anyFailed: false });
+    const result = advanceDateCursor({ previous, maxIso: future, anyFailed: false });
     const advanced = new Date(dateCursorValue(result)).getTime();
     expect(advanced).toBeGreaterThanOrEqual(before - 1000);
     expect(advanced).toBeLessThanOrEqual(Date.now() + 1000);
   });
 
   it('passes the inclusive flag through', () => {
-    const result = advanceDateWatermark({
+    const result = advanceDateCursor({
       previous,
       maxIso: '2026-02-01T00:00:00.000Z',
       anyFailed: false,
@@ -130,7 +130,7 @@ describe('the cursor byte budget', () => {
       { length: 5000 },
       (_, index) => `https://example.com/a-fairly-long-article-slug-${String(index)}`,
     );
-    const cursor = idSetWatermark(urls);
+    const cursor = idSetCursor(urls);
     const bytes = new TextEncoder().encode(JSON.stringify(cursor)).length;
     expect(bytes).toBeLessThan(65_536);
     expect(cursor.values.length).toBeLessThan(urls.length);
@@ -144,7 +144,7 @@ describe('the cursor byte budget', () => {
       { length: 3000 },
       (_, index) => `https://example.com/a-fairly-long-article-slug-number-${String(index)}`,
     );
-    const cursor = idSetWatermark(urls);
+    const cursor = idSetCursor(urls);
     expect(cursor.values.at(-1)).toBe(urls.at(-1));
     expect(cursor.values).not.toContain(urls[0]);
   });

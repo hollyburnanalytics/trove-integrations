@@ -6,7 +6,7 @@
  * extracts its text into the body, with our `text` riding along as the header.
  *
  * Minutes are published to a meeting's record weeks after the meeting date, so
- * a date watermark would skip them; the cursor is instead an `idSet` of synced
+ * a date cursor would skip them; the cursor is instead an `idSet` of synced
  * document numbers. New documents are offered oldest-first in bounded batches,
  * so the backfill converges across runs while the per-document downloads stay
  * paced.
@@ -18,7 +18,7 @@
  * download, a text extraction and a formatting pass.
  */
 
-import { fetchPage, idSetWatermark, readIdSet } from '@ontrove/sdk';
+import { fetchPage, idSetCursor, readIdSet } from '@ontrove/sdk';
 import { dayToLocalNoonIso } from '../lib/text.mjs';
 
 const SEARCH_URL = 'https://app.dnv.org/dnv_search/api/v1/councilsearch/search?pageSize=5000';
@@ -161,7 +161,7 @@ export async function sync(context) {
 
   const cursor =
     syncedNumbers.length > 0
-      ? idSetWatermark([...previousNumbers, ...syncedNumbers])
+      ? idSetCursor([...previousNumbers, ...syncedNumbers])
       : context.cursor || undefined;
   return {
     documents,

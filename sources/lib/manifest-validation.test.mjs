@@ -7,7 +7,7 @@
  * one entry point, and onto the SDK's wording rather than the wording the local
  * copy happened to use.
  *
- * The file is kept rather than deleted for the same reason `watermark.test.mjs`
+ * The file is kept rather than deleted for the same reason `cursor.test.mjs`
  * is: it is this catalog's proof that the shared validator still refuses what
  * this catalog needs refused. `scripts/validate-registry.mjs` runs the same call
  * over every manifest on disk, so a rule that quietly relaxed would let a broken
@@ -31,11 +31,11 @@ const validManifest = {
   version: '1.0.0',
   kind: 'scheduled-sync',
   transport: 'feed',
-  watermark: 'date',
-  documentSemantics: 'append',
-  location: 'cloud',
+  cursor: 'date',
+  ingest: 'append',
+  runsIn: 'cloud',
   schedule: 'daily',
-  needs_browser: false,
+  needsBrowser: false,
   config: {},
 };
 
@@ -142,7 +142,7 @@ describe('the four type-system fields', () => {
 
   it('reports each missing required field', () => {
     const errors = validateSourceManifest({}, STUB).errors;
-    for (const field of ['kind', 'transport', 'watermark', 'documentSemantics']) {
+    for (const field of ['kind', 'transport', 'cursor', 'ingest']) {
       expect(about(errors, field), `nothing said about "${field}"`).toHaveLength(1);
       expect(about(errors, field)[0]).toContain('is required');
     }
@@ -155,7 +155,7 @@ describe('the four type-system fields', () => {
     expect(about(errors, 'transport')).toEqual([
       'manifest.transport is required — the transport, one of: feed, scrape, api, browser, local',
     ]);
-    expect(about(errors, 'location')).toHaveLength(1);
+    expect(about(errors, 'runsIn')).toHaveLength(1);
   });
 
   it('reports an invalid value that is in no allowed set', () => {
@@ -185,9 +185,9 @@ describe('the four type-system fields', () => {
     expect(errors[0]).toContain('must use one of: scheduled-sync');
   });
 
-  it('rejects a non-MVP watermark for an implemented source', () => {
-    expect(about(errorsFor({ watermark: 'opaqueToken' }), 'watermark')).toEqual([
-      'manifest.watermark "opaqueToken" is a reserved watermark strategy that nothing runs yet; ' +
+  it('rejects a non-MVP cursor for an implemented source', () => {
+    expect(about(errorsFor({ cursor: 'opaqueToken' }), 'cursor')).toEqual([
+      'manifest.cursor "opaqueToken" is a reserved cursor strategy that nothing runs yet; ' +
         `a source with code must use one of: ${['date', 'idSet', 'none'].join(', ')}`,
     ]);
   });
@@ -195,62 +195,62 @@ describe('the four type-system fields', () => {
   it('accumulates errors across multiple fields', () => {
     const errors = validateSourceManifest(
       {
-        ...without('documentSemantics'),
+        ...without('ingest'),
         kind: 'on-demand-query',
         transport: 'local',
-        watermark: 'snapshot',
+        cursor: 'snapshot',
       },
       IMPLEMENTED,
     ).errors;
-    // kind/watermark are valid-but-non-MVP; documentSemantics is missing.
+    // kind/cursor are valid-but-non-MVP; ingest is missing.
     // transport "local" is in the MVP cut (apple-podcasts), so it passes the
     // cut and fails only the cloud-eligibility predicate.
-    expect(about(errors, 'documentSemantics')[0]).toContain('is required');
+    expect(about(errors, 'ingest')[0]).toContain('is required');
     expect(about(errors, 'kind')[0]).toContain('reserved execution kind');
-    expect(about(errors, 'watermark')[0]).toContain('reserved watermark strategy');
+    expect(about(errors, 'cursor')[0]).toContain('reserved cursor strategy');
     expect(about(errors, 'transport')).toEqual([]);
   });
 });
 
-describe('location and cloud eligibility', () => {
-  it('reports a missing location', () => {
-    const errors = validateSourceManifest(without('location'), IMPLEMENTED).errors;
-    expect(about(errors, 'location')).toHaveLength(1);
-    expect(about(errors, 'location')[0]).toContain('is required');
+describe('runsIn and cloud eligibility', () => {
+  it('reports a missing runsIn', () => {
+    const errors = validateSourceManifest(without('runsIn'), IMPLEMENTED).errors;
+    expect(about(errors, 'runsIn')).toHaveLength(1);
+    expect(about(errors, 'runsIn')[0]).toContain('is required');
   });
 
-  it('rejects a location outside the enum', () => {
-    const errors = about(errorsFor({ location: 'edge' }), 'location');
+  it('rejects a runsIn outside the enum', () => {
+    const errors = about(errorsFor({ runsIn: 'edge' }), 'runsIn');
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('"edge" is not a known location');
-    expect(errors[0]).toContain('expected one of: cloud, client');
+    expect(errors[0]).toContain('"edge" is not a known place to run');
+    expect(errors[0]).toContain('expected one of: cloud, mac');
   });
 
   it('accepts a cloud source that satisfies the eligibility predicate', () => {
-    expect(errorsFor({ location: 'cloud', transport: 'feed', schedule: 'daily' })).toEqual([]);
+    expect(errorsFor({ runsIn: 'cloud', transport: 'feed', schedule: 'daily' })).toEqual([]);
   });
 
   it('accepts cloud for every eligible transport', () => {
     for (const transport of ['feed', 'api', 'scrape']) {
-      expect(errorsFor({ location: 'cloud', transport, schedule: 'daily' })).toEqual([]);
+      expect(errorsFor({ runsIn: 'cloud', transport, schedule: 'daily' })).toEqual([]);
     }
   });
 
   it('rejects a cloud source on a non-eligible transport', () => {
-    const errors = about(errorsFor({ transport: 'browser' }), 'location');
+    const errors = about(errorsFor({ transport: 'browser' }), 'runsIn');
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('"cloud" requires manifest.transport to be one of');
     expect(errors[0]).toContain('got "browser"');
   });
 
   it('rejects a cloud source that needs a browser', () => {
-    const errors = about(errorsFor({ needs_browser: true }), 'location');
+    const errors = about(errorsFor({ needsBrowser: true }), 'runsIn');
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('incompatible with manifest.needs_browser: true');
+    expect(errors[0]).toContain('incompatible with manifest.needsBrowser: true');
   });
 
   it('rejects a cloud source scheduled on demand', () => {
-    const errors = about(errorsFor({ transport: 'api', schedule: 'on demand' }), 'location');
+    const errors = about(errorsFor({ transport: 'api', schedule: 'on demand' }), 'runsIn');
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('incompatible with manifest.schedule "on demand"');
   });
@@ -258,18 +258,18 @@ describe('location and cloud eligibility', () => {
   it('accumulates every eligibility violation', () => {
     const errors = errorsFor({
       transport: 'local',
-      needs_browser: true,
+      needsBrowser: true,
       schedule: 'on demand',
     });
-    expect(about(errors, 'location')).toHaveLength(3);
+    expect(about(errors, 'runsIn')).toHaveLength(3);
   });
 
-  it('imposes no eligibility predicate on a client source', () => {
+  it('imposes no eligibility predicate on a Mac source', () => {
     expect(
       errorsFor({
-        location: 'client',
+        runsIn: 'mac',
         transport: 'local',
-        needs_browser: true,
+        needsBrowser: true,
         schedule: 'on demand',
       }),
     ).toEqual([]);
@@ -404,13 +404,13 @@ describe('the manifest as a whole', () => {
     expect(errorsFor({ fanOut: 'feeds', config: { feeds: { type: 'url[]' } } })).toEqual([]);
   });
 
-  it('composes type-system, location, and fanOut errors', () => {
+  it('composes type-system, runsIn, and fanOut errors', () => {
     const errors = errorsFor({
-      watermark: 'opaqueToken', // reserved, so an error for a source with code
-      transport: 'browser', // makes location: cloud ineligible
+      cursor: 'opaqueToken', // reserved, so an error for a source with code
+      transport: 'browser', // makes runsIn: cloud ineligible
       fanOut: 'missing', // names no config field
     });
-    expect(errors.some((error) => error.includes('reserved watermark strategy'))).toBe(true);
+    expect(errors.some((error) => error.includes('reserved cursor strategy'))).toBe(true);
     expect(errors.some((error) => error.includes('"cloud" requires manifest.transport'))).toBe(
       true,
     );

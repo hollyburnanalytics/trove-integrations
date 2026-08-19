@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stableId, syncRSS } from './feeds.mjs';
 import { at, fetchMock, makeSyncContext, setFetch } from './test-fixtures.mjs';
 
-// Multi-run / watermark round-trip tests.
+// Multi-run / cursor round-trip tests.
 //
 // The per-call cursor logic is covered by feeds.test.mjs. These tests
 // run a source adapter *multiple times in sequence*, feeding the cursor produced by
 // one run into the next, to pin down the cross-run incremental contract:
 //   - a second run over an unchanged source returns nothing new,
-//   - only items past the watermark are returned next run, and the cursor advances,
+//   - only items past the cursor are returned next run, and the cursor advances,
 //   - a transient failure leaves its item out of the cursor so it resumes,
 //   - and the documented edge cases (boundary equality, dateless items, and the
-//     no-watermark baseline that relies on server externalId dedup).
+//     no-cursor baseline that relies on server externalId dedup).
 
 // --- fetch harness (a URL -> response map; { fail: true } yields an HTTP 500) ---
 
@@ -119,10 +119,10 @@ describe('RSS incremental round-trips', () => {
     const run2 = await syncRSS(makeContext(run1.cursor), RSS_OPTS);
     expect(run2.documents).toHaveLength(0);
     expect(run2.stats?.skipped).toBe(2);
-    expect(run2.cursor).toEqual(run1.cursor); // watermark unchanged
+    expect(run2.cursor).toEqual(run1.cursor); // cursor unchanged
   });
 
-  it('returns only items newer than the watermark on the next run, advancing the cursor', async () => {
+  it('returns only items newer than the cursor on the next run, advancing the cursor', async () => {
     respond({ [FEED_URL]: rssFeed([A, B]) });
     const run1 = await syncRSS(makeContext(), RSS_OPTS);
 
@@ -134,7 +134,7 @@ describe('RSS incremental round-trips', () => {
     expect(run2.cursor).toEqual({ type: 'date', value: '2024-01-15T00:00:00.000Z' });
   });
 
-  it('boundary: an item published exactly at the watermark is treated as already-seen', async () => {
+  it('boundary: an item published exactly at the cursor is treated as already-seen', async () => {
     // The filter is strict greater-than (d > lastDate), so an item at the exact
     // cursor timestamp is NOT re-emitted (it was ingested on the prior run).
     respond({ [FEED_URL]: rssFeed([B]) });
@@ -147,7 +147,7 @@ describe('RSS incremental round-trips', () => {
   });
 
   it('re-emits dateless items every run with a stable id (server dedup is the safety net)', async () => {
-    // Items with no publish date can't be compared to the watermark, so they are
+    // Items with no publish date can't be compared to the cursor, so they are
     // conservatively re-emitted on every run. They carry a stable id, so the
     // server (INSERT OR IGNORE on externalId) no-ops the duplicate.
     respond({ [FEED_URL]: rssFeed([ND, B]) });
@@ -161,7 +161,7 @@ describe('RSS incremental round-trips', () => {
     expect(at(run2.documents, 0).id).toBe(ndId); // identical id across runs
   });
 
-  it('without a watermark, every run re-emits all items with identical ids', async () => {
+  it('without a cursor, every run re-emits all items with identical ids', async () => {
     respond({ [FEED_URL]: rssFeed([A, B]) });
 
     const run1 = await syncRSS(makeContext(), RSS_OPTS);
