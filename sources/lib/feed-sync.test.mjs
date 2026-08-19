@@ -208,7 +208,7 @@ describe('syncFeeds', () => {
     expect(result.documents).toHaveLength(1);
   });
 
-  it('skips items at or before the date watermark', async () => {
+  it('skips items at or before the date cursor', async () => {
     fetchMock().mockResolvedValue(
       ok(
         rss(
@@ -625,7 +625,7 @@ describe('syncFeeds oversized-feed handling', () => {
     expect(result.documents).toHaveLength(1);
   });
 
-  it('does not hold the watermark hostage to a permanently oversized feed', async () => {
+  it('does not hold the cursor hostage to a permanently oversized feed', async () => {
     // Feed 1 is too big to ever fetch; feed 2 is healthy. The cursor must still
     // advance, or feed 2's backlog can never drain.
     const healthy = ok(
@@ -649,7 +649,7 @@ describe('syncFeeds oversized-feed handling', () => {
     expect(context.log.warn).toHaveBeenCalledWith(expect.stringContaining('skipping permanently'));
   });
 
-  it('still holds the watermark for a transient failure', async () => {
+  it('still holds the cursor for a transient failure', async () => {
     const healthy = ok(
       rss(
         rssItem({
@@ -756,7 +756,7 @@ describe('syncFeeds concurrency and the soft deadline', () => {
 
   it('holds the cursor when feeds went unreached, so they are not skipped later', async () => {
     // Deadline trips after the first batch: feeds 2..3 were never fetched and
-    // may carry items older than what feed 0-1 advanced the watermark to.
+    // may carry items older than what feed 0-1 advanced the cursor to.
     fetchMock().mockImplementation((url) => {
       const index = String(url).split('/').pop();
       const body = rss(rssItem({ title: `Ep ${index}`, link: `https://a.test/${index}` }));

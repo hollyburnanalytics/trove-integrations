@@ -225,7 +225,7 @@ describe('openstax source', () => {
     expect(runContext.progress).toHaveBeenCalledWith(2, 'Synced Book One');
   });
 
-  it('skips books already recorded in the watermark', async () => {
+  it('skips books already recorded in the cursor', async () => {
     const result = await sync(resuming({ done: ['book-one@v1'] }));
     expect(result.documents).toHaveLength(0);
     expect(result.stats?.skipped).toBe(1);

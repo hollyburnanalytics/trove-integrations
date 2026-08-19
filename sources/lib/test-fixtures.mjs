@@ -12,7 +12,7 @@
  * one test file stubbing `'../lib/feed-sync.mjs'` silently replaces it for
  * every other test file that imports it under the same specifier — which is
  * every source. Tests written against a stub then pass without exercising any
- * of the dedupe, watermark, cap or deadline logic they appear to cover.
+ * of the dedupe, cursor, cap or deadline logic they appear to cover.
  *
  * Mocking `fetch` instead keeps each test honest and independent, and asserts
  * something better besides: that the URL a source builds is really requested.
@@ -243,15 +243,15 @@ export function enclosureOf(item) {
 }
 
 /**
- * The ISO instant of a date watermark, or a failure naming what came back instead.
+ * The ISO instant of a date cursor, or a failure naming what came back instead.
  *
  * A cursor is a union, so `result.cursor.value` is only legal once the arm is
  * known. Asserting the arm here — rather than at every call site — says the
  * real thing when a source returns the wrong shape: a test that expected a date
- * watermark and got an idSet fails on that, not on a missing property.
+ * cursor and got an idSet fails on that, not on a missing property.
  *
  * @param {import('./types.d.ts').Cursor | undefined} cursor - What `sync` returned.
- * @returns {string} The watermark's ISO value.
+ * @returns {string} The cursor's ISO value.
  */
 export function dateCursorValue(cursor) {
   if (cursor?.type !== 'date') {
@@ -261,13 +261,13 @@ export function dateCursorValue(cursor) {
 }
 
 /**
- * An idSet watermark, or a failure naming what came back instead.
+ * An idSet cursor, or a failure naming what came back instead.
  *
  * Returns the whole arm rather than just its ids: the cap travels with the set,
  * and a reader that wants to say whether the set is full needs both.
  *
  * @param {import('./types.d.ts').Cursor | undefined} cursor - What `sync` returned.
- * @returns {Extract<import('./types.d.ts').Cursor, { type: 'idSet' }>} The watermark.
+ * @returns {Extract<import('./types.d.ts').Cursor, { type: 'idSet' }>} The cursor.
  */
 export function idSetCursor(cursor) {
   if (cursor?.type !== 'idSet') {
@@ -301,7 +301,7 @@ export function asMock(sink) {
  * result that caused it. This says the real thing.
  *
  * @template T
- * @param {readonly T[]} items - The array to read. Readonly because a watermark's
+ * @param {readonly T[]} items - The array to read. Readonly because a cursor's
  *   `values` is, and reading an entry out of one never needed to mutate it.
  * @param {number} [index] - Which entry.
  * @returns {T} The entry, guaranteed present.

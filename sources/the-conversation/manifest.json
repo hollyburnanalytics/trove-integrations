@@ -2,20 +2,20 @@
   "id": "the-conversation",
   "name": "The Conversation",
   "description": "Explainers and analysis written by academics across every field (CC-BY-ND)",
-  "icon": "🎓",
+  "icon": "\ud83c\udf93",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "kind": "scheduled-sync",
   "transport": "feed",
-  "watermark": "date",
-  "documentSemantics": "append",
-  "location": "cloud",
+  "cursor": "date",
+  "ingest": "append",
+  "runsIn": "cloud",
   "schedule": "daily",
   "status": "implemented",
-  "needs_browser": false,
+  "needsBrowser": false,
   "historyReach": {
     "kind": "recent-only",
-    "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
+    "note": "A news feed carries only what is on the front page now \u2014 typically the last day or two. Older stories are not in the feed and cannot be fetched."
   },
   "egress": [
     "theconversation.com"

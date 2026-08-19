@@ -122,7 +122,7 @@ describe('podcast-feeds configuration', () => {
     const result = await run(feed(items));
     expect(result.stats?.fetched).toBe(25);
     expect(result.stats?.remaining).toBe(15);
-    // Oldest first, so the watermark can resume without stranding anything.
+    // Oldest first, so the cursor can resume without stranding anything.
     expect(at(result.documents, 0).title).toBe('Ep 39');
   });
 
@@ -235,7 +235,7 @@ describe('podcast-feeds against adversarial feeds', () => {
   });
 
   it('warns by name when undated items exceed the cap and cannot be resumed', async () => {
-    // A `date` watermark cannot record progress past an undated item, so an
+    // A `date` cursor cannot record progress past an undated item, so an
     // undated backlog larger than the cap stays unreachable however many times
     // we run. This pins that bounded behavior AND the warning that surfaces it,
     // so a feed which stops emitting dates is visible rather than silent.

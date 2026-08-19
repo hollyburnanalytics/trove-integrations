@@ -2,17 +2,17 @@
   "id": "nytimes-headlines",
   "name": "NYTimes Headlines",
   "description": "Top headlines from the New York Times homepage via RSS (no full article text)",
-  "icon": "📰",
+  "icon": "\ud83d\udcf0",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "kind": "scheduled-sync",
   "transport": "feed",
-  "watermark": "date",
-  "documentSemantics": "append",
-  "location": "cloud",
+  "cursor": "date",
+  "ingest": "append",
+  "runsIn": "cloud",
   "schedule": "every 2 hours",
   "status": "implemented",
-  "needs_browser": false,
+  "needsBrowser": false,
   "config": {
     "sections": {
       "label": "Sections to fetch",
@@ -24,7 +24,7 @@
   },
   "historyReach": {
     "kind": "recent-only",
-    "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
+    "note": "A news feed carries only what is on the front page now \u2014 typically the last day or two. Older stories are not in the feed and cannot be fetched."
   },
   "egress": [
     "rss.nytimes.com"

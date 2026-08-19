@@ -1,11 +1,11 @@
-import { advanceDateWatermark, readDateWatermark, stringList } from '@ontrove/sdk';
+import { advanceDateCursor, readDateCursor, stringList } from '@ontrove/sdk';
 import { decodeHtmlEntities, fetchPage, hasDeadlinePassed, safeDate } from '../lib/feeds.mjs';
 
 /** Results per arXiv API page. */
 export const PAGE_SIZE = 100;
 /**
- * Page cap per query per run. Bounds a cold backfill (no watermark yet) to
- * PAGE_SIZE * MAX_PAGES_PER_QUERY papers; the watermark carries on from there
+ * Page cap per query per run. Bounds a cold backfill (no cursor yet) to
+ * PAGE_SIZE * MAX_PAGES_PER_QUERY papers; the cursor carries on from there
  * on later runs, so nothing is lost — just spread across runs.
  */
 const MAX_PAGES_PER_QUERY = 5;
@@ -92,12 +92,12 @@ function buildQueryUrl(encodedQuery, page) {
 
 /**
  * Collect new documents from one page's entries into the shared accumulators.
- * Returns true when an entry at or behind the watermark is reached (everything
+ * Returns true when an entry at or behind the cursor is reached (everything
  * after it is older), signalling the caller to stop paging this query.
  *
  * @param {RegExpMatchArray[]} entries - One match per `<entry>` on the page.
  * @param {Accumulators} accumulators - State shared across every query in the round.
- * @returns {boolean} True once the watermark is reached.
+ * @returns {boolean} True once the cursor is reached.
  */
 function collectEntries(entries, { lastDate, seenIds, documents, publishedTimes }) {
   for (const entry of entries) {
@@ -116,7 +116,7 @@ function collectEntries(entries, { lastDate, seenIds, documents, publishedTimes 
 /**
  * Page through a single query, accumulating results. Results are sorted
  * newest-first, so paging continues until a page comes back short, an entry
- * falls behind the watermark, the per-run page cap, or the soft deadline.
+ * falls behind the cursor, the per-run page cap, or the soft deadline.
  *
  * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
  * @param {string} query - One arXiv search query.
@@ -160,7 +160,7 @@ function queriesFrom(value) {
  */
 export async function sync(context) {
   const queries = queriesFrom(context.config.queries);
-  const lastDate = readDateWatermark(context.cursor);
+  const lastDate = readDateCursor(context.cursor);
 
   context.log.info(`Searching arXiv for ${queries.length} queries...`);
   /** @type {import('../lib/types.d.ts').TroveDocument[]} */
@@ -187,7 +187,7 @@ export async function sync(context) {
 
   // Held when a query failed: advancing on the healthy queries' dates would
   // permanently skip the failed query's older papers.
-  const cursor = advanceDateWatermark({
+  const cursor = advanceDateCursor({
     previous: context.cursor,
     maxIso:
       publishedTimes.length > 0 ? new Date(Math.max(...publishedTimes)).toISOString() : undefined,

@@ -130,7 +130,7 @@ describe('arxiv-papers source', () => {
     expect(at(result.documents, 0).author).toContain('et al.');
   });
 
-  it('returns correct stats and a date watermark at the newest paper', async () => {
+  it('returns correct stats and a date cursor at the newest paper', async () => {
     fetchPage.mockResolvedValue(ARXIV_RESPONSE);
     const result = await sync(makeContext({ queries: ['cat:cs.AI'] }));
     expect(result.stats?.fetched).toBe(result.documents.length);
@@ -192,7 +192,7 @@ describe('arxiv-papers source', () => {
     expect(at(result.documents, 0).id).toBe('arxiv-2401.00001v1');
   });
 
-  it('filters papers by the date watermark and advances it', async () => {
+  it('filters papers by the date cursor and advances it', async () => {
     fetchPage.mockResolvedValue(
       feedOf([
         entryXml('2401.00002v1', '2024-01-15T00:00:00Z', 'New Paper'),
@@ -230,7 +230,7 @@ describe('arxiv-papers source', () => {
     expect(result.documents).toHaveLength(PAGE_SIZE + 1);
   });
 
-  it('stops paging a query once entries fall behind the watermark', async () => {
+  it('stops paging a query once entries fall behind the cursor', async () => {
     // Results are sorted newest-first; the first stale entry means everything
     // after it is older — no further pages are fetched.
     const fullStalePage = feedOf(

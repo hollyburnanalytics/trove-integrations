@@ -12,7 +12,7 @@ import { fetchPage, hasDeadlinePassed, htmlToText, safeDate, stableId } from '..
  *  - `…/contents/{id}@{ver}:{page}` → one section's body as an HTML fragment.
  *
  * One document per section. The corpus is bounded (~130 books) but large, so the
- * sync is deadline-bounded and resumes via an `idSet` watermark of finished
+ * sync is deadline-bounded and resumes via an `idSet` cursor of finished
  * books — a big first backfill completes cleanly across several runs.
  */
 

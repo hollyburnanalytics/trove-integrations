@@ -8,7 +8,7 @@
  * Markdown.
  */
 
-import { dateWatermark, fetchPage, readDateWatermark } from '@ontrove/sdk';
+import { dateCursor, fetchPage, readDateCursor } from '@ontrove/sdk';
 import { parse } from 'node-html-parser';
 import { parseRSS } from './rss-parse.mjs';
 import { decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
@@ -152,7 +152,7 @@ function identifiedItems(context, items, origin) {
 
 /**
  * Fetch and parse an RSS/Atom feed, returning TroveDocuments.
- * Supports incremental sync via a `date` watermark — only returns items
+ * Supports incremental sync via a `date` cursor — only returns items
  * published after the cursor date. Cursor advances to max date of returned items.
  *
  * @param {import('./types.d.ts').SyncContext} context - The harness context.
@@ -167,7 +167,7 @@ export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
   const xml = await fetchPage(feedUrl);
   const items = parseRSS(xml);
 
-  const lastDate = readDateWatermark(context.cursor);
+  const lastDate = readDateCursor(context.cursor);
   const filtered = lastDate
     ? items.filter((item) => {
         if (!item.pubDate) return true; // include items with no date (conservative)
@@ -206,7 +206,7 @@ export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
     .filter((d) => d > 0);
   const maxDate =
     returnedDates.length > 0 ? new Date(Math.max(...returnedDates)).toISOString() : undefined;
-  const cursor = maxDate ? dateWatermark(maxDate) : context.cursor || undefined;
+  const cursor = maxDate ? dateCursor(maxDate) : context.cursor || undefined;
 
   return {
     documents,
@@ -249,7 +249,7 @@ export async function fetchArticleText(url, articleSelector) {
  * Like `syncRSS()`, but the feed only carries excerpts, so for each new item we
  * fetch the article page and store its full text (via {@link fetchArticleText}).
  * Items are processed oldest-first and the run stops at the host's soft deadline,
- * so a large first run resumes cleanly from the `date` watermark. A per-article
+ * so a large first run resumes cleanly from the `date` cursor. A per-article
  * fetch failure falls back to the feed's excerpt rather than dropping the item.
  *
  * CC / public-domain sources only — see {@link fetchArticleText}.
@@ -259,7 +259,7 @@ export async function fetchArticleText(url, articleSelector) {
  *
  * A failed fetch is NOT a missing document: the item's feed excerpt stands in,
  * so the round still produces something addressable rather than a hole the
- * watermark would then skip past.
+ * cursor would then skip past.
  *
  * @param {import('./types.d.ts').SyncContext} context - The harness context.
  * @param {import('./types.d.ts').FeedItem} item - The feed item to expand.
@@ -293,7 +293,7 @@ async function articleToDocument(context, item, { idPrefix, defaultAuthor, artic
  * Fetch a feed, then fetch each new article's full text, oldest first.
  *
  * For CC / public-domain feeds that carry only excerpts. Deadline-bounded: a
- * large backlog drains across runs, resuming from the `date` watermark.
+ * large backlog drains across runs, resuming from the `date` cursor.
  *
  * @param {import('./types.d.ts').SyncContext} context - The harness context.
  * @param {object} options - Which feed, and how to label its documents.
@@ -310,7 +310,7 @@ export async function syncFeedArticles(
 ) {
   context.log.info(`Fetching ${feedUrl}...`);
   const items = parseRSS(await fetchPage(feedUrl));
-  const lastDate = readDateWatermark(context.cursor);
+  const lastDate = readDateCursor(context.cursor);
 
   const fresh = identifiedItems(context, items, feedUrl)
     .filter((item) => {
@@ -343,7 +343,7 @@ export async function syncFeedArticles(
   warnIfUndated(context, documents, feedUrl);
 
   const maxIso = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : undefined;
-  const cursor = maxIso ? dateWatermark(maxIso) : context.cursor || undefined;
+  const cursor = maxIso ? dateCursor(maxIso) : context.cursor || undefined;
   return {
     documents,
     cursor,

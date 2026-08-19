@@ -13,8 +13,6 @@
  * @module
  */
 
-import type { Watermark } from '@ontrove/sdk';
-
 /**
  * One user-supplied setting. The manifest's field types are `text`, `url`,
  * `url[]`, `text[]`, `number` and `boolean`; this is their union.
@@ -48,7 +46,7 @@ export interface SyncContext {
    * keeping a bespoke checkpoint (openstax) says so at its own boundary.
    */
   cursor?: Cursor;
-  /** A Playwright browser context, for a `needs_browser` source. */
+  /** A Playwright browser context, for a `needsBrowser` source. */
   browser?: unknown;
   /**
    * Epoch ms after which the source should stop and return what it has.
@@ -214,18 +212,18 @@ export type FeedOutcome =
  *
  * The PLATFORM treats this as opaque — it stores whatever a source returns and
  * hands it back untouched. Within the catalog it is not opaque at all: these
- * are the watermark shapes `watermark.mjs` reads and writes, and declaring them
- * is what lets a source (or its tests) assert on the cursor it produced instead
- * of reaching into an `unknown`.
+ * are the shapes `@ontrove/sdk` reads and writes, and declaring them is what
+ * lets a source (or its tests) assert on the cursor it produced instead of
+ * reaching into an `unknown`.
  *
- * It is now an ALIAS of the SDK's `Watermark` rather than a second declaration
- * of the same union, because `watermark.mjs` re-exports the SDK's writer and a
- * near-copy would have made the writer's own output unassignable here — over
- * `readonly values` and an optional `max` that the local copy spelled
- * differently. One name, one type, and the arms below are the SDK's: `date`,
+ * RE-EXPORTED from the SDK, not declared again. This was a local alias of the
+ * SDK's `Cursor` — the catalog had already settled on the word `cursor`
+ * while the package still said `cursor`, and the alias was the seam between
+ * them. The package now says `cursor` too, so the two names are one name and
+ * the alias became `type Cursor = Cursor`. The arms are the SDK's: `date`,
  * `idSet`, and the `none` this catalog's sources express by returning nothing.
  */
-export type Cursor = Watermark;
+export type { Cursor } from '@ontrove/sdk';
 
 /** What a source's `sync()` returns. */
 export interface SyncResult {

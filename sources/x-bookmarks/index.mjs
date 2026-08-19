@@ -12,7 +12,7 @@ import { hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.
  *  - `X_OAUTH_CLIENT_SECRET`  (optional; only for a confidential client)
  *
  * Each run mints a short-lived (~2h) access token from the refresh-token grant.
- * Resume uses an **`idSet`** watermark of recently-seen tweet ids: we page from
+ * Resume uses an **`idSet`** cursor of recently-seen tweet ids: we page from
  * the top and stop the moment we hit an id we've already ingested, so steady
  * state only fetches what's new. The run is bounded by a page cap and the host's
  * soft deadline, so a first backfill splits cleanly across runs.
@@ -31,7 +31,7 @@ const TWEET_FIELDS = 'created_at,public_metrics,entities,referenced_tweets';
 const USER_FIELDS = 'name,username';
 const PAGE_SIZE = 100; // API max bookmarks per page
 const MAX_PAGES = 5; // bound API calls per run (a deadline can stop us sooner)
-const MAX_SEEN_IDS = 1000; // cap the idSet watermark (bookmarks top out at ~800)
+const MAX_SEEN_IDS = 1000; // cap the idSet cursor (bookmarks top out at ~800)
 const TITLE_MAX = 80;
 const USER_AGENT = 'TroveBot/0.1 (+https://github.com/hollyburnanalytics/trove-integrations)';
 
@@ -61,14 +61,14 @@ function authHeaders(accessToken) {
 }
 
 /**
- * Read the previous `idSet` watermark as a (newest-first) array of tweet ids.
+ * Read the previous `idSet` cursor as a (newest-first) array of tweet ids.
  *
  * Reads BOTH shapes on purpose. This source used to store the set under
  * `value`, deliberately unlike the SDK's `{ values, max }`, and the
  * deviation was invisible because the reader and the writer agreed with each
  * other. It was not invisible to the platform: Trove's `parseWatermark` requires
  * `values`, so a `value` cursor parses to null — the feed would resume from
- * nothing on every run and re-fetch every bookmark, and its watermark could not
+ * nothing on every run and re-fetch every bookmark, and its cursor could not
  * be displayed at all.
  *
  * Harmless only because this source is Mac-located, where the raw cursor is
@@ -327,7 +327,7 @@ export async function sync(context) {
     seenIds,
   );
 
-  // idSet watermark: this run's new ids (newest-first) ahead of the prior set,
+  // idSet cursor: this run's new ids (newest-first) ahead of the prior set,
   // deduped and capped to the newest MAX_SEEN_IDS so the cursor stays bounded.
   const ordered = [...newIdsNewestFirst, ...previousIds];
   const boundedIds = [...new Set(ordered)].slice(0, MAX_SEEN_IDS);
