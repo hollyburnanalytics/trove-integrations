@@ -46,8 +46,8 @@ deliberately different manifests. For the authoritative, validator-enforced
 **source** schema, see [`source-adapter-taxonomy.md`](source-adapter-taxonomy.md) §4.
 
 - **Source** (`sources/**/manifest.json`) — `id`, `name`, `description`, `icon`,
-  `version`, `category`, `kind` (e.g. `scheduled-sync`), `transport`, `watermark`,
-  `documentSemantics`, `schedule`, `status`, optional `available`.
+  `version`, `category`, `kind` (e.g. `scheduled-sync`), `transport`, `cursor`,
+  `ingest`, `schedule`, `status`, optional `available`.
 - **Toolkit** (`mcp/**/manifest.json`) — `id`, `name`, `description`, `icon`,
   `version`, `sdk`, `tools[]`, `secrets[]`, `egress[]`, `scopes[]`, `visibility`.
 
@@ -58,7 +58,7 @@ axes above are descriptive, not manifest keys.
 ## ⚠️ Keep the runtimes separate
 
 Conceptual unity ≠ implementation unity. A **scheduled bulk source** (loop a
-record set, cursors/watermarks, pagination, durable retries, batched embedding)
+record set, cursors/cursors, pagination, durable retries, batched embedding)
 and an **on-demand single fetch** (one synchronous call, return to the agent) are
 different machines and must stay that way. The taxonomy names them as cells in
 one grid; it does **not** ask you to run a source as a cron-scheduled tool.
