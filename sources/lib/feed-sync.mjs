@@ -1,3 +1,4 @@
+import { advanceDateWatermark, readDateWatermark } from '@ontrove/sdk';
 import { parse as parseHtmlDocument } from 'node-html-parser';
 import { feedRelocation, feedSelfTitle, selfReport } from './feed-identity.mjs';
 import {
@@ -15,7 +16,6 @@ import {
   undatedStats,
   warnIfUndated,
 } from './feeds.mjs';
-import { advanceDateWatermark, readDateWatermark } from './watermark.mjs';
 
 /** MIME types a page's `<link rel="alternate">` uses to advertise its feed. */
 const FEED_LINK_TYPES = new Set([

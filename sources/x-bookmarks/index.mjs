@@ -64,7 +64,7 @@ function authHeaders(accessToken) {
  * Read the previous `idSet` watermark as a (newest-first) array of tweet ids.
  *
  * Reads BOTH shapes on purpose. This source used to store the set under
- * `value`, deliberately unlike `lib/watermark.mjs`'s `{ values, max }`, and the
+ * `value`, deliberately unlike the SDK's `{ values, max }`, and the
  * deviation was invisible because the reader and the writer agreed with each
  * other. It was not invisible to the platform: Trove's `parseWatermark` requires
  * `values`, so a `value` cursor parses to null — the feed would resume from

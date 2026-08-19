@@ -2,21 +2,20 @@
  * The shared-helper entry point for feed source adapters. The complete
  * `syncRSS()` / `syncFeedArticles()` syncs and the single-article fetch live
  * here; the lower-level primitives they build on are re-exported from their
- * focused modules (`http.mjs`, `rss-parse.mjs`, `text.mjs`) so adapters keep
+ * focused modules (`rss-parse.mjs`, `text.mjs`) so adapters keep
  * importing everything from one place. Feed bodies are stored as plain text
  * (decoded, tags stripped) — we deliberately do not try to reconstruct rich
  * Markdown.
  */
 
+import { dateWatermark, fetchPage, readDateWatermark } from '@ontrove/sdk';
 import { parse } from 'node-html-parser';
-import { fetchPage } from './http.mjs';
 import { parseRSS } from './rss-parse.mjs';
 import { decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
-import { dateWatermark, readDateWatermark } from './watermark.mjs';
 
 // Re-export the feed primitives so `feeds.mjs` stays the single import surface
 // for adapters, even though the implementations live in focused sibling modules.
-export { fetchPage, fetchPageWithMeta, isTooLargeError } from './http.mjs';
+export { fetchPage, fetchPageWithMeta, isTooLargeError } from '@ontrove/sdk';
 export { parseRSS, xmlText } from './rss-parse.mjs';
 export { dayToLocalNoonIso, decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
 

@@ -1,5 +1,19 @@
-import { describe, expect, it } from 'vitest';
-import { dateCursorValue } from './test-fixtures.mjs';
+/**
+ * This catalog's proof that `@ontrove/sdk`'s watermark writers behave the way
+ * its sources need them to.
+ *
+ * These do not test catalog code — `watermark.mjs` was a re-export of the SDK's
+ * writers under a local specifier, and was deleted so a reader follows one hop
+ * instead of two. What the tests pin is the behaviour, not the wrapper.
+ *
+ * The cloud stores `sources.cursor` as an opaque JSON string; these helpers
+ * give every source one tagged shape to read and write, and both catalogs now
+ * write the same bytes because both call the same writer.
+ *
+ * MVP implements three strategies: `date`, `idSet` (bounded), and `none` (no
+ * cursor at all — the source returns `undefined`).
+ */
+
 import {
   advanceDateWatermark,
   DEFAULT_ID_SET_MAX,
@@ -7,7 +21,9 @@ import {
   idSetWatermark,
   readDateWatermark,
   readIdSet,
-} from './watermark.mjs';
+} from '@ontrove/sdk';
+import { describe, expect, it } from 'vitest';
+import { dateCursorValue } from './test-fixtures.mjs';
 
 describe('date watermark', () => {
   it('reads the typed shape', () => {
