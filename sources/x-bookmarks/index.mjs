@@ -1,3 +1,4 @@
+import { defineSource } from '@ontrove/extend/source';
 import { hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
 
 /**
@@ -88,13 +89,6 @@ function readSeenIds(cursor) {
   return Array.isArray(stored.value) ? stored.value.map(String) : [];
 }
 
-/**
- * Exchange the rotating refresh token for a short-lived access token. Throws a
- * clear, token-free error when credentials are absent or the grant is rejected.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @returns {Promise<string>} The access token, valid for this run only.
- */
 async function refreshAccessToken(context) {
   const credentials = context.credentials ?? {};
   const clientId = credentials.X_OAUTH_CLIENT_ID;
@@ -258,19 +252,6 @@ function mapBookmark(tweet, usersById) {
   };
 }
 
-/**
- * Page from the top, collecting new bookmarks until we hit an already-seen id,
- * run out of pages, exhaust the page cap, or reach the host deadline. Because
- * the feed is newest-first, the first seen id means everything below it is older
- * and already ingested — so we stop without re-walking the tail.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @param {string} accessToken - The user-context token.
- * @param {string} userId - Whose bookmarks to read.
- * @param {Set<string>} seenIds - Ids already ingested on a previous run.
- * @returns {Promise<{ documents: import('../lib/types.d.ts').TroveDocument[],
- *   newIdsNewestFirst: string[], skipped: number }>} What this round collected.
- */
 async function collectNewBookmarks(context, accessToken, userId, seenIds) {
   /** @type {import('../lib/types.d.ts').TroveDocument[]} */
   const documents = [];
@@ -307,37 +288,60 @@ async function collectNewBookmarks(context, accessToken, userId, seenIds) {
   return { documents, newIdsNewestFirst, skipped };
 }
 
-/**
- * Sync this source: fetch what is new and return it as documents.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @returns {Promise<import('../lib/types.d.ts').SyncResult>} The round's documents, cursor and stats.
- */
-export async function sync(context) {
-  const previousIds = readSeenIds(context.cursor);
-  const seenIds = new Set(previousIds);
+export default defineSource({
+  id: "x-bookmarks",
+  name: "X Bookmarks",
+  description: "Your saved X (Twitter) bookmarks, synced into Trove (your ~800 most recent, newest-first). Not yet available: X sign-in for this source can't be completed in the app yet.",
+  icon: "🔖",
+  version: "0.1.0",
+  author: "Hollyburn Analytics Inc.",
+  kind: "scheduled-sync",
+  transport: "api",
+  cursor: "idSet",
+  ingest: "append",
+  runsIn: "mac",
+  schedule: "every 6 hours",
+  status: "implemented",
+  needsBrowser: false,
+  egress: [
+    "api.x.com"
+  ],
+  egressNote: "The X API v2 only. x.com appears in stored document URLs but is never fetched.",
+  egressNotFetched: [
+    "x.com"
+  ],
+  available: false,
+  secrets: [
+    "X_OAUTH_CLIENT_ID",
+    "X_OAUTH_CLIENT_SECRET",
+    "X_OAUTH_REFRESH_TOKEN"
+  ],
+  async sync(context) {
+    const previousIds = readSeenIds(context.cursor);
+    const seenIds = new Set(previousIds);
 
-  const accessToken = await refreshAccessToken(context);
-  const userId = await fetchUserId(accessToken);
+    const accessToken = await refreshAccessToken(context);
+    const userId = await fetchUserId(accessToken);
 
-  const { documents, newIdsNewestFirst, skipped } = await collectNewBookmarks(
-    context,
-    accessToken,
-    userId,
-    seenIds,
-  );
+    const { documents, newIdsNewestFirst, skipped } = await collectNewBookmarks(
+      context,
+      accessToken,
+      userId,
+      seenIds,
+    );
 
-  // idSet cursor: this run's new ids (newest-first) ahead of the prior set,
-  // deduped and capped to the newest MAX_SEEN_IDS so the cursor stays bounded.
-  const ordered = [...newIdsNewestFirst, ...previousIds];
-  const boundedIds = [...new Set(ordered)].slice(0, MAX_SEEN_IDS);
+    // idSet cursor: this run's new ids (newest-first) ahead of the prior set,
+    // deduped and capped to the newest MAX_SEEN_IDS so the cursor stays bounded.
+    const ordered = [...newIdsNewestFirst, ...previousIds];
+    const boundedIds = [...new Set(ordered)].slice(0, MAX_SEEN_IDS);
 
-  context.log.info(`Fetched ${documents.length} new bookmark(s)`);
-  return {
-    documents,
-    // `values` + `max`, the shape the platform parses. See readSeenIds above
-    // for why this is not `value`.
-    cursor: { type: 'idSet', values: boundedIds, max: MAX_SEEN_IDS },
-    stats: { fetched: documents.length, skipped },
-  };
-}
+    context.log.info(`Fetched ${documents.length} new bookmark(s)`);
+    return {
+      documents,
+      // `values` + `max`, the shape the platform parses. See readSeenIds above
+      // for why this is not `value`.
+      cursor: { type: 'idSet', values: boundedIds, max: MAX_SEEN_IDS },
+      stats: { fetched: documents.length, skipped },
+    };
+},
+});

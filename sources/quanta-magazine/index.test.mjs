@@ -13,7 +13,9 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => ({
 
 import { syncFeedArticles } from '../lib/feeds.mjs';
 import { makeSyncContext } from '../lib/test-fixtures.mjs';
-import { sync } from './index.mjs';
+import source from './index.mjs';
+
+const sync = source.sync.bind(source);
 
 describe('quanta-magazine source', () => {
   beforeEach(() => vi.clearAllMocks());

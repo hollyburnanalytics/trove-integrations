@@ -1,8 +1,8 @@
 {
   "id": "openstax",
   "name": "OpenStax",
-  "description": "Free, peer-reviewed, openly licensed (Creative Commons) college textbooks across the sciences, social sciences, humanities, and business \u2014 full section text pulled from OpenStax's official content API. A bounded corpus (~130 books) backfilled incrementally.",
-  "icon": "\ud83d\udcda",
+  "description": "Free, peer-reviewed, openly licensed (Creative Commons) college textbooks across the sciences, social sciences, humanities, and business — full section text pulled from OpenStax's official content API. A bounded corpus (~130 books) backfilled incrementally.",
+  "icon": "📚",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "kind": "scheduled-sync",
@@ -16,5 +16,6 @@
   "egress": [
     "openstax.org"
   ],
-  "egressNote": "The REX release manifest, the CMS book catalogue and the content archive are all paths on openstax.org."
+  "egressNote": "The REX release manifest, the CMS book catalogue and the content archive are all paths on openstax.org.",
+  "generated": true
 }

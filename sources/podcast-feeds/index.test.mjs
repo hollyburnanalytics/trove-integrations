@@ -9,7 +9,11 @@ import {
   okResponse as ok,
   setFetch,
 } from '../lib/test-fixtures.mjs';
-import { episodeDocument, sync } from './index.mjs';
+import { episodeDocument } from './index.mjs';
+import source from './index.mjs';
+import source from './index.mjs';
+
+const sync = source.sync.bind(source);
 
 /**
  * These drive the real `syncFeeds` path with only `fetch` mocked, rather than

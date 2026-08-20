@@ -15,31 +15,61 @@
  * markets/equities, markets/fund-management, markets/trading, etc.
  */
 
-import { stringList } from '@ontrove/extend/source';
+import { defineSource, stringList } from '@ontrove/extend/source';
 import { feedItemDocument, syncFeeds } from '../lib/feed-sync.mjs';
 
 const BASE_URL = 'https://www.ft.com';
 const DEFAULT_SECTIONS = ['world', 'technology', 'markets', 'climate-capital', 'companies'];
 
-/**
- * Sync this source: fetch what is new and return it as documents.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @returns {Promise<import('../lib/types.d.ts').SyncResult>} The round's documents, cursor and stats.
- */
-export async function sync(context) {
-  // `sections` is a `text[]` field, and a `text[]` field is user input: one
-  // section typed into a list arrives as a bare string, on which `.map` throws
-  // and takes the whole round with it. `stringList` is the narrowing every
-  // fan-out source owes its config.
-  const configured = stringList(context.config?.sections);
-  const sections = configured.length > 0 ? configured : DEFAULT_SECTIONS;
-  return syncFeeds(context, {
-    feeds: sections.map((section) => ({
-      url: `${BASE_URL}/${section}?format=rss`,
-      label: section,
-    })),
-    label: 'FT sections',
-    toDocument: (item) => feedItemDocument('ft', item, { defaultAuthor: 'Financial Times' }),
-  });
-}
+export default defineSource({
+  id: "financial-times-headlines",
+  name: "Financial Times Headlines",
+  description: "Headlines and summaries from the Financial Times via RSS (no full article text)",
+  icon: "📰",
+  version: "0.1.0",
+  author: "Hollyburn Analytics Inc.",
+  kind: "scheduled-sync",
+  transport: "feed",
+  cursor: "date",
+  ingest: "append",
+  runsIn: "cloud",
+  schedule: "every 2 hours",
+  status: "implemented",
+  needsBrowser: false,
+  egress: [
+    "www.ft.com"
+  ],
+  historyReach: {
+    "kind": "recent-only",
+    "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
+  },
+  config: {
+    "sections": {
+      "label": "Sections to fetch",
+      "type": "array",
+      "default": [
+        "world",
+        "technology",
+        "markets",
+        "climate-capital",
+        "companies"
+      ]
+    }
+  },
+  async sync(context) {
+    // `sections` is a `text[]` field, and a `text[]` field is user input: one
+    // section typed into a list arrives as a bare string, on which `.map` throws
+    // and takes the whole round with it. `stringList` is the narrowing every
+    // fan-out source owes its config.
+    const configured = stringList(context.config?.sections);
+    const sections = configured.length > 0 ? configured : DEFAULT_SECTIONS;
+    return syncFeeds(context, {
+      feeds: sections.map((section) => ({
+        url: `${BASE_URL}/${section}?format=rss`,
+        label: section,
+      })),
+      label: 'FT sections',
+      toDocument: (item) => feedItemDocument('ft', item, { defaultAuthor: 'Financial Times' }),
+    });
+},
+});

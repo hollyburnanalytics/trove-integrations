@@ -1,4 +1,4 @@
-import { stringList } from '@ontrove/extend/source';
+import { defineSource, stringList } from '@ontrove/extend/source';
 import { parse } from 'node-html-parser';
 import { fetchPage, hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
 
@@ -141,19 +141,6 @@ function cleanContent(html) {
   return htmlToText(withBreaks);
 }
 
-/**
- * Sync a book's sections starting at `startIndex`. Returns the documents plus
- * `next`: the index to resume at if the deadline interrupted the book, or
- * undefined when the book finished — so a book larger than one time budget makes
- * page-by-page progress instead of restarting forever.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @param {string} archiveBase - The active archive's base URL.
- * @param {VersionedBook} book - The book to sync, and the version to read.
- * @param {number} startIndex - Which leaf section to resume at.
- * @returns {Promise<{ sections: import('../lib/types.d.ts').TroveDocument[],
- *   next: number | undefined }>} The sections collected, and where to resume.
- */
 async function syncBook(context, archiveBase, book, startIndex) {
   const { cnxId, version } = book;
   /** @type {BookTree} */
@@ -173,17 +160,6 @@ async function syncBook(context, archiveBase, book, startIndex) {
   return { sections, next: undefined };
 }
 
-/**
- * Build one section document, or undefined if it's an empty stub / fetch fails.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @param {string} archiveBase - The active archive's base URL.
- * @param {VersionedBook} book - The book the section belongs to.
- * @param {TreeNode} page - The leaf node naming the section.
- * @param {string | undefined} license - The book's licence code, carried as a tag.
- * @returns {Promise<import('../lib/types.d.ts').TroveDocument | undefined>} The
- *   document, or nothing for a stub or a failed fetch.
- */
 async function buildSection(context, archiveBase, book, page, license) {
   const { cnxId, version } = book;
   const uuid = page.id.replace(/@.*/, '');
@@ -210,81 +186,95 @@ async function buildSection(context, archiveBase, book, page, license) {
   };
 }
 
-/**
- * Sync this source: fetch what is new and return it as documents.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @returns {Promise<import('../lib/types.d.ts').SyncResult>} The round's documents, cursor and stats.
- */
-export async function sync(context) {
-  const { archiveBase, versions } = await loadRelease();
-  const wanted = new Set(stringList(context.config?.books));
-  const books = await loadCatalog();
-  /** @type {VersionedBook[]} */
-  const catalog = books.flatMap((book) => {
-    const version = versions.get(book.cnxId);
-    if (version === undefined) return [];
-    if (wanted.size > 0 && !wanted.has(book.slug)) return [];
-    return [{ ...book, version }];
-  });
+export default defineSource({
+  id: "openstax",
+  name: "OpenStax",
+  description: "Free, peer-reviewed, openly licensed (Creative Commons) college textbooks across the sciences, social sciences, humanities, and business — full section text pulled from OpenStax's official content API. A bounded corpus (~130 books) backfilled incrementally.",
+  icon: "📚",
+  version: "0.1.0",
+  author: "Hollyburn Analytics Inc.",
+  kind: "scheduled-sync",
+  transport: "api",
+  cursor: "idSet",
+  ingest: "append",
+  runsIn: "mac",
+  schedule: "monthly",
+  status: "implemented",
+  needsBrowser: false,
+  egress: [
+    "openstax.org"
+  ],
+  egressNote: "The REX release manifest, the CMS book catalogue and the content archive are all paths on openstax.org.",
+  async sync(context) {
+    const { archiveBase, versions } = await loadRelease();
+    const wanted = new Set(stringList(context.config?.books));
+    const books = await loadCatalog();
+    /** @type {VersionedBook[]} */
+    const catalog = books.flatMap((book) => {
+      const version = versions.get(book.cnxId);
+      if (version === undefined) return [];
+      if (wanted.size > 0 && !wanted.has(book.slug)) return [];
+      return [{ ...book, version }];
+    });
 
-  // This source's resume state is NOT an idSet, whatever the manifest says: it
-  // is `{ done: string[], partial?: { key, next } }` — which books are finished
-  // plus one left mid-sync. Trove's `parseWatermark` models three shapes and
-  // this is a fourth, so in the cloud it would parse to null and every run
-  // would restart from zero books. That is survivable here ONLY because this
-  // source is `location: client`, where the Mac hands the raw cursor back
-  // untouched.
-  //
-  // Said out loud rather than left implicit, because the failure is silent: a
-  // full re-sync looks exactly like a first sync.
-  //
-  // The cast is the boundary the shared `Cursor` union points at: this is the
-  // one source whose checkpoint is its own shape, and it says so here rather
-  // than widening the vocabulary every other source shares.
-  const stored = /** @type {{ value?: Checkpoint } | undefined} */ (context.cursor)?.value;
-  if (stored === undefined && context.cursor) {
-    context.log.warn(
-      'Resume state was not readable, so this run starts from the first book. ' +
-        'This source keeps a custom checkpoint the platform cannot parse, and only ' +
-        'works where the raw cursor is preserved (location: client).',
-    );
-  }
-  const done = new Set(stored?.done);
-  const resume = stored?.partial; // { key, next } — a book left mid-sync
-  /** @type {import('../lib/types.d.ts').TroveDocument[]} */
-  const documents = [];
-  let skipped = 0;
-  /** @type {PartialBook | undefined} */
-  let partial;
-  for (const book of catalog) {
-    const key = `${book.slug}@${book.version}`;
-    if (done.has(key)) {
-      skipped++;
-      continue;
+    // This source's resume state is NOT an idSet, whatever the manifest says: it
+    // is `{ done: string[], partial?: { key, next } }` — which books are finished
+    // plus one left mid-sync. Trove's `parseWatermark` models three shapes and
+    // this is a fourth, so in the cloud it would parse to null and every run
+    // would restart from zero books. That is survivable here ONLY because this
+    // source is `location: client`, where the Mac hands the raw cursor back
+    // untouched.
+    //
+    // Said out loud rather than left implicit, because the failure is silent: a
+    // full re-sync looks exactly like a first sync.
+    //
+    // The cast is the boundary the shared `Cursor` union points at: this is the
+    // one source whose checkpoint is its own shape, and it says so here rather
+    // than widening the vocabulary every other source shares.
+    const stored = /** @type {{ value?: Checkpoint } | undefined} */ (context.cursor)?.value;
+    if (stored === undefined && context.cursor) {
+      context.log.warn(
+        'Resume state was not readable, so this run starts from the first book. ' +
+          'This source keeps a custom checkpoint the platform cannot parse, and only ' +
+          'works where the raw cursor is preserved (location: client).',
+      );
     }
-    if (hasDeadlinePassed(context)) break;
-    const start = resume?.key === key ? resume.next : 0;
-    const { sections, next } = await syncBook(context, archiveBase, book, start);
-    documents.push(...sections);
-    if (next !== undefined) {
-      partial = { key, next };
-      break; // deadline hit mid-book — resume this page next run
+    const done = new Set(stored?.done);
+    const resume = stored?.partial; // { key, next } — a book left mid-sync
+    /** @type {import('../lib/types.d.ts').TroveDocument[]} */
+    const documents = [];
+    let skipped = 0;
+    /** @type {PartialBook | undefined} */
+    let partial;
+    for (const book of catalog) {
+      const key = `${book.slug}@${book.version}`;
+      if (done.has(key)) {
+        skipped++;
+        continue;
+      }
+      if (hasDeadlinePassed(context)) break;
+      const start = resume?.key === key ? resume.next : 0;
+      const { sections, next } = await syncBook(context, archiveBase, book, start);
+      documents.push(...sections);
+      if (next !== undefined) {
+        partial = { key, next };
+        break; // deadline hit mid-book — resume this page next run
+      }
+      done.add(key);
+      context.progress(documents.length, `Synced ${book.title}`);
     }
-    done.add(key);
-    context.progress(documents.length, `Synced ${book.title}`);
-  }
 
-  /** @type {Checkpoint} */
-  const value = { done: [...done] };
-  if (partial) value.partial = partial;
-  return {
-    documents,
-    // Cast for the same reason as the read above: the checkpoint is this
-    // source's own shape, not one of the two the shared `Cursor` declares.
-    cursor: /** @type {import('../lib/types.d.ts').Cursor} */ (
-      /** @type {unknown} */ ({ type: 'idSet', value })
-    ),
-    stats: { fetched: documents.length, skipped },
-  };
-}
+    /** @type {Checkpoint} */
+    const value = { done: [...done] };
+    if (partial) value.partial = partial;
+    return {
+      documents,
+      // Cast for the same reason as the read above: the checkpoint is this
+      // source's own shape, not one of the two the shared `Cursor` declares.
+      cursor: /** @type {import('../lib/types.d.ts').Cursor} */ (
+        /** @type {unknown} */ ({ type: 'idSet', value })
+      ),
+      stats: { fetched: documents.length, skipped },
+    };
+},
+});

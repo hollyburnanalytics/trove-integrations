@@ -2,7 +2,7 @@
   "id": "benedict-evans",
   "name": "Benedict Evans",
   "description": "Weekly analysis of technology trends and shifts",
-  "icon": "\ud83d\udcf1",
+  "icon": "📱",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "kind": "scheduled-sync",
@@ -13,11 +13,12 @@
   "schedule": "daily",
   "status": "implemented",
   "needsBrowser": false,
+  "egress": [
+    "www.ben-evans.com"
+  ],
   "historyReach": {
     "kind": "window",
     "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
   },
-  "egress": [
-    "www.ben-evans.com"
-  ]
+  "generated": true
 }

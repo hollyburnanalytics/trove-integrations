@@ -2,7 +2,7 @@
   "id": "not-boring",
   "name": "Not Boring",
   "description": "Packy McCormick on companies, strategy, and what's getting funded",
-  "icon": "\ud83d\ude80",
+  "icon": "🚀",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "kind": "scheduled-sync",
@@ -13,11 +13,12 @@
   "schedule": "daily",
   "status": "implemented",
   "needsBrowser": false,
+  "egress": [
+    "www.notboring.co"
+  ],
   "historyReach": {
     "kind": "window",
     "note": "An RSS feed carries only the posts the publisher chose to include, commonly the most recent 10 to 50. Anything older is not in the feed."
   },
-  "egress": [
-    "www.notboring.co"
-  ]
+  "generated": true
 }

@@ -18,7 +18,7 @@
  * download, a text extraction and a formatting pass.
  */
 
-import { fetchPage, idSetCursor, readIdSet } from '@ontrove/extend/source';
+import { defineSource, fetchPage, idSetCursor, readIdSet } from '@ontrove/extend/source';
 import { dayToLocalNoonIso } from '../lib/text.mjs';
 
 const SEARCH_URL = 'https://app.dnv.org/dnv_search/api/v1/councilsearch/search?pageSize=5000';
@@ -138,37 +138,52 @@ function toDocument({ meeting, document }) {
   };
 }
 
-/**
- * Sync this source: fetch what is new and return it as documents.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @returns {Promise<import('../lib/types.d.ts').SyncResult>} The round's documents, cursor and stats.
- */
-export async function sync(context) {
-  context.log.info('Fetching council meeting index...');
-  /** @type {Meeting[]} */
-  const meetings = JSON.parse(await fetchPage(SEARCH_URL));
-  const previousNumbers = readIdSet(context.cursor);
-  const pending = pendingDocuments(meetings, new Set(previousNumbers));
-  context.log.info(
-    `${meetings.length} meetings, ${pending.length} new documents (${previousNumbers.length} already synced)`,
-  );
+export default defineSource({
+  id: "dnv-council-minutes",
+  name: "DNV Council Meetings",
+  description: "Agendas, minutes, and reports from District of North Vancouver council meetings — the public record of local government decisions (2026 onwards)",
+  icon: "🏛️",
+  version: "0.1.0",
+  author: "Hollyburn Analytics Inc.",
+  kind: "scheduled-sync",
+  transport: "api",
+  cursor: "idSet",
+  ingest: "append",
+  runsIn: "cloud",
+  schedule: "daily",
+  status: "implemented",
+  needsBrowser: false,
+  egress: [
+    "app.dnv.org"
+  ],
+  egressNote: "The council search API and the meeting PDFs it points at are both on app.dnv.org.",
+  formatting: "reformat",
+  async sync(context) {
+    context.log.info('Fetching council meeting index...');
+    /** @type {Meeting[]} */
+    const meetings = JSON.parse(await fetchPage(SEARCH_URL));
+    const previousNumbers = readIdSet(context.cursor);
+    const pending = pendingDocuments(meetings, new Set(previousNumbers));
+    context.log.info(
+      `${meetings.length} meetings, ${pending.length} new documents (${previousNumbers.length} already synced)`,
+    );
 
-  const batch = pending.slice(0, MAX_DOCUMENTS_PER_RUN);
-  const documents = batch.map((item) => toDocument(item));
-  const syncedNumbers = batch.map((item) => item.document.docNumber);
-  context.progress(documents.length, `${documents.length} documents`);
+    const batch = pending.slice(0, MAX_DOCUMENTS_PER_RUN);
+    const documents = batch.map((item) => toDocument(item));
+    const syncedNumbers = batch.map((item) => item.document.docNumber);
+    context.progress(documents.length, `${documents.length} documents`);
 
-  const cursor =
-    syncedNumbers.length > 0
-      ? idSetCursor([...previousNumbers, ...syncedNumbers])
-      : context.cursor || undefined;
-  return {
-    documents,
-    cursor,
-    stats: {
-      fetched: documents.length,
-      remaining: pending.length - documents.length,
-    },
-  };
-}
+    const cursor =
+      syncedNumbers.length > 0
+        ? idSetCursor([...previousNumbers, ...syncedNumbers])
+        : context.cursor || undefined;
+    return {
+      documents,
+      cursor,
+      stats: {
+        fetched: documents.length,
+        remaining: pending.length - documents.length,
+      },
+    };
+},
+});

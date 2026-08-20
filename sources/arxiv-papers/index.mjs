@@ -1,4 +1,4 @@
-import { advanceDateCursor, readDateCursor, stringList } from '@ontrove/extend/source';
+import { defineSource, advanceDateCursor, readDateCursor, stringList } from '@ontrove/extend/source';
 import { decodeHtmlEntities, fetchPage, hasDeadlinePassed, safeDate } from '../lib/feeds.mjs';
 
 /** Results per arXiv API page. */
@@ -113,16 +113,6 @@ function collectEntries(entries, { lastDate, seenIds, documents, publishedTimes 
   return false;
 }
 
-/**
- * Page through a single query, accumulating results. Results are sorted
- * newest-first, so paging continues until a page comes back short, an entry
- * falls behind the cursor, the per-run page cap, or the soft deadline.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @param {string} query - One arXiv search query.
- * @param {Accumulators} accumulators - State shared across every query in the round.
- * @returns {Promise<void>} Resolves when this query is done or bounded out.
- */
 async function syncQuery(context, query, accumulators) {
   const encoded = encodeURIComponent(query);
 
@@ -152,47 +142,81 @@ function queriesFrom(value) {
   return configured.length > 0 ? configured : ['cat:cs.AI', 'cat:cs.LG'];
 }
 
-/**
- * Sync this source: fetch what is new and return it as documents.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @returns {Promise<import('../lib/types.d.ts').SyncResult>} The round's documents, cursor and stats.
- */
-export async function sync(context) {
-  const queries = queriesFrom(context.config.queries);
-  const lastDate = readDateCursor(context.cursor);
-
-  context.log.info(`Searching arXiv for ${queries.length} queries...`);
-  /** @type {import('../lib/types.d.ts').TroveDocument[]} */
-  const documents = [];
-  /** @type {number[]} */
-  const publishedTimes = [];
-  // A paper can match several queries (e.g. cs.AI and cs.LG); emit it once.
-  /** @type {Set<string>} */
-  const seenIds = new Set();
-  const accumulators = { lastDate, seenIds, documents, publishedTimes };
-  let isAnyFailed = false;
-
-  for (const query of queries) {
-    try {
-      await syncQuery(context, query, accumulators);
-    } catch (error) {
-      isAnyFailed = true;
-      context.log.warn(
-        `Failed query "${query}": ${error instanceof Error ? error.message : String(error)}`,
-      );
+export default defineSource({
+  id: "arxiv-papers",
+  name: "arXiv Papers",
+  description: "ML and CS paper abstracts matching your search queries",
+  icon: "📄",
+  version: "0.1.0",
+  author: "Hollyburn Analytics Inc.",
+  kind: "scheduled-sync",
+  transport: "api",
+  cursor: "date",
+  ingest: "append",
+  runsIn: "cloud",
+  schedule: "every 6 hours",
+  status: "implemented",
+  needsBrowser: false,
+  egress: [
+    "export.arxiv.org"
+  ],
+  historyReach: {
+    "kind": "full",
+    "note": "arXiv answers any date range. A run fetches up to 500 papers per query and the next run carries on, so a deep backfill arrives over several syncs rather than all at once."
+  },
+  egressNote: "The adapter queries the arXiv API on export.arxiv.org. arxiv.org appears only as the paper's HTML/PDF `file_url`, which Trove's ingest fetches when it captures the artifact.",
+  egressNotFetched: [
+    "arxiv.org"
+  ],
+  config: {
+    "queries": {
+      "label": "Search Queries",
+      "type": "text[]",
+      "directory": {
+        "provider": "arxiv",
+        "mode": "search",
+        "placeholder": "Search arXiv subjects"
+      }
     }
-    context.progress(documents.length, `${documents.length} papers`);
-  }
+  },
+  fanOut: "queries",
+  formatting: "verbatim",
+  async sync(context) {
+    const queries = queriesFrom(context.config.queries);
+    const lastDate = readDateCursor(context.cursor);
 
-  // Held when a query failed: advancing on the healthy queries' dates would
-  // permanently skip the failed query's older papers.
-  const cursor = advanceDateCursor({
-    previous: context.cursor,
-    maxIso:
-      publishedTimes.length > 0 ? new Date(Math.max(...publishedTimes)).toISOString() : undefined,
-    anyFailed: isAnyFailed,
-  });
+    context.log.info(`Searching arXiv for ${queries.length} queries...`);
+    /** @type {import('../lib/types.d.ts').TroveDocument[]} */
+    const documents = [];
+    /** @type {number[]} */
+    const publishedTimes = [];
+    // A paper can match several queries (e.g. cs.AI and cs.LG); emit it once.
+    /** @type {Set<string>} */
+    const seenIds = new Set();
+    const accumulators = { lastDate, seenIds, documents, publishedTimes };
+    let isAnyFailed = false;
 
-  return { documents, cursor, stats: { fetched: documents.length } };
-}
+    for (const query of queries) {
+      try {
+        await syncQuery(context, query, accumulators);
+      } catch (error) {
+        isAnyFailed = true;
+        context.log.warn(
+          `Failed query "${query}": ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      context.progress(documents.length, `${documents.length} papers`);
+    }
+
+    // Held when a query failed: advancing on the healthy queries' dates would
+    // permanently skip the failed query's older papers.
+    const cursor = advanceDateCursor({
+      previous: context.cursor,
+      maxIso:
+        publishedTimes.length > 0 ? new Date(Math.max(...publishedTimes)).toISOString() : undefined,
+      anyFailed: isAnyFailed,
+    });
+
+    return { documents, cursor, stats: { fetched: documents.length } };
+},
+});
