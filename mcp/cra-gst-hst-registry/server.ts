@@ -181,6 +181,15 @@ async function readResultPage(post: Response, cookie: string, ctx: ToolContext):
 const BUSINESS_NUMBER_RE = /^\d{9}$/;
 
 export default defineToolkit({
+  id: 'cra-gst-hst-registry',
+  name: 'CRA GST/HST Registry',
+  description:
+    "Confirm a supplier's GST/HST account number against the Canada Revenue Agency's public GST/HST Registry — the check that supports an input tax credit claim. Validates one number, business name and transaction date per call; the CRA never discloses the registrant's name, so a non-match is reported as unconfirmed, not as unregistered. No key needed.",
+  icon: '🧾',
+  version: '1.0.0',
+  secrets: [],
+  scopes: [],
+  visibility: 'public',
   egress: ['www.businessregistration-inscriptionentreprise.gc.ca'],
   tools: [
     tool({

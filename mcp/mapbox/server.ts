@@ -50,6 +50,16 @@ async function getJson(url: string, ctx: ToolContext): Promise<Record<string, un
 }
 
 export default defineToolkit({
+  id: 'mapbox',
+  name: 'Mapbox Geo',
+  description:
+    'Walk/drive-time isochrones, geocoding, and directions via the Mapbox API. Requires a MAPBOX_TOKEN secret (set with `trove secret set`).',
+  icon: '📍',
+  version: '1.0.0',
+  secrets: ['MAPBOX_TOKEN'],
+  egress: ['api.mapbox.com'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'isochrone',

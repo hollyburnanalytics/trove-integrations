@@ -4,9 +4,11 @@
   "description": "Global development indicators (GDP, population, inflation, health…) from the free World Bank API. No key required.",
   "icon": "🌍",
   "version": "1.1.0",
-  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
-  "egress": ["api.worldbank.org"],
+  "egress": [
+    "api.worldbank.org"
+  ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

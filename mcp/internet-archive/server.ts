@@ -70,6 +70,16 @@ function normalizeYear(value: string | number | null | undefined): string | unde
 }
 
 export default defineToolkit({
+  id: 'internet-archive',
+  name: 'Internet Archive',
+  description:
+    'Search and inspect public items on the Internet Archive (archive.org) — books, movies, audio, and more.',
+  icon: '🏛️',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['archive.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_archive',

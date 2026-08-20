@@ -31,6 +31,16 @@ function toArtwork(object: Record<string, unknown>) {
 }
 
 export default defineToolkit({
+  id: 'the-met',
+  name: 'The Met',
+  description:
+    "Search The Metropolitan Museum of Art's open-access collection (CC0) — artworks with artist, date, medium, culture, department, and image links. No key required.",
+  icon: '🖼️',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['collectionapi.metmuseum.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_objects',

@@ -45,6 +45,16 @@ function isValidAddress(value: string): boolean {
 const SendResponse = z.object({ id: z.string().nullish() });
 
 export default defineToolkit({
+  id: 'resend',
+  name: 'Resend Email',
+  description:
+    'Send email via Resend to a fixed owner address (the RECIPIENT_EMAIL secret) — for automated digests/notifications to yourself (e.g. a daily digest). Sending to your own address needs no domain setup. Needs a free Resend API key.',
+  icon: '✉️',
+  version: '1.0.0',
+  secrets: ['RESEND_API_KEY', 'RECIPIENT_EMAIL'],
+  egress: ['api.resend.com'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'send_email',

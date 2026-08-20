@@ -20,5 +20,15 @@ import { searchInside } from './tools/search-inside.ts';
  * and searching the full text is unrestricted.
  */
 export default defineToolkit({
+  id: 'gutenberg',
+  name: 'Project Gutenberg',
+  description:
+    'Search ~75,000 free public-domain books by topic, author era, and popularity; read full text, search inside, and get descriptions, curated shelves, and reading times. No key required.',
+  icon: '📜',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['gutendex.com', 'mirror.csclub.uwaterloo.ca', 'www.gutenberg.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [searchBooks, getBook, searchInside, getExcerpt],
 });

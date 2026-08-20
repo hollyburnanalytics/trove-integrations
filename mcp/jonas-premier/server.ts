@@ -39,6 +39,15 @@ export { __resetTokenCache } from './client.ts';
  * doubles in the tenant's ledger currency.
  */
 export default defineToolkit({
+  id: 'jonas-premier',
+  name: 'Jonas Premier',
+  description:
+    'Read a Premier Construction Software (Jonas Premier) tenant — companies, jobs, job-cost transactions, estimates, vendors, AP invoices & payments, GL accounts, subcontracts, and subcontract change orders. Read-only; needs an API user created in Premier.',
+  icon: '🏗️',
+  version: '1.0.0',
+  secrets: ['JONAS_USERNAME', 'JONAS_PASSWORD'],
+  scopes: [],
+  visibility: 'public',
   egress: ['api.jonas-premier.com'],
   tools: [
     listCompanies,

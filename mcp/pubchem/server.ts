@@ -40,6 +40,16 @@ async function fetchDescription(cid: number, ctx: ToolContext): Promise<string |
 }
 
 export default defineToolkit({
+  id: 'pubchem',
+  name: 'PubChem',
+  description:
+    'Look up chemical compounds in PubChem (NIH/NLM) — resolve a name to its CID, molecular formula, weight, IUPAC name, SMILES/InChIKey, and key properties, plus a plain-language description. No key required.',
+  icon: '⚗️',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['pubchem.ncbi.nlm.nih.gov'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'get_compound',

@@ -47,6 +47,16 @@ const BookData = z.object({
 });
 
 export default defineToolkit({
+  id: 'openlibrary',
+  name: 'Open Library',
+  description:
+    'Search books and look up editions by ISBN via the free Open Library API (no key required).',
+  icon: '📖',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['openlibrary.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_books',

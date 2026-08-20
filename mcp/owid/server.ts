@@ -42,6 +42,16 @@ const TIME_POINT = String.raw`(?:latest|earliest|-?\d{1,6}(?:-\d{2}-\d{2})?)`;
 const TIME_PATTERN = new RegExp(`^${TIME_POINT}(?:\\.\\.${TIME_POINT})?$`);
 
 export default defineToolkit({
+  id: 'owid',
+  name: 'Our World in Data',
+  description:
+    "Charts, indicators and the data behind them from Our World in Data — with units, definitions, and per-source licensing. No key required. An independent client for OWID's public APIs; not affiliated with or endorsed by Our World in Data.",
+  icon: '🌍',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['ourworldindata.org', 'api.ourworldindata.org', 'search.owid.io'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_charts',

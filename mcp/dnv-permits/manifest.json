@@ -4,9 +4,11 @@
   "description": "Search District of North Vancouver building permits by address or case number via the public DNV permit API.",
   "icon": "🏗️",
   "version": "1.0.0",
-  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
-  "egress": ["app.dnv.org"],
+  "egress": [
+    "app.dnv.org"
+  ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

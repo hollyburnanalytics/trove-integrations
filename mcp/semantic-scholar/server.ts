@@ -47,6 +47,15 @@ function paperLine(p: z.infer<typeof paperSchema>): string {
 }
 
 export default defineToolkit({
+  id: 'semantic-scholar',
+  name: 'Semantic Scholar',
+  description: 'Search and read academic papers from the public Semantic Scholar Graph API.',
+  icon: '🔬',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['api.semanticscholar.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_papers',

@@ -23,6 +23,15 @@ import { searchEmployers } from './tools/search-employers.ts';
  * issues an addressed letter — and is deliberately not exposed.
  */
 export default defineToolkit({
+  id: 'worksafebc-cor',
+  name: 'WorkSafeBC COR Registry',
+  description:
+    "Look up an employer's WorkSafeBC Certificate of Recognition (COR) — search by legal or trade name, read a firm's certificates (certifying partner, COR type, certificate number, expiry date, classification units), and list every employer a certifying partner has certified. No key needed.",
+  icon: '🦺',
+  version: '1.0.0',
+  secrets: [],
+  scopes: [],
+  visibility: 'public',
   egress: ['corcp.online.worksafebc.com'],
   tools: [searchEmployers, getEmployerCertificates, listCertifyingPartners, listCertifiedEmployers],
 });

@@ -28,6 +28,16 @@ import { searchFilings } from './tools/search-filings.ts';
  * whose numbers arrive in 6-K furnishings are covered too.
  */
 export default defineToolkit({
+  id: 'sec-edgar',
+  name: 'SEC EDGAR',
+  description:
+    "SEC filings and financials: XBRL income statement / balance sheet / cash flow, any concept's history, filing full text (paginated + searchable), decoded insider transactions (Form 4), 13F fund holdings, company profiles, and full-text filing search. No key required.",
+  icon: '🏛️',
+  version: '1.3.1',
+  secrets: [],
+  egress: ['efts.sec.gov', 'www.sec.gov', 'data.sec.gov'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     getFinancials,
     getXbrlConcept,

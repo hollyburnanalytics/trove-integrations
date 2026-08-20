@@ -36,5 +36,15 @@ import { wildfireSmoke } from './tools/wildfire-smoke.ts';
  * every response carries the required attribution string.
  */
 export default defineToolkit({
+  id: 'eccc-weather',
+  name: 'Environment Canada Weather',
+  description:
+    'Official Canadian weather from Environment and Climate Change Canada (MSC GeoMet): named-site forecasts with hourly detail, the Air Quality Health Index, and FireWork wildfire-smoke PM2.5. No key required. Licensed for commercial use under the ECCC Data Servers End-use Licence, with attribution.',
+  icon: '🍁',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['api.weather.gc.ca', 'geo.weather.gc.ca'],
+  scopes: [],
+  visibility: 'public',
   tools: [findLocation, forecast, observations, modelPoint, airQuality, wildfireSmoke],
 });

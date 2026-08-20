@@ -26,6 +26,16 @@ function metaCount(body: Record<string, unknown>, fallback: number): number {
 }
 
 export default defineToolkit({
+  id: 'openalex',
+  name: 'OpenAlex',
+  description:
+    'Search 250M+ scholarly works and authors via the OpenAlex API. Requires a free OpenAlex API key for attributed, rate-limited access.',
+  icon: '🔬',
+  version: '1.0.0',
+  secrets: ['OPENALEX_API_KEY'],
+  egress: ['api.openalex.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_works',

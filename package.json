@@ -34,7 +34,7 @@
     "source": "bun bin/run-source.mjs"
   },
   "dependencies": {
-    "@ontrove/extend": "^2.0.1",
+    "@ontrove/extend": "^3.2.0",
     "fast-xml-parser": "^5.10.1",
     "node-html-parser": "^9.0.1"
   },

@@ -75,6 +75,15 @@ function holidayResult<T extends Record<string, unknown>>(
 }
 
 export default defineToolkit({
+  id: 'holidays',
+  name: 'Public Holidays',
+  description: 'Public holidays for 100+ countries via the free Nager.Date API. No key required.',
+  icon: '📅',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['date.nager.at'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'public_holidays',

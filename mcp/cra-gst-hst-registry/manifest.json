@@ -4,9 +4,11 @@
   "description": "Confirm a supplier's GST/HST account number against the Canada Revenue Agency's public GST/HST Registry — the check that supports an input tax credit claim. Validates one number, business name and transaction date per call; the CRA never discloses the registrant's name, so a non-match is reported as unconfirmed, not as unregistered. No key needed.",
   "icon": "🧾",
   "version": "1.0.0",
-  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
-  "egress": ["www.businessregistration-inscriptionentreprise.gc.ca"],
+  "egress": [
+    "www.businessregistration-inscriptionentreprise.gc.ca"
+  ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

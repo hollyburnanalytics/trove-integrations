@@ -21,5 +21,15 @@ import { searchWcatDecisions } from './tools/search-wcat-decisions.ts';
  * reproduced.
  */
 export default defineToolkit({
+  id: 'bc-workers-comp-decisions',
+  name: "BC Workers' Comp Decisions",
+  description:
+    "Search published BC workers' compensation appeal decisions — the Workers' Compensation Appeal Tribunal (WCAT) and the WorkSafeBC Review Division — by keyword, clinical term, or facet. Returns each tribunal's own decision summaries and links to the official records.",
+  icon: '⚖️',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['www.wcat.bc.ca', 'rdpubsearch.online.worksafebc.com'],
+  scopes: [],
+  visibility: 'public',
   tools: [searchWcatDecisions, getWcatDecision, searchReviewDecisions],
 });

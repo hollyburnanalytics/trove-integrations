@@ -99,6 +99,16 @@ async function resolveSlug(
 }
 
 export default defineToolkit({
+  id: 'openparliament',
+  name: 'OpenParliament (Canada)',
+  description:
+    'Search Canadian House of Commons Hansard debates, MPs, and bills via the free OpenParliament.ca API. No key required.',
+  icon: '🍁',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['api.openparliament.ca'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'find_mp',
