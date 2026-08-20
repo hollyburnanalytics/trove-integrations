@@ -117,7 +117,7 @@ function meetingLabel(meeting) {
  * to the extracted text.
  *
  * @param {WorkItem} item - One meeting document to emit.
- * @returns {import('../lib/types.d.ts').TroveDocument} The document.
+ * @returns {import('../lib/types.d.ts').Document} The document.
  */
 function toDocument({ meeting, document }) {
   const title = `${document.docType} — ${meetingLabel(meeting)}, ${meeting.date}`;

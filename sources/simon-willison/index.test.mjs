@@ -12,10 +12,10 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => ({
 }));
 
 import { syncRSS } from '../lib/feeds.mjs';
-import { makeSyncContext } from '../lib/test-fixtures.mjs';
+import { makeSourceContext, syncOf } from '../lib/test-fixtures.mjs';
 import extension from './index.mjs';
 
-const sync = extension.sync.bind(extension);
+const sync = syncOf(extension);
 
 describe('simon-willison source', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -27,7 +27,7 @@ describe('simon-willison source', () => {
       cursor: undefined,
       stats: { fetched: 0 },
     });
-    const context = makeSyncContext();
+    const context = makeSourceContext();
     await sync(context);
 
     expect(syncRSS).toHaveBeenCalledWith(context, {

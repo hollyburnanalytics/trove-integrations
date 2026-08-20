@@ -5,7 +5,7 @@ import { htmlToText } from '../lib/html-markdown.mjs';
 
 afterAll(() => vi.restoreAllMocks());
 
-import { at, makeSyncContext, okResponse, setFetch } from '../lib/test-fixtures.mjs';
+import { at, makeSourceContext, okResponse, setFetch, syncOf } from '../lib/test-fixtures.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -34,7 +34,7 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => {
   const real = /** @type {typeof import('../lib/feeds.mjs')} */ (await importOriginal());
   return {
     ...real,
-    /** @type {(context: import('../lib/types.d.ts').SyncContext) => boolean} */
+    /** @type {(context: import('../lib/types.d.ts').SourceContext) => boolean} */
     hasDeadlinePassed: vi.fn((context) => real.hasDeadlinePassed(context)),
     // The REAL implementation, not a stand-in.
     //
@@ -68,7 +68,7 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => {
 // be a module-scope binding declared beside it.
 const { hasDeadlinePassed } = await import('../lib/feeds.mjs');
 const { default: extension } = await import('./index.mjs');
-const sync = extension.sync.bind(extension);
+const sync = syncOf(extension);
 
 const RELEASE = {
   archiveUrl: '/apps/archive/V1',
@@ -152,10 +152,10 @@ function route(map) {
 /**
  * A context for this source.
  *
- * @param {Partial<import('../lib/types.d.ts').SyncContext>} [overrides] - Fields to replace.
- * @returns {import('../lib/types.d.ts').SyncContext} The context.
+ * @param {Partial<import('../lib/types.d.ts').SourceContext>} [overrides] - Fields to replace.
+ * @returns {import('../lib/types.d.ts').SourceContext} The context.
  */
-const context = (overrides = {}) => makeSyncContext(overrides);
+const context = (overrides = {}) => makeSourceContext(overrides);
 
 /**
  * The bespoke checkpoint this source keeps, read back off the cursor it returned.
@@ -178,7 +178,7 @@ function checkpoint(cursor) {
  * A context resuming from an openstax checkpoint.
  *
  * @param {{ done: string[], partial?: { key: string, next: number } }} value - The checkpoint.
- * @returns {import('../lib/types.d.ts').SyncContext} The context.
+ * @returns {import('../lib/types.d.ts').SourceContext} The context.
  */
 function resuming(value) {
   return context({

@@ -19,48 +19,6 @@
  */
 export type ConfigValue = string | number | boolean | string[] | undefined;
 
-/** Where a source or a directory provider reports what it is doing. */
-export interface LogSink {
-  info(message: string): void;
-  warn(message: string): void;
-  error(message: string): void;
-}
-
-/** How a source talks to the runtime that invoked it. */
-export interface SyncContext {
-  /**
-   * User-supplied settings, from the manifest's `config` schema.
-   *
-   * NOT `Record<string, string>`, which is what this was declared as and is not
-   * what it holds: a `url[]`/`text[]` field arrives as an array, and every
-   * fan-out source reads one. A source must therefore narrow before using a
-   * value — see {@link stringList} — because config is user input and a field
-   * that should be a list can arrive as a bare string.
-   */
-  config: Record<string, ConfigValue>;
-  /** Credentials resolved from the vault, keyed by the manifest's `secrets`. */
-  credentials: Record<string, string>;
-  /**
-   * Whatever this source returned as `cursor` on its previous run, handed back
-   * verbatim. Declared as the shapes the catalog actually writes — a source
-   * keeping a bespoke checkpoint (openstax) says so at its own boundary.
-   */
-  cursor?: Cursor;
-  /** A Playwright browser context, for a `needsBrowser` source. */
-  browser?: unknown;
-  /**
-   * Epoch ms after which the source should stop and return what it has.
-   *
-   * A SOFT budget: the runtime's hard timeout sits beyond it, and the margin
-   * covers the last in-flight fetch plus the cursor write. A source that runs
-   * past it has its whole round discarded, cursor included.
-   */
-  deadline: number;
-  log: LogSink;
-  /** Report progress mid-run: how many documents so far, and what is happening. */
-  progress(documentsSoFar: number, message: string): void;
-}
-
 /**
  * How a directory provider reaches the network.
  *
@@ -72,7 +30,7 @@ export interface SyncContext {
  */
 export interface DirectoryContext {
   fetch(url: string): Promise<Response>;
-  log: LogSink;
+  log: LogChannel;
 }
 
 /** What a directory query asks for. `query` is empty when nobody has typed yet. */
@@ -99,40 +57,6 @@ export interface DirectoryEntry {
   itemNoun?: string;
   /** ISO-8601 of the newest item, so a client can demote dormant candidates. */
   latestAt?: string;
-}
-
-/**
- * One document a source hands to the platform.
- *
- * At least one of `text`, `audioUrl` or `fileUrl` must be present — a
- * document with none of them has no body, and the harness rejects it.
- */
-export interface TroveDocument {
-  /** Stable across runs: the same content must produce the same id forever. */
-  id: string;
-  title: string;
-  /** The body, inline. */
-  text?: string;
-  url?: string;
-  author?: string;
-  /** ISO-8601. Omitted — never faked — when the item carries no usable date. */
-  date?: string;
-  tags?: string[];
-  /** An audio enclosure the platform transcribes. */
-  audioUrl?: string;
-  /** A file (e.g. a PDF) the platform retains and extracts. */
-  fileUrl?: string;
-  mimeType?: string;
-  /**
-   * A second artifact to try when {@link fileUrl} cannot be retrieved or
-   * extracted — the rendering that always exists, behind the one that is
-   * better. arXiv is the case this exists for: its LaTeXML HTML carries every
-   * formula's source, but only for papers new enough to have been converted,
-   * and the PDF is there for the rest.
-   */
-  fallback?: { fileUrl: string; mimeType: string };
-  contentType?: string;
-  metadata?: Record<string, unknown>;
 }
 
 /** An enclosure attached to a feed item. */
@@ -185,7 +109,7 @@ export interface Feed {
 
 /** One collected item, paired with the epoch ms its date parsed to (NaN if undated). */
 export interface FeedEntry {
-  document: TroveDocument;
+  document: Document;
   ms: number;
 }
 
@@ -223,29 +147,40 @@ export type FeedOutcome =
  * the alias became `type Cursor = Cursor`. The arms are the SDK's: `date`,
  * `idSet`, and the `none` this catalog's sources express by returning nothing.
  */
-export type { Cursor } from '@ontrove/extend/source';
+// Imported as well as re-exported below, and that is not redundant: a bare
+// `export type { … } from` re-exports a name WITHOUT binding it in this
+// module's scope. Every local `Document` then resolved to the DOM's global
+// `Document` — silently, because it is a real type and the file still compiled.
+// `FeedEntry.document` was typed as an HTML document for exactly as long as it
+// took someone to notice. (`location` has the same five-way collision; see the
+// migration notes.)
+import type { Document, LogChannel } from '@ontrove/extend/source';
 
-/** What a source's `sync()` returns. */
-export interface SyncResult {
-  documents: TroveDocument[];
-  /** Where to resume. Handed back verbatim on the next run. */
-  cursor?: Cursor;
-  stats?: Record<string, unknown>;
-  /**
-   * What the subscription calls itself, learned from the feed's own `<title>`.
-   *
-   * SINGLE-FEED SOURCES ONLY. A source polling twenty feeds has twenty titles
-   * and no basis for picking one, so `selfReport` returns nothing at all rather
-   * than the first — see `feed-identity.mjs`.
-   */
-  feedName?: string;
-  /**
-   * Where the feed says it has permanently moved to. Single-feed only, for the
-   * same reason as {@link feedName}. Never the source's identity — the
-   * `external_key` does not move.
-   */
-  feedUrl?: string;
-}
+/**
+ * The vocabulary the platform defines, re-exported so a source has ONE place to
+ * import a type from.
+ *
+ * These were declared locally until 2026-08-20 — `SourceContext`, `SourceSyncResult`,
+ * `Document`, `LogChannel` — a second name for each of four concepts
+ * `@ontrove/extend` already named. Nothing compared the two copies, because a
+ * source exported a bare `sync` function that no interface was checked against,
+ * so they drifted: the local context had `credentials` and no `fetch`, the
+ * local document had no `captureOnly`, the local result's `stats` was an
+ * untyped bag. `defineSource` is what connects them, and it found 730
+ * mismatches across the two catalogs the first time it ran.
+ *
+ * Add nothing here that the package already names. A local type earns its place
+ * by being about THIS catalog's helpers — `Feed`, `FeedItem`, `MarkdownSink` —
+ * not by restating the contract.
+ */
+export type {
+  Cursor,
+  Document,
+  ExtensionCache,
+  LogChannel,
+  SourceContext,
+  SourceSyncResult,
+} from '@ontrove/extend/source';
 
 /**
  * The walk state threaded through the HTML → Markdown renderer.

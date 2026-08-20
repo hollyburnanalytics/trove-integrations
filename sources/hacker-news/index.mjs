@@ -44,7 +44,7 @@ export default defineSource({
 
     context.progress(0, `Processing ${data.hits.length} stories...`);
 
-    /** @type {import('../lib/types.d.ts').TroveDocument[]} */
+    /** @type {import('../lib/types.d.ts').Document[]} */
     const documents = data.hits.map((hit) => ({
       id: `hn-${hit.objectID}`,
       title: hit.title || 'Untitled',

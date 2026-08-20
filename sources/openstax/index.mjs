@@ -141,13 +141,26 @@ function cleanContent(html) {
   return htmlToText(withBreaks);
 }
 
+/**
+ * Sync a book's sections starting at `startIndex`. Returns the documents plus
+ * `next`: the index to resume at if the deadline interrupted the book, or
+ * undefined when the book finished — so a book larger than one time budget makes
+ * page-by-page progress instead of restarting forever.
+ *
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
+ * @param {string} archiveBase - The active archive's base URL.
+ * @param {VersionedBook} book - The book to sync, and the version to read.
+ * @param {number} startIndex - Which leaf section to resume at.
+ * @returns {Promise<{ sections: import('../lib/types.d.ts').Document[],
+ *   next: number | undefined }>} The sections collected, and where to resume.
+ */
 async function syncBook(context, archiveBase, book, startIndex) {
   const { cnxId, version } = book;
   /** @type {BookTree} */
   const tree = await fetchJson(`${archiveBase}/contents/${cnxId}@${version}.json`);
   const license = licenseCode(tree.license?.url);
   const pages = flattenPages(tree.tree);
-  /** @type {import('../lib/types.d.ts').TroveDocument[]} */
+  /** @type {import('../lib/types.d.ts').Document[]} */
   const sections = [];
   for (const [offset, page] of pages.slice(startIndex).entries()) {
     if (hasDeadlinePassed(context)) return { sections, next: startIndex + offset };
@@ -160,6 +173,17 @@ async function syncBook(context, archiveBase, book, startIndex) {
   return { sections, next: undefined };
 }
 
+/**
+ * Build one section document, or undefined if it's an empty stub / fetch fails.
+ *
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
+ * @param {string} archiveBase - The active archive's base URL.
+ * @param {VersionedBook} book - The book the section belongs to.
+ * @param {TreeNode} page - The leaf node naming the section.
+ * @param {string | undefined} license - The book's licence code, carried as a tag.
+ * @returns {Promise<import('../lib/types.d.ts').Document | undefined>} The
+ *   document, or nothing for a stub or a failed fetch.
+ */
 async function buildSection(context, archiveBase, book, page, license) {
   const { cnxId, version } = book;
   const uuid = page.id.replace(/@.*/, '');
@@ -241,7 +265,7 @@ export default defineSource({
     }
     const done = new Set(stored?.done);
     const resume = stored?.partial; // { key, next } — a book left mid-sync
-    /** @type {import('../lib/types.d.ts').TroveDocument[]} */
+    /** @type {import('../lib/types.d.ts').Document[]} */
     const documents = [];
     let skipped = 0;
     /** @type {PartialBook | undefined} */

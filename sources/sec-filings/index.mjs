@@ -71,7 +71,7 @@ const DELAY_MS = 200;
  * @typedef {{ name?: string, filings?: { recent?: RecentFilings } }} Submissions
  * @typedef {{ accessionNumber: string, filingDate: string, reportDate: string, form: string,
  *   primaryDocument: string }} Filing
- * @typedef {{ documents: import('../lib/types.d.ts').TroveDocument[], rawDates: number[],
+ * @typedef {{ documents: import('../lib/types.d.ts').Document[], rawDates: number[],
  *   updatedTickerMap: Record<string, TickerEntry>, skipped: number, anyFailed: boolean }} SyncState
  */
 
@@ -189,6 +189,17 @@ function delay(ms) {
 
 // --- Per-filing processing ---
 
+/**
+ * Turn one filing into a Trove document, or nothing when EDGAR names no HTML
+ * primary document for it.
+ *
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
+ * @param {Filing} filing - The filing to emit.
+ * @param {number | string} cik - The filer's CIK, for the archive URL.
+ * @param {string} companyName - The filer's name, used as the document's author.
+ * @param {string} upperTicker - The configured ticker, uppercased, carried as a tag.
+ * @returns {import('../lib/types.d.ts').Document | undefined} The document, when there is one.
+ */
 function processFiling(context, filing, cik, companyName, upperTicker) {
   if (!filing.primaryDocument?.endsWith('.htm')) {
     context.log.warn(`No HTML primary document for ${filing.form} ${filing.accessionNumber}`);
@@ -228,6 +239,17 @@ function processFiling(context, filing, cik, companyName, upperTicker) {
 
 // --- Ticker resolution ---
 
+/**
+ * Resolve a ticker to its CIK and company name, loading EDGAR's ticker file
+ * once per run and only when the cache misses.
+ *
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
+ * @param {string} upperTicker - The ticker, uppercased.
+ * @param {Record<string, TickerEntry>} cachedTickers - Tickers resolved on a previous run.
+ * @param {{ map: Record<string, TickerEntry> | undefined }} tickerMapReference - The
+ *   run's lazily-loaded ticker file, shared across tickers.
+ * @returns {Promise<TickerEntry | undefined>} The entry, or nothing for an unknown ticker.
+ */
 async function resolveTicker(context, upperTicker, cachedTickers, tickerMapReference) {
   const alreadyResolved = cachedTickers[upperTicker];
   if (alreadyResolved) {
@@ -242,6 +264,19 @@ async function resolveTicker(context, upperTicker, cachedTickers, tickerMapRefer
 
 // --- Per-ticker sync ---
 
+/**
+ * Sync one ticker: resolve it, fetch its filings, and push what is new onto the
+ * run's shared state.
+ *
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
+ * @param {string} upperTicker - The ticker, uppercased.
+ * @param {Date | undefined} lastDate - The previous run's cursor, when resuming.
+ * @param {Record<string, TickerEntry>} cachedTickers - Tickers resolved on a previous run.
+ * @param {{ map: Record<string, TickerEntry> | undefined }} tickerMapReference - The
+ *   run's lazily-loaded ticker file.
+ * @param {SyncState} state - Accumulated across every ticker in the round.
+ * @returns {Promise<void>} Resolves when this ticker is done.
+ */
 async function syncTicker(
   context,
   upperTicker,

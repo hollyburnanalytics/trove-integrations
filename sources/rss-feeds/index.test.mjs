@@ -3,19 +3,20 @@ import {
   at,
   fetchedUrls,
   fetchMock,
-  makeSyncContext,
+  makeSourceContext,
   okResponse,
   rssFeedXml,
   rssItemXml,
   setFetch,
+  syncOf,
 } from '../lib/test-fixtures.mjs';
 import extension from './index.mjs';
 
-const sync = extension.sync.bind(extension);
+const sync = syncOf(extension);
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
-const makeContext = (config = {}) => makeSyncContext({ config });
+const makeContext = (config = {}) => makeSourceContext({ config });
 
 /**
  * Answer every request with `xml`.

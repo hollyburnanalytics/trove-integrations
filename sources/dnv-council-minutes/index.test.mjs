@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { at, idSetCursor, makeSyncContext, okResponse, setFetch } from '../lib/test-fixtures.mjs';
+import {
+  at,
+  idSetCursor,
+  makeSourceContext,
+  okResponse,
+  setFetch,
+  syncOf,
+} from '../lib/test-fixtures.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -19,9 +26,9 @@ function installFetch() {
 }
 
 const { default: extension } = await import('./index.mjs');
-const sync = extension.sync.bind(extension);
+const sync = syncOf(extension);
 
-const makeContext = (overrides = {}) => makeSyncContext(overrides);
+const makeContext = (overrides = {}) => makeSourceContext(overrides);
 
 function meeting(overrides = {}) {
   return {

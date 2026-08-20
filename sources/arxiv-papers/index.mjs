@@ -27,9 +27,9 @@ const getTagValue = (xml, tag) => {
 
 /**
  * @typedef {{ documentId: string, publishedMs: number,
- *   doc: import('../lib/types.d.ts').TroveDocument }} PaperEntry
+ *   doc: import('../lib/types.d.ts').Document }} PaperEntry
  * @typedef {{ lastDate: Date | undefined, seenIds: Set<string>,
- *   documents: import('../lib/types.d.ts').TroveDocument[],
+ *   documents: import('../lib/types.d.ts').Document[],
  *   publishedTimes: number[] }} Accumulators
  */
 
@@ -118,6 +118,16 @@ function collectEntries(entries, { lastDate, seenIds, documents, publishedTimes 
   return false;
 }
 
+/**
+ * Page through a single query, accumulating results. Results are sorted
+ * newest-first, so paging continues until a page comes back short, an entry
+ * falls behind the cursor, the per-run page cap, or the soft deadline.
+ *
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
+ * @param {string} query - One arXiv search query.
+ * @param {Accumulators} accumulators - State shared across every query in the round.
+ * @returns {Promise<void>} Resolves when this query is done or bounded out.
+ */
 async function syncQuery(context, query, accumulators) {
   const encoded = encodeURIComponent(query);
 
@@ -188,7 +198,7 @@ export default defineSource({
     const lastDate = readDateCursor(context.cursor);
 
     context.log.info(`Searching arXiv for ${queries.length} queries...`);
-    /** @type {import('../lib/types.d.ts').TroveDocument[]} */
+    /** @type {import('../lib/types.d.ts').Document[]} */
     const documents = [];
     /** @type {number[]} */
     const publishedTimes = [];

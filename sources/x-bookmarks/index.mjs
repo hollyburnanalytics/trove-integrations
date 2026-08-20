@@ -7,7 +7,7 @@ import { hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.
  * Reads `GET /2/users/:id/bookmarks` (your ~800 most recent, paginated
  * newest-by-bookmark-time first) using OAuth 2.0 **user-context** with the
  * `bookmark.read` scope — the app-only Bearer the read tools use cannot reach
- * this endpoint. Credentials arrive via `ctx.credentials`:
+ * this endpoint. Credentials arrive via `ctx.secret()`:
  *  - `X_OAUTH_CLIENT_ID`      (required)
  *  - `X_OAUTH_REFRESH_TOKEN`  (required; obtain once via scripts/x-authorize.mjs)
  *  - `X_OAUTH_CLIENT_SECRET`  (optional; only for a confidential client)
@@ -20,7 +20,7 @@ import { hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.
  *
  * NOTE on refresh-token rotation: X returns a NEW `refresh_token` on every grant
  * and invalidates the old one. Production-grade persistence of that rotated token
- * must be owned by the harness/keychain (it re-supplies `ctx.credentials` next
+ * must be owned by the harness/keychain (it re-supplies the credential next
  * run). This source deliberately does NOT write the rotated token into the
  * cursor — credentials must never live in cursor state — and uses the freshly
  * minted access token only for the duration of the current run.
@@ -89,18 +89,21 @@ function readSeenIds(cursor) {
   return Array.isArray(stored.value) ? stored.value.map(String) : [];
 }
 
+/**
+ * Exchange the rotating refresh token for a short-lived access token. Throws a
+ * clear, token-free error when credentials are absent or the grant is rejected.
+ *
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
+ * @returns {Promise<string>} The access token, valid for this run only.
+ */
 async function refreshAccessToken(context) {
-  const credentials = context.credentials ?? {};
-  const clientId = credentials.X_OAUTH_CLIENT_ID;
-  const refreshToken = credentials.X_OAUTH_REFRESH_TOKEN;
-  if (!clientId || !refreshToken) {
-    throw new Error(
-      'X Bookmarks needs X_OAUTH_CLIENT_ID and X_OAUTH_REFRESH_TOKEN in ctx.credentials. ' +
-        'Run scripts/x-authorize.mjs to obtain a refresh token.',
-    );
-  }
+  const clientId = await context.requireSecret('X_OAUTH_CLIENT_ID');
+  const refreshToken = await context.requireSecret('X_OAUTH_REFRESH_TOKEN');
 
-  const clientSecret = credentials.X_OAUTH_CLIENT_SECRET;
+  // Optional, and genuinely so: a PUBLIC OAuth client has no secret at all, and
+  // X accepts the refresh without one. `secret` rather than `requireSecret` is
+  // the whole distinction between the two — see @ontrove/extend's ExtensionContext.
+  const clientSecret = await context.secret('X_OAUTH_CLIENT_SECRET');
   const form = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
@@ -230,7 +233,7 @@ function buildTitle(text, handle) {
  *
  * @param {XTweet} tweet - The bookmarked post.
  * @param {Map<string, XUser>} usersById - The page's author expansions.
- * @returns {import('../lib/types.d.ts').TroveDocument} The document.
+ * @returns {import('../lib/types.d.ts').Document} The document.
  */
 function mapBookmark(tweet, usersById) {
   const author = usersById.get(tweet.author_id ?? '');
@@ -252,8 +255,21 @@ function mapBookmark(tweet, usersById) {
   };
 }
 
+/**
+ * Page from the top, collecting new bookmarks until we hit an already-seen id,
+ * run out of pages, exhaust the page cap, or reach the host deadline. Because
+ * the feed is newest-first, the first seen id means everything below it is older
+ * and already ingested — so we stop without re-walking the tail.
+ *
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
+ * @param {string} accessToken - The user-context token.
+ * @param {string} userId - Whose bookmarks to read.
+ * @param {Set<string>} seenIds - Ids already ingested on a previous run.
+ * @returns {Promise<{ documents: import('../lib/types.d.ts').Document[],
+ *   newIdsNewestFirst: string[], skipped: number }>} What this round collected.
+ */
 async function collectNewBookmarks(context, accessToken, userId, seenIds) {
-  /** @type {import('../lib/types.d.ts').TroveDocument[]} */
+  /** @type {import('../lib/types.d.ts').Document[]} */
   const documents = [];
   /** @type {string[]} */
   const newIdsNewestFirst = [];

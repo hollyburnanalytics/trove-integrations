@@ -12,10 +12,10 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => ({
 }));
 
 import { syncFeedArticles } from '../lib/feeds.mjs';
-import { makeSyncContext } from '../lib/test-fixtures.mjs';
+import { makeSourceContext, syncOf } from '../lib/test-fixtures.mjs';
 import extension from './index.mjs';
 
-const sync = extension.sync.bind(extension);
+const sync = syncOf(extension);
 
 describe('our-world-in-data source', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -24,7 +24,7 @@ describe('our-world-in-data source', () => {
   it('calls syncFeedArticles with correct config', async () => {
     const expected = { documents: [], cursor: undefined, stats: { fetched: 0 } };
     vi.mocked(syncFeedArticles).mockResolvedValue(expected);
-    const context = makeSyncContext();
+    const context = makeSourceContext();
 
     const result = await sync(context);
 

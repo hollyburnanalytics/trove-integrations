@@ -22,7 +22,7 @@ const BOILERPLATE = 'Continue reading...';
  * Build one Guardian document, with the feed's boilerplate trailer removed.
  *
  * @param {import('../lib/types.d.ts').FeedItem} item - The parsed feed item.
- * @returns {import('../lib/types.d.ts').TroveDocument} The document.
+ * @returns {import('../lib/types.d.ts').Document} The document.
  */
 function toDocument(item) {
   const document = feedItemDocument('guardian', item, {

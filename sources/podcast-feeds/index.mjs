@@ -87,7 +87,7 @@ function isAudioEnclosure(enclosure) {
  * skipped rather than emitting a document with no body.
  *
  * @param {import('../lib/types.d.ts').FeedItem} item - a `parseRSS()` item, with resolved `url`
- * @returns {import('../lib/types.d.ts').TroveDocument | undefined} The audio
+ * @returns {import('../lib/types.d.ts').Document | undefined} The audio
  *   document, or nothing when the item carries no audio.
  */
 export function episodeDocument(item) {

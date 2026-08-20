@@ -42,15 +42,15 @@ describe('buildContext', () => {
     );
   });
 
-  it('defaults config/credentials to {} and leaves cursor/browser undefined', () => {
+  it('defaults config to {} and leaves cursor/browser undefined', async () => {
     const context = buildContext();
     expect(context.config).toEqual({});
-    expect(context.credentials).toEqual({});
+    expect(await context.secret('ANYTHING')).toBeUndefined();
     expect(context.cursor).toBeUndefined();
     expect(context.browser).toBeUndefined();
   });
 
-  it('passes config, credentials, cursor, and browser through', () => {
+  it('passes config, credentials, cursor, and browser through', async () => {
     const browser = { fake: true };
     const context = buildContext({
       config: { a: '1' },
@@ -59,7 +59,10 @@ describe('buildContext', () => {
       browser,
     });
     expect(context.config).toEqual({ a: '1' });
-    expect(context.credentials).toEqual({ k: 'secret' });
+    // Reachable only by name: the map goes in, and `secret(name)` is the only
+    // way back out, so a source cannot read a credential it did not declare.
+    expect(await context.secret('k')).toBe('secret');
+    expect(await context.secret('not-declared')).toBeUndefined();
     expect(context.cursor).toBe('c');
     expect(context.browser).toBe(browser);
   });

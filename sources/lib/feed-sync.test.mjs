@@ -5,7 +5,7 @@ import {
   dateCursorValue,
   fetchMock,
   makeFeedItem,
-  makeSyncContext,
+  makeSourceContext,
   okResponse as ok,
   setFetch,
 } from './test-fixtures.mjs';
@@ -17,9 +17,10 @@ const ORIGINAL_FETCH = globalThis.fetch;
  *
  * @param {import('./types.d.ts').Cursor} [cursor] - The previous run's cursor.
  * @param {Record<string, import('./types.d.ts').ConfigValue>} [config] - Source config.
- * @returns {import('./types.d.ts').SyncContext} The context.
+ * @returns {import('./types.d.ts').SourceContext} The context.
  */
-const makeContext = (cursor, config = {}) => makeSyncContext({ config, cursor });
+const makeContext = (cursor, config = {}, overrides = {}) =>
+  makeSourceContext({ config, cursor, ...overrides });
 
 /**
  * One RSS `<item>`.
@@ -51,7 +52,7 @@ function rss(...items) {
  *
  * @param {string} [idPrefix] - The stable-id namespace.
  * @param {string} [author] - The default author.
- * @returns {(item: import('./types.d.ts').FeedItem) => import('./types.d.ts').TroveDocument}
+ * @returns {(item: import('./types.d.ts').FeedItem) => import('./types.d.ts').Document}
  *   A mapper.
  */
 const STD =
@@ -746,8 +747,9 @@ describe('syncFeeds concurrency and the soft deadline', () => {
 
   it('stops at the soft deadline instead of overrunning the run', async () => {
     respondPerFeed();
-    const context = makeContext();
-    context.deadline = Date.now() - 1; // already past
+    // `deadline` is readonly on SourceContext — a source is handed a budget,
+    // it does not set one. Build the past deadline instead of assigning it.
+    const context = makeContext(undefined, {}, { deadline: Date.now() - 1 });
     const result = await syncFeeds(context, { feeds: feedsFor(10), toDocument: STD('s') });
     expect(fetchMock()).not.toHaveBeenCalled();
     expect(result.documents).toHaveLength(0);
@@ -762,9 +764,8 @@ describe('syncFeeds concurrency and the soft deadline', () => {
       const body = rss(rssItem({ title: `Ep ${index}`, link: `https://a.test/${index}` }));
       return new Promise((resolve) => setTimeout(() => resolve(ok(body)), 30));
     });
-    const context = makeContext();
     // Enough budget for the first batch, spent by the time the second is due.
-    context.deadline = Date.now() + 20;
+    const context = makeContext(undefined, {}, { deadline: Date.now() + 20 });
     const result = await syncFeeds(context, {
       feeds: feedsFor(4),
       toDocument: STD('s'),

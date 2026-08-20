@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { at, fetchMock, makeSyncContext, setFetch } from '../lib/test-fixtures.mjs';
+import { at, fetchMock, makeSourceContext, setFetch, syncOf } from '../lib/test-fixtures.mjs';
 import extension from './index.mjs';
 
-const sync = extension.sync.bind(extension);
+const sync = syncOf(extension);
 
-const makeContext = () => makeSyncContext();
+const makeContext = () => makeSourceContext();
 
 const HN_RESPONSE = {
   hits: [

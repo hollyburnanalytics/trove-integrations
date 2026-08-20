@@ -34,7 +34,7 @@ export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * across runs (fetch what fits, advance the cursor, resume next run). An absent
  * deadline means "unbounded".
  *
- * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').SourceContext} context - The harness context.
  * @returns {boolean} True once the soft budget is spent.
  */
 export function hasDeadlinePassed(context) {
@@ -50,7 +50,7 @@ export function hasDeadlinePassed(context) {
  * (it would sort a decade-old post as brand new). Undated documents are counted
  * and logged instead, so a feed that silently stops emitting dates is visible.
  *
- * @param {import('./types.d.ts').TroveDocument[]} documents - The documents a source is about to return.
+ * @param {import('./types.d.ts').Document[]} documents - The documents a source is about to return.
  * @returns {{ undated?: number }} `stats` fragment; empty when all are dated.
  */
 export function undatedStats(documents) {
@@ -62,8 +62,8 @@ export function undatedStats(documents) {
  * Warn when any of `documents` carries no publication date, naming the origin
  * so the operator can tell *which* feed regressed. No-op when all are dated.
  *
- * @param {import('./types.d.ts').SyncContext} context - Harness context (for `log.warn`).
- * @param {import('./types.d.ts').TroveDocument[]} documents - The documents a source is about to return.
+ * @param {import('./types.d.ts').SourceContext} context - Harness context (for `log.warn`).
+ * @param {import('./types.d.ts').Document[]} documents - The documents a source is about to return.
  * @param {string} origin - Feed/endpoint URL or label the documents came from.
  */
 export function warnIfUndated(context, documents, origin) {
@@ -76,7 +76,7 @@ export function warnIfUndated(context, documents, origin) {
 /**
  * How many of these entries carry no usable publication date.
  *
- * @param {Array<{document: import('./types.d.ts').TroveDocument, ms: number}>} entries - The entries to count.
+ * @param {Array<{document: import('./types.d.ts').Document, ms: number}>} entries - The entries to count.
  * @returns {number} How many are undated.
  */
 export function countUndated(entries) {
@@ -136,7 +136,7 @@ function withoutFragment(value) {
  * ID that survives the next sync, and keeping it would collide with every other
  * identity-less item in the feed.
  *
- * @param {import('./types.d.ts').SyncContext} context - Harness context (for `log.warn`).
+ * @param {import('./types.d.ts').SourceContext} context - Harness context (for `log.warn`).
  * @param {import('./types.d.ts').FeedItem[]} items - Parsed feed items.
  * @param {string} origin - Feed URL or label, for the warning.
  * @returns {import('./types.d.ts').FeedItem[]} The items that can be given a stable ID.
@@ -151,16 +151,16 @@ function identifiedItems(context, items, origin) {
 }
 
 /**
- * Fetch and parse an RSS/Atom feed, returning TroveDocuments.
+ * Fetch and parse an RSS/Atom feed, returning Documents.
  * Supports incremental sync via a `date` cursor — only returns items
  * published after the cursor date. Cursor advances to max date of returned items.
  *
- * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').SourceContext} context - The harness context.
  * @param {object} options - Which feed, and how to label its documents.
  * @param {string} options.feedUrl - The feed to fetch.
  * @param {string} options.idPrefix - The stable-ID namespace.
  * @param {string} [options.defaultAuthor] - Author for items carrying none.
- * @returns {Promise<import('./types.d.ts').SyncResult>} The round's documents, cursor and stats.
+ * @returns {Promise<import('./types.d.ts').SourceSyncResult>} The round's documents, cursor and stats.
  */
 export async function syncRSS(context, { feedUrl, idPrefix, defaultAuthor }) {
   context.log.info(`Fetching ${feedUrl}...`);
@@ -261,13 +261,13 @@ export async function fetchArticleText(url, articleSelector) {
  * so the round still produces something addressable rather than a hole the
  * cursor would then skip past.
  *
- * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').SourceContext} context - The harness context.
  * @param {import('./types.d.ts').FeedItem} item - The feed item to expand.
  * @param {object} options - How to label the document.
  * @param {string} options.idPrefix - The stable-ID namespace.
  * @param {string} [options.defaultAuthor] - Author for items carrying none.
  * @param {string} [options.articleSelector] - The container to extract.
- * @returns {Promise<import('./types.d.ts').TroveDocument>} The document, body or excerpt.
+ * @returns {Promise<import('./types.d.ts').Document>} The document, body or excerpt.
  */
 async function articleToDocument(context, item, { idPrefix, defaultAuthor, articleSelector }) {
   let body;
@@ -295,14 +295,14 @@ async function articleToDocument(context, item, { idPrefix, defaultAuthor, artic
  * For CC / public-domain feeds that carry only excerpts. Deadline-bounded: a
  * large backlog drains across runs, resuming from the `date` cursor.
  *
- * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').SourceContext} context - The harness context.
  * @param {object} options - Which feed, and how to label its documents.
  * @param {string} options.feedUrl - The feed to fetch.
  * @param {string} options.idPrefix - The stable-ID namespace.
  * @param {string} [options.defaultAuthor] - Author for items carrying none.
  * @param {string} [options.articleSelector] - The prose container to extract.
  * @param {number} [options.delayMs] - Pause between article fetches.
- * @returns {Promise<import('./types.d.ts').SyncResult>} The round's documents, cursor and stats.
+ * @returns {Promise<import('./types.d.ts').SourceSyncResult>} The round's documents, cursor and stats.
  */
 export async function syncFeedArticles(
   context,
@@ -320,7 +320,7 @@ export async function syncFeedArticles(
     })
     .toSorted((a, b) => new Date(a.pubDate || 0).getTime() - new Date(b.pubDate || 0).getTime());
 
-  /** @type {import('./types.d.ts').TroveDocument[]} */
+  /** @type {import('./types.d.ts').Document[]} */
   const documents = [];
   /** @type {number[]} */
   const dates = [];

@@ -125,7 +125,7 @@ export function fetchedUrls(fetchMock) {
 }
 
 /**
- * A real {@link import('./types.d.ts').SyncContext} with spies on its sinks.
+ * A real {@link import('./types.d.ts').SourceContext} with spies on its sinks.
  *
  * Twenty-four test files each built their own, and all twenty-four were the
  * same four fields — `log.info`, `log.warn`, `progress`, `config` — with no
@@ -137,18 +137,44 @@ export function fetchedUrls(fetchMock) {
  * dormant on purpose — a test that wants it passes `deadline` explicitly and
  * now actually gets it.
  *
- * @param {Partial<import('./types.d.ts').SyncContext>} [overrides] - Fields to replace.
- * @returns {import('./types.d.ts').SyncContext} A context a source can be run against.
+ * @param {Partial<import('./types.d.ts').SourceContext> & { secrets?: Record<string, string> }} [overrides] -
+ *   Fields to replace. `secrets` is a convenience: it is not part of the
+ *   context, it is what `secret(name)` will resolve from.
+ * @returns {import('./types.d.ts').SourceContext} A context a source can be run against.
  */
-export function makeSyncContext(overrides = {}) {
+export function makeSourceContext(overrides = {}) {
+  const { secrets = {}, ...rest } = overrides;
+  /**
+   * @param {string} name - The credential's name.
+   * @returns {Promise<string | undefined>} Its value, when set.
+   */
+  const secret = (name) => Promise.resolve(secrets[name]);
   return {
     config: {},
-    credentials: {},
     cursor: undefined,
     deadline: Date.now() + 30_000,
-    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    secret,
+    /**
+     * @param {string} name - The credential's name.
+     * @returns {Promise<string>} Its value.
+     * @throws {Error} When it is unset or empty.
+     */
+    requireSecret: async (name) => {
+      const value = await secret(name);
+      if (value === undefined || value === '') {
+        throw new Error(`Secret "${name}" is not set for this source.`);
+      }
+      return value;
+    },
+    fetch: /** @type {import('@ontrove/extend/source').FetchLike} */ (
+      (url, init) => globalThis.fetch(url, init)
+    ),
+    now: () => new Date(),
+    // Callable AND carrying the three levels — `LogChannel` is a function with
+    // methods on it, so a source writing a bare `ctx.log('…')` must work.
+    log: Object.assign(vi.fn(), { info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
     progress: vi.fn(),
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -195,7 +221,7 @@ export function fetchMock() {
 export function makeDirectoryContext(response) {
   /** @type {import('vitest').Mock} */
   const fetch = vi.fn(async () => response);
-  return { fetch, log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } };
+  return { fetch, log: Object.assign(vi.fn(), { info: vi.fn(), warn: vi.fn(), error: vi.fn() }) };
 }
 
 /**
@@ -279,7 +305,7 @@ export function idSetCursor(cursor) {
 /**
  * A context sink seen as the mock it is.
  *
- * {@link makeSyncContext} returns a real `SyncContext`, whose `log.warn` and
+ * {@link makeSourceContext} returns a real `SourceContext`, whose `log.warn` and
  * `progress` are declared as the plain functions a source calls — so a test
  * reaching for `.mock.calls` on one is reading a property the interface does
  * not have. This is that one cast, in one place.
@@ -312,4 +338,25 @@ export function at(items, index = 0) {
     throw new Error(`expected an entry at index ${index}, but the array has ${items.length}`);
   }
   return entry;
+}
+
+/**
+ * A source's `sync`, bound and with its result normalised.
+ *
+ * `sync` may return a bare `Document[]` for convenience, so its declared type
+ * is `Document[] | SourceSyncResult` and every `result.documents` in a test is
+ * an error on the array half of that union. The runtime normalises before
+ * anything reads the result; doing the same here keeps a test looking at the
+ * shape the platform actually handles, rather than narrowing 149 times.
+ *
+ * @param {{ sync: (ctx: import('./types.d.ts').SourceContext) => Promise<import('./types.d.ts').Document[] | import('./types.d.ts').SourceSyncResult> }} extension -
+ *   The source declaration, as its module default-exports it.
+ * @returns {(ctx: import('./types.d.ts').SourceContext) => Promise<import('./types.d.ts').SourceSyncResult>}
+ *   A `sync` whose result is always the object form.
+ */
+export function syncOf(extension) {
+  return async (ctx) => {
+    const raw = await extension.sync(ctx);
+    return Array.isArray(raw) ? { documents: raw } : raw;
+  };
 }

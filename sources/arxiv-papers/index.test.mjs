@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { at, makeSyncContext, okResponse, setFetch } from '../lib/test-fixtures.mjs';
+import { at, makeSourceContext, okResponse, setFetch, syncOf } from '../lib/test-fixtures.mjs';
 import extension, { PAGE_SIZE } from './index.mjs';
 
-const sync = extension.sync.bind(extension);
+const sync = syncOf(extension);
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -34,9 +34,9 @@ function installFetch() {
  *
  * @param {Record<string, import('../lib/types.d.ts').ConfigValue>} [config] - Source config.
  * @param {import('../lib/types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @returns {import('../lib/types.d.ts').SyncContext} The context.
+ * @returns {import('../lib/types.d.ts').SourceContext} The context.
  */
-const makeContext = (config = {}, cursor) => makeSyncContext({ config, cursor });
+const makeContext = (config = {}, cursor) => makeSourceContext({ config, cursor });
 
 /**
  * One Atom `<entry>`.
@@ -281,7 +281,7 @@ describe('arxiv-papers source', () => {
  * Sync one Atom entry and return the document it produced.
  *
  * @param {string} xml - The `<entry>` element.
- * @returns {Promise<import('../lib/types.d.ts').TroveDocument>} The document.
+ * @returns {Promise<import('../lib/types.d.ts').Document>} The document.
  */
 async function firstDocument(xml) {
   setFetch(async () => new Response(`<feed>${xml}</feed>`));
