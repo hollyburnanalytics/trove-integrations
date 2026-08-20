@@ -46,38 +46,31 @@ function toDocument(item) {
 }
 
 export default defineSource({
-  id: "guardian-headlines",
-  name: "Guardian Headlines",
-  description: "Top headlines and summaries from The Guardian via RSS (no full article text)",
-  icon: "📰",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "feed",
-  cursor: "date",
-  ingest: "append",
-  runsIn: "cloud",
-  schedule: "every 2 hours",
-  status: "implemented",
+  id: 'guardian-headlines',
+  name: 'Guardian Headlines',
+  description: 'Top headlines and summaries from The Guardian via RSS (no full article text)',
+  icon: '📰',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'feed',
+  cursor: 'date',
+  ingest: 'append',
+  runsIn: 'cloud',
+  schedule: 'every 2 hours',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "www.theguardian.com"
-  ],
+  egress: ['www.theguardian.com'],
   historyReach: {
-    "kind": "recent-only",
-    "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
+    kind: 'recent-only',
+    note: 'A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched.',
   },
   config: {
-    "sections": {
-      "label": "Sections to fetch",
-      "type": "array",
-      "default": [
-        "uk",
-        "world",
-        "technology",
-        "business"
-      ]
-    }
+    sections: {
+      label: 'Sections to fetch',
+      type: 'array',
+      default: ['uk', 'world', 'technology', 'business'],
+    },
   },
   async sync(context) {
     // `sections` is a `text[]` field, and a `text[]` field is user input: one
@@ -91,5 +84,5 @@ export default defineSource({
       label: 'Guardian sections',
       toDocument,
     });
-},
+  },
 });

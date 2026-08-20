@@ -289,33 +289,26 @@ async function collectNewBookmarks(context, accessToken, userId, seenIds) {
 }
 
 export default defineSource({
-  id: "x-bookmarks",
-  name: "X Bookmarks",
-  description: "Your saved X (Twitter) bookmarks, synced into Trove (your ~800 most recent, newest-first). Not yet available: X sign-in for this source can't be completed in the app yet.",
-  icon: "🔖",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "api",
-  cursor: "idSet",
-  ingest: "append",
-  runsIn: "mac",
-  schedule: "every 6 hours",
-  status: "implemented",
+  id: 'x-bookmarks',
+  name: 'X Bookmarks',
+  description:
+    "Your saved X (Twitter) bookmarks, synced into Trove (your ~800 most recent, newest-first). Not yet available: X sign-in for this source can't be completed in the app yet.",
+  icon: '🔖',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'api',
+  cursor: 'idSet',
+  ingest: 'append',
+  runsIn: 'mac',
+  schedule: 'every 6 hours',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "api.x.com"
-  ],
-  egressNote: "The X API v2 only. x.com appears in stored document URLs but is never fetched.",
-  egressNotFetched: [
-    "x.com"
-  ],
+  egress: ['api.x.com'],
+  egressNote: 'The X API v2 only. x.com appears in stored document URLs but is never fetched.',
+  egressNotFetched: ['x.com'],
   available: false,
-  secrets: [
-    "X_OAUTH_CLIENT_ID",
-    "X_OAUTH_CLIENT_SECRET",
-    "X_OAUTH_REFRESH_TOKEN"
-  ],
+  secrets: ['X_OAUTH_CLIENT_ID', 'X_OAUTH_CLIENT_SECRET', 'X_OAUTH_REFRESH_TOKEN'],
   async sync(context) {
     const previousIds = readSeenIds(context.cursor);
     const seenIds = new Set(previousIds);
@@ -343,5 +336,5 @@ export default defineSource({
       cursor: { type: 'idSet', values: boundedIds, max: MAX_SEEN_IDS },
       stats: { fetched: documents.length, skipped },
     };
-},
+  },
 });

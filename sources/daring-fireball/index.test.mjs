@@ -13,9 +13,9 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => ({
 
 import { syncRSS } from '../lib/feeds.mjs';
 import { makeSyncContext } from '../lib/test-fixtures.mjs';
-import source from './index.mjs';
+import extension from './index.mjs';
 
-const sync = source.sync.bind(source);
+const sync = extension.sync.bind(extension);
 
 describe('daring-fireball source', () => {
   beforeEach(() => vi.clearAllMocks());

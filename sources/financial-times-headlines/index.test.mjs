@@ -9,9 +9,9 @@ import {
   rssItemXml,
   setFetch,
 } from '../lib/test-fixtures.mjs';
-import source from './index.mjs';
+import extension from './index.mjs';
 
-const sync = source.sync.bind(source);
+const sync = extension.sync.bind(extension);
 
 const ORIGINAL_FETCH = globalThis.fetch;
 

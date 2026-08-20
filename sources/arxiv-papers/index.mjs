@@ -1,4 +1,9 @@
-import { defineSource, advanceDateCursor, readDateCursor, stringList } from '@ontrove/extend/source';
+import {
+  advanceDateCursor,
+  defineSource,
+  readDateCursor,
+  stringList,
+} from '@ontrove/extend/source';
 import { decodeHtmlEntities, fetchPage, hasDeadlinePassed, safeDate } from '../lib/feeds.mjs';
 
 /** Results per arXiv API page. */
@@ -143,44 +148,41 @@ function queriesFrom(value) {
 }
 
 export default defineSource({
-  id: "arxiv-papers",
-  name: "arXiv Papers",
-  description: "ML and CS paper abstracts matching your search queries",
-  icon: "📄",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "api",
-  cursor: "date",
-  ingest: "append",
-  runsIn: "cloud",
-  schedule: "every 6 hours",
-  status: "implemented",
+  id: 'arxiv-papers',
+  name: 'arXiv Papers',
+  description: 'ML and CS paper abstracts matching your search queries',
+  icon: '📄',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'api',
+  cursor: 'date',
+  ingest: 'append',
+  runsIn: 'cloud',
+  schedule: 'every 6 hours',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "export.arxiv.org"
-  ],
+  egress: ['export.arxiv.org'],
   historyReach: {
-    "kind": "full",
-    "note": "arXiv answers any date range. A run fetches up to 500 papers per query and the next run carries on, so a deep backfill arrives over several syncs rather than all at once."
+    kind: 'full',
+    note: 'arXiv answers any date range. A run fetches up to 500 papers per query and the next run carries on, so a deep backfill arrives over several syncs rather than all at once.',
   },
-  egressNote: "The adapter queries the arXiv API on export.arxiv.org. arxiv.org appears only as the paper's HTML/PDF `file_url`, which Trove's ingest fetches when it captures the artifact.",
-  egressNotFetched: [
-    "arxiv.org"
-  ],
+  egressNote:
+    "The adapter queries the arXiv API on export.arxiv.org. arxiv.org appears only as the paper's HTML/PDF `file_url`, which Trove's ingest fetches when it captures the artifact.",
+  egressNotFetched: ['arxiv.org'],
   config: {
-    "queries": {
-      "label": "Search Queries",
-      "type": "text[]",
-      "directory": {
-        "provider": "arxiv",
-        "mode": "search",
-        "placeholder": "Search arXiv subjects"
-      }
-    }
+    queries: {
+      label: 'Search Queries',
+      type: 'text[]',
+      directory: {
+        provider: 'arxiv',
+        mode: 'search',
+        placeholder: 'Search arXiv subjects',
+      },
+    },
   },
-  fanOut: "queries",
-  formatting: "verbatim",
+  fanOut: 'queries',
+  formatting: 'verbatim',
   async sync(context) {
     const queries = queriesFrom(context.config.queries);
     const lastDate = readDateCursor(context.cursor);
@@ -218,5 +220,5 @@ export default defineSource({
     });
 
     return { documents, cursor, stats: { fetched: documents.length } };
-},
+  },
 });

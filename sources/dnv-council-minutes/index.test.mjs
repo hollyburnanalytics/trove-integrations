@@ -18,7 +18,8 @@ function installFetch() {
   setFetch(async (url) => okResponse(await fetchPage(String(url))));
 }
 
-const { sync } = await import('./index.mjs');
+const { default: extension } = await import('./index.mjs');
+const sync = extension.sync.bind(extension);
 
 const makeContext = (overrides = {}) => makeSyncContext(overrides);
 

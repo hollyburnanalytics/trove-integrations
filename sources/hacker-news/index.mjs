@@ -10,27 +10,24 @@ import { htmlToText, safeDate, undatedStats, warnIfUndated } from '../lib/feeds.
  */
 
 export default defineSource({
-  id: "hacker-news",
-  name: "Hacker News",
-  description: "Top stories from the HN front page",
-  icon: "🔶",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "api",
-  cursor: "none",
-  ingest: "append",
-  runsIn: "mac",
-  schedule: "every 1 hour",
-  status: "implemented",
+  id: 'hacker-news',
+  name: 'Hacker News',
+  description: 'Top stories from the HN front page',
+  icon: '🔶',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'api',
+  cursor: 'none',
+  ingest: 'append',
+  runsIn: 'mac',
+  schedule: 'every 1 hour',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "hn.algolia.com"
-  ],
-  egressNote: "The Algolia HN search API only; news.ycombinator.com appears as a story's stored URL when the submission links nowhere else, and is never fetched.",
-  egressNotFetched: [
-    "news.ycombinator.com"
-  ],
+  egress: ['hn.algolia.com'],
+  egressNote:
+    "The Algolia HN search API only; news.ycombinator.com appears as a story's stored URL when the submission links nowhere else, and is never fetched.",
+  egressNotFetched: ['news.ycombinator.com'],
   async sync(context) {
     context.log.info('Fetching Hacker News front page stories...');
 
@@ -75,5 +72,5 @@ export default defineSource({
       cursor: undefined,
       stats: { fetched: documents.length, ...undatedStats(documents) },
     };
-},
+  },
 });

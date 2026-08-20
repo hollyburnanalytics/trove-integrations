@@ -111,40 +111,40 @@ export function episodeDocument(item) {
 }
 
 export default defineSource({
-  id: "podcast-feeds",
-  name: "Podcasts",
-  description: "Subscribe to any podcast by feed URL. Trove downloads each new episode and transcribes it, so the whole show becomes searchable text.",
-  icon: "🎧",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "feed",
-  cursor: "date",
-  ingest: "append",
-  runsIn: "cloud",
-  schedule: "every 6 hours",
-  status: "implemented",
+  id: 'podcast-feeds',
+  name: 'Podcasts',
+  description:
+    'Subscribe to any podcast by feed URL. Trove downloads each new episode and transcribes it, so the whole show becomes searchable text.',
+  icon: '🎧',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'feed',
+  cursor: 'date',
+  ingest: 'append',
+  runsIn: 'cloud',
+  schedule: 'every 6 hours',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "config:feeds"
-  ],
+  egress: ['config:feeds'],
   historyReach: {
-    "kind": "window",
-    "note": "Most podcast feeds carry the full back catalogue, but some publishers truncate theirs to recent episodes. How far back you get is the publisher's choice."
+    kind: 'window',
+    note: "Most podcast feeds carry the full back catalogue, but some publishers truncate theirs to recent episodes. How far back you get is the publisher's choice.",
   },
-  egressNote: "Fetches the podcast feed URLs the user configures, so the reachable hosts are theirs and cannot be listed here; the audio enclosures those feeds point at are downloaded by Trove's transcription workflow, not by this adapter.",
+  egressNote:
+    "Fetches the podcast feed URLs the user configures, so the reachable hosts are theirs and cannot be listed here; the audio enclosures those feeds point at are downloaded by Trove's transcription workflow, not by this adapter.",
   config: {
-    "feeds": {
-      "label": "Podcast feed URLs",
-      "type": "url[]",
-      "directory": {
-        "provider": "podcasts",
-        "mode": "search",
-        "placeholder": "Search shows by name"
-      }
-    }
+    feeds: {
+      label: 'Podcast feed URLs',
+      type: 'url[]',
+      directory: {
+        provider: 'podcasts',
+        mode: 'search',
+        placeholder: 'Search shows by name',
+      },
+    },
   },
-  fanOut: "feeds",
+  fanOut: 'feeds',
   available: true,
   async sync(context) {
     const feeds = stringList(context.config.feeds).map((url) => ({ url }));
@@ -158,5 +158,5 @@ export default defineSource({
       feedMaxBytes: FEED_MAX_BYTES,
       concurrency: FEED_CONCURRENCY,
     });
-},
+  },
 });

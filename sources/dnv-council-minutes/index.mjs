@@ -139,25 +139,24 @@ function toDocument({ meeting, document }) {
 }
 
 export default defineSource({
-  id: "dnv-council-minutes",
-  name: "DNV Council Meetings",
-  description: "Agendas, minutes, and reports from District of North Vancouver council meetings — the public record of local government decisions (2026 onwards)",
-  icon: "🏛️",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "api",
-  cursor: "idSet",
-  ingest: "append",
-  runsIn: "cloud",
-  schedule: "daily",
-  status: "implemented",
+  id: 'dnv-council-minutes',
+  name: 'DNV Council Meetings',
+  description:
+    'Agendas, minutes, and reports from District of North Vancouver council meetings — the public record of local government decisions (2026 onwards)',
+  icon: '🏛️',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'api',
+  cursor: 'idSet',
+  ingest: 'append',
+  runsIn: 'cloud',
+  schedule: 'daily',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "app.dnv.org"
-  ],
-  egressNote: "The council search API and the meeting PDFs it points at are both on app.dnv.org.",
-  formatting: "reformat",
+  egress: ['app.dnv.org'],
+  egressNote: 'The council search API and the meeting PDFs it points at are both on app.dnv.org.',
+  formatting: 'reformat',
   async sync(context) {
     context.log.info('Fetching council meeting index...');
     /** @type {Meeting[]} */
@@ -185,5 +184,5 @@ export default defineSource({
         remaining: pending.length - documents.length,
       },
     };
-},
+  },
 });

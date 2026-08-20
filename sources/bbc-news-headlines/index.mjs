@@ -28,39 +28,31 @@ function feedUrl(section) {
 }
 
 export default defineSource({
-  id: "bbc-news-headlines",
-  name: "BBC News Headlines",
-  description: "Headlines and summaries from BBC News via RSS (no full article text)",
-  icon: "📻",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "feed",
-  cursor: "date",
-  ingest: "append",
-  runsIn: "cloud",
-  schedule: "every 2 hours",
-  status: "implemented",
+  id: 'bbc-news-headlines',
+  name: 'BBC News Headlines',
+  description: 'Headlines and summaries from BBC News via RSS (no full article text)',
+  icon: '📻',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'feed',
+  cursor: 'date',
+  ingest: 'append',
+  runsIn: 'cloud',
+  schedule: 'every 2 hours',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "feeds.bbci.co.uk"
-  ],
+  egress: ['feeds.bbci.co.uk'],
   historyReach: {
-    "kind": "recent-only",
-    "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
+    kind: 'recent-only',
+    note: 'A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched.',
   },
   config: {
-    "sections": {
-      "label": "Sections to fetch",
-      "type": "array",
-      "default": [
-        "top_stories",
-        "world",
-        "uk",
-        "technology",
-        "business"
-      ]
-    }
+    sections: {
+      label: 'Sections to fetch',
+      type: 'array',
+      default: ['top_stories', 'world', 'uk', 'technology', 'business'],
+    },
   },
   async sync(context) {
     // `sections` is a `text[]` field, and a `text[]` field is user input: one
@@ -83,5 +75,5 @@ export default defineSource({
           tags: feed.label ? [feed.label] : [],
         }),
     });
-},
+  },
 });

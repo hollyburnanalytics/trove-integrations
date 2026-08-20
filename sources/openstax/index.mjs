@@ -187,24 +187,24 @@ async function buildSection(context, archiveBase, book, page, license) {
 }
 
 export default defineSource({
-  id: "openstax",
-  name: "OpenStax",
-  description: "Free, peer-reviewed, openly licensed (Creative Commons) college textbooks across the sciences, social sciences, humanities, and business — full section text pulled from OpenStax's official content API. A bounded corpus (~130 books) backfilled incrementally.",
-  icon: "📚",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "api",
-  cursor: "idSet",
-  ingest: "append",
-  runsIn: "mac",
-  schedule: "monthly",
-  status: "implemented",
+  id: 'openstax',
+  name: 'OpenStax',
+  description:
+    "Free, peer-reviewed, openly licensed (Creative Commons) college textbooks across the sciences, social sciences, humanities, and business — full section text pulled from OpenStax's official content API. A bounded corpus (~130 books) backfilled incrementally.",
+  icon: '📚',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'api',
+  cursor: 'idSet',
+  ingest: 'append',
+  runsIn: 'mac',
+  schedule: 'monthly',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "openstax.org"
-  ],
-  egressNote: "The REX release manifest, the CMS book catalogue and the content archive are all paths on openstax.org.",
+  egress: ['openstax.org'],
+  egressNote:
+    'The REX release manifest, the CMS book catalogue and the content archive are all paths on openstax.org.',
   async sync(context) {
     const { archiveBase, versions } = await loadRelease();
     const wanted = new Set(stringList(context.config?.books));
@@ -276,5 +276,5 @@ export default defineSource({
       ),
       stats: { fetched: documents.length, skipped },
     };
-},
+  },
 });

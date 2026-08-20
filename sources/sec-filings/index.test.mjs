@@ -6,11 +6,9 @@ import {
   makeSyncContext,
   setFetch,
 } from '../lib/test-fixtures.mjs';
-import { filterFilings } from './index.mjs';
-import source from './index.mjs';
-import source from './index.mjs';
+import extension, { filterFilings } from './index.mjs';
 
-const sync = source.sync.bind(source);
+const sync = extension.sync.bind(extension);
 
 /**
  * A real `Response`, because the adapter fetches through the shared

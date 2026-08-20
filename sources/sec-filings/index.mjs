@@ -19,7 +19,12 @@
  * Config: tickers[] — array of stock ticker symbols (e.g., SHOP, SNOW, OKTA).
  */
 
-import { defineSource, advanceDateCursor, readDateCursor, stringList } from '@ontrove/extend/source';
+import {
+  advanceDateCursor,
+  defineSource,
+  readDateCursor,
+  stringList,
+} from '@ontrove/extend/source';
 import { dayToLocalNoonIso, fetchPage, stableId } from '../lib/feeds.mjs';
 
 const FILING_TYPES = new Set([
@@ -301,44 +306,42 @@ function newestTime(rawDates, lastDate) {
 // --- Main sync ---
 
 export default defineSource({
-  id: "sec-filings",
-  name: "SEC Filings",
-  description: "10-K, 10-Q, 20-F, S-1, and F-1 filings for tracked companies via SEC EDGAR",
-  icon: "🏛️",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "api",
-  cursor: "date",
-  ingest: "append",
-  runsIn: "cloud",
-  schedule: "daily",
-  status: "implemented",
+  id: 'sec-filings',
+  name: 'SEC Filings',
+  description: '10-K, 10-Q, 20-F, S-1, and F-1 filings for tracked companies via SEC EDGAR',
+  icon: '🏛️',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'api',
+  cursor: 'date',
+  ingest: 'append',
+  runsIn: 'cloud',
+  schedule: 'daily',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "www.sec.gov",
-    "data.sec.gov"
-  ],
+  egress: ['www.sec.gov', 'data.sec.gov'],
   historyReach: {
-    "kind": "window",
-    "note": "EDGAR's submissions endpoint returns only a company's recent filings — roughly the last thousand. Older filings live in separate archives this source does not read."
+    kind: 'window',
+    note: "EDGAR's submissions endpoint returns only a company's recent filings — roughly the last thousand. Older filings live in separate archives this source does not read.",
   },
-  egressNote: "The ticker→CIK map and each filing's EDGAR archive document are on www.sec.gov; the company submissions index is on data.sec.gov.",
+  egressNote:
+    "The ticker→CIK map and each filing's EDGAR archive document are on www.sec.gov; the company submissions index is on data.sec.gov.",
   config: {
-    "tickers": {
-      "label": "Company Tickers",
-      "type": "text[]",
-      "default": [],
-      "pattern": "^[A-Za-z][A-Za-z.-]{0,9}$",
-      "hint": "a ticker symbol such as SHOP or BRK-B, not a company name — search by name in the picker and it fills the symbol in",
-      "directory": {
-        "provider": "companies",
-        "mode": "search",
-        "placeholder": "Search companies by name"
-      }
-    }
+    tickers: {
+      label: 'Company Tickers',
+      type: 'text[]',
+      default: [],
+      pattern: '^[A-Za-z][A-Za-z.-]{0,9}$',
+      hint: 'a ticker symbol such as SHOP or BRK-B, not a company name — search by name in the picker and it fills the symbol in',
+      directory: {
+        provider: 'companies',
+        mode: 'search',
+        placeholder: 'Search companies by name',
+      },
+    },
   },
-  fanOut: "tickers",
+  fanOut: 'tickers',
   available: true,
   async sync(context) {
     const tickers = stringList(context.config?.tickers);
@@ -392,5 +395,5 @@ export default defineSource({
       cursor,
       stats: { fetched: state.documents.length, skipped: state.skipped },
     };
-},
+  },
 });

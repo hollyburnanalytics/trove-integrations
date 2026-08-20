@@ -67,7 +67,8 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => {
 // The spy lives in the mocked module now — `vi.mock` is hoisted, so it cannot
 // be a module-scope binding declared beside it.
 const { hasDeadlinePassed } = await import('../lib/feeds.mjs');
-const { sync } = await import('./index.mjs');
+const { default: extension } = await import('./index.mjs');
+const sync = extension.sync.bind(extension);
 
 const RELEASE = {
   archiveUrl: '/apps/archive/V1',

@@ -22,39 +22,31 @@ const BASE_URL = 'https://www.ft.com';
 const DEFAULT_SECTIONS = ['world', 'technology', 'markets', 'climate-capital', 'companies'];
 
 export default defineSource({
-  id: "financial-times-headlines",
-  name: "Financial Times Headlines",
-  description: "Headlines and summaries from the Financial Times via RSS (no full article text)",
-  icon: "📰",
-  version: "0.1.0",
-  author: "Hollyburn Analytics Inc.",
-  kind: "scheduled-sync",
-  transport: "feed",
-  cursor: "date",
-  ingest: "append",
-  runsIn: "cloud",
-  schedule: "every 2 hours",
-  status: "implemented",
+  id: 'financial-times-headlines',
+  name: 'Financial Times Headlines',
+  description: 'Headlines and summaries from the Financial Times via RSS (no full article text)',
+  icon: '📰',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'feed',
+  cursor: 'date',
+  ingest: 'append',
+  runsIn: 'cloud',
+  schedule: 'every 2 hours',
+  status: 'implemented',
   needsBrowser: false,
-  egress: [
-    "www.ft.com"
-  ],
+  egress: ['www.ft.com'],
   historyReach: {
-    "kind": "recent-only",
-    "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
+    kind: 'recent-only',
+    note: 'A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched.',
   },
   config: {
-    "sections": {
-      "label": "Sections to fetch",
-      "type": "array",
-      "default": [
-        "world",
-        "technology",
-        "markets",
-        "climate-capital",
-        "companies"
-      ]
-    }
+    sections: {
+      label: 'Sections to fetch',
+      type: 'array',
+      default: ['world', 'technology', 'markets', 'climate-capital', 'companies'],
+    },
   },
   async sync(context) {
     // `sections` is a `text[]` field, and a `text[]` field is user input: one
@@ -71,5 +63,5 @@ export default defineSource({
       label: 'FT sections',
       toDocument: (item) => feedItemDocument('ft', item, { defaultAuthor: 'Financial Times' }),
     });
-},
+  },
 });
