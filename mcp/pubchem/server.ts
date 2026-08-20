@@ -6,8 +6,8 @@
  * Most PubChem records are free to use; depositor-contributed data may carry its
  * own terms. No key required.
  */
-import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { getJson } from '../lib/http.ts';
 
 const BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov/rest';
@@ -39,7 +39,7 @@ async function fetchDescription(cid: number, ctx: ToolContext): Promise<string |
   return null;
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'get_compound',

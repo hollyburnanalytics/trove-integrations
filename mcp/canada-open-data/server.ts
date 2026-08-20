@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { ckanGet, datasetFormats, en, englishHalf, landingUrl } from './ckan.ts';
 
 /**
@@ -20,7 +20,7 @@ import { ckanGet, datasetFormats, en, englishHalf, landingUrl } from './ckan.ts'
  * The CKAN transport and localized-field helpers live in `./ckan.ts`.
  */
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_datasets',

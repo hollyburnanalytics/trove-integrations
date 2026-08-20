@@ -19,7 +19,7 @@
  * Config: tickers[] — array of stock ticker symbols (e.g., SHOP, SNOW, OKTA).
  */
 
-import { advanceDateCursor, readDateCursor, stringList } from '@ontrove/sdk';
+import { advanceDateCursor, readDateCursor, stringList } from '@ontrove/extend/source';
 import { dayToLocalNoonIso, fetchPage, stableId } from '../lib/feeds.mjs';
 
 const FILING_TYPES = new Set([

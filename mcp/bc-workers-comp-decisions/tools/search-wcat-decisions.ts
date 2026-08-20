@@ -1,4 +1,4 @@
-import { ToolError, tool, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { WCAT_APPLICATION_TYPES, WCAT_CLASSIFICATIONS, WCAT_DOCUMENT_TYPES } from '../shapes.ts';
 import { collectWcatDecisions, wcatLine } from '../wcat.ts';
 

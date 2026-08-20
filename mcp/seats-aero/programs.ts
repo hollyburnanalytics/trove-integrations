@@ -1,4 +1,4 @@
-import { ToolError } from '@ontrove/mcp';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * The mileage programs ("sources") the Seats.aero partner API covers, plus the

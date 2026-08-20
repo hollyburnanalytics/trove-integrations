@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError } from '@ontrove/mcp';
+import { type ToolContext, ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Shared Project Gutenberg plumbing for the gutenberg server modules: the API

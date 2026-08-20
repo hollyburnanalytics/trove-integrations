@@ -1,4 +1,4 @@
-import { ToolError, z } from '@ontrove/mcp';
+import { ToolError, z } from '@ontrove/extend/toolkit';
 import { type Ctx, catalogParquet, fetchIndicatorData, fetchIndicatorMetadata } from './client.ts';
 import type { CsvRow } from './csv.ts';
 import { selectEntities, unmatchedRequests } from './entities.ts';

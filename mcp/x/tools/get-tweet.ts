@@ -1,4 +1,4 @@
-import { ToolError, tool, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { MEDIA_EXPANSION, MEDIA_FIELDS, TWEET_FIELDS, USER_FIELDS_BASIC, xGet } from '../client.ts';
 import { costNote } from '../cost.ts';
 import { tweetShape } from '../shapes.ts';

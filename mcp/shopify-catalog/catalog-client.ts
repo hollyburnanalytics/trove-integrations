@@ -1,5 +1,5 @@
-import type { ToolContext } from '@ontrove/mcp';
-import { ToolError } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Transport for the Shopify Global Catalog toolkit: the UCP JSON-RPC envelope,

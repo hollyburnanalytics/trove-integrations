@@ -1,4 +1,4 @@
-import type { ToolContext } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
 import { decodeXmlEntities, edgarDocument, edgarJson, filingDirUrl } from './client.ts';
 
 /**

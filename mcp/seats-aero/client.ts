@@ -1,5 +1,5 @@
-import type { ToolContext, z } from '@ontrove/mcp';
-import { ToolError } from '@ontrove/mcp';
+import type { ToolContext, z } from '@ontrove/extend/toolkit';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Transport and auth for the Seats.aero partner API.

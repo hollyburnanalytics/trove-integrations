@@ -1,5 +1,5 @@
 /**
- * This catalog's proof that `@ontrove/sdk`'s cursor writers behave the way
+ * This catalog's proof that `@ontrove/extend/source`'s cursor writers behave the way
  * its sources need them to.
  *
  * These do not test catalog code — `cursor.mjs` was a re-export of the SDK's
@@ -21,7 +21,7 @@ import {
   idSetCursor,
   readDateCursor,
   readIdSet,
-} from '@ontrove/sdk';
+} from '@ontrove/extend/source';
 import { describe, expect, it } from 'vitest';
 import { dateCursorValue } from './test-fixtures.mjs';
 

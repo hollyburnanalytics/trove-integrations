@@ -1,4 +1,4 @@
-import { z } from '@ontrove/mcp';
+import { z } from '@ontrove/extend/toolkit';
 
 /**
  * Shared zod output schemas for the x tools: the clean tweet shape (with its

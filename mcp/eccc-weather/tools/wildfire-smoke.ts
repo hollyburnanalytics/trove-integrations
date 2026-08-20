@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { type ToolDefinition, z } from '@ontrove/extend/toolkit';
 import { ATTRIBUTION, ecccError } from '../api.ts';
 import { parseWmsPoint, SMOKE_LAYER, wmsPointUrl } from '../wms.ts';
 

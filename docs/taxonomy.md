@@ -10,7 +10,7 @@ warning at the end).
 
 - **Toolkit** (`mcp/`) — a named bundle of tools the agent **calls directly**,
   live, to read or act. Synchronous; every toolkit runs as a full MCP server on
-  Trove's cloud. *(an `@ontrove/mcp` `defineMcpServer`)*
+  Trove's cloud. *(an `@ontrove/extend/toolkit` `defineToolkit`)*
 - **Source** (`sources/`) — fills the searchable **knowledge base**. The agent
   reads it *indirectly* via `trove_search`. Stateful, runs on a harness.
   *(implemented by a source adapter: a scraper / feed / API poller)*

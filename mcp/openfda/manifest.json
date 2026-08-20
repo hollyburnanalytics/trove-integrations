@@ -4,7 +4,7 @@
   "description": "Search FDA drug labels and food/drug/device recalls via the free openFDA API. No key required.",
   "icon": "💊",
   "version": "1.0.0",
-  "sdk": "@ontrove/mcp@^0.1",
+  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
   "egress": ["api.fda.gov"],
   "scopes": [],

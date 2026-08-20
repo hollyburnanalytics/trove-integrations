@@ -1,4 +1,4 @@
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { exploreAvailability } from './tools/explore-availability.ts';
 import { getTrips } from './tools/get-trips.ts';
 import { listPrograms } from './tools/list-programs.ts';
@@ -41,7 +41,7 @@ import { searchAwards } from './tools/search-awards.ts';
  * And two rejections that would otherwise arrive as an empty HTTP 200: an
  * unknown mileage-program slug, and a cabin no requested program supports.
  */
-export default defineMcpServer({
+export default defineToolkit({
   egress: ['seats.aero'],
   tools: [listPrograms, searchAwards, exploreAvailability, getTrips, liveSearch],
 });

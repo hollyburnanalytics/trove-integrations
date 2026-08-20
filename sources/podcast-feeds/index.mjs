@@ -1,4 +1,4 @@
-import { stringList } from '@ontrove/sdk';
+import { stringList } from '@ontrove/extend/source';
 import { syncFeeds } from '../lib/feed-sync.mjs';
 import { decodeHtmlEntities, safeDate, stableId } from '../lib/feeds.mjs';
 

@@ -1,4 +1,4 @@
-import { z } from '@ontrove/mcp';
+import { z } from '@ontrove/extend/toolkit';
 
 /**
  * The Seats.aero partner API's own JSON shapes, as **lenient parse schemas**.

@@ -1,4 +1,4 @@
-import { ToolError, tool, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { GUTENDEX, gutendexErrorMap, toBook } from '../client.ts';
 import { authorLabel } from '../format.ts';
 

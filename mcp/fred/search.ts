@@ -12,7 +12,7 @@
  * title, units and frequency, and differ only in seasonal adjustment. That
  * field is mapped onto every hit and spelled out in the prose.
  */
-import type { ToolContext } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
 import { getJson, mapSeries, type SeriesMeta, seasonalPhrase } from './client.ts';
 
 /** Validated arguments for one `search_series` call. */

@@ -1,4 +1,4 @@
-import { ToolError, tool, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { USER_FIELDS_PROFILE } from '../client.ts';
 import { costNote } from '../cost.ts';
 import { profileShape } from '../shapes.ts';

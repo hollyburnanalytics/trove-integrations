@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /**
  * HathiTrust — a no-auth hosted MCP server over the public HathiTrust
@@ -56,7 +56,7 @@ function str(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'lookup_volume',

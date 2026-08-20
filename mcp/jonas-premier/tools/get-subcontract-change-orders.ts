@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { jonasGet } from '../client.ts';
 import { fmt, isoDate, num, str, sum, uuid } from '../fields.ts';
 

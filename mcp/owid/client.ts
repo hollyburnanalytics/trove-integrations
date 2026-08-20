@@ -1,4 +1,4 @@
-import { ToolError, z } from '@ontrove/mcp';
+import { ToolError, z } from '@ontrove/extend/toolkit';
 import { createEgressClient } from '../lib/egress.ts';
 import {
   chartMetadataWire,

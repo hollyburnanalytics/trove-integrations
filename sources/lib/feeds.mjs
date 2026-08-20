@@ -8,14 +8,14 @@
  * Markdown.
  */
 
-import { dateCursor, fetchPage, readDateCursor } from '@ontrove/sdk';
+import { dateCursor, fetchPage, readDateCursor } from '@ontrove/extend/source';
 import { parse } from 'node-html-parser';
 import { parseRSS } from './rss-parse.mjs';
 import { decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
 
 // Re-export the feed primitives so `feeds.mjs` stays the single import surface
 // for adapters, even though the implementations live in focused sibling modules.
-export { fetchPage, fetchPageWithMeta, isTooLargeError } from '@ontrove/sdk';
+export { fetchPage, fetchPageWithMeta, isTooLargeError } from '@ontrove/extend/source';
 export { parseRSS, xmlText } from './rss-parse.mjs';
 export { dayToLocalNoonIso, decodeHtmlEntities, htmlToText, safeDate, stableId } from './text.mjs';
 

@@ -12,7 +12,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/sdk';
+import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/extend/source';
 import { describe, expect, it } from 'vitest';
 
 const here = path.dirname(fileURLToPath(import.meta.url));

@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, z } from '@ontrove/extend/toolkit';
 import { ARXIV_API, ar5ivHtmlUrl, arxivFetch, arxivHtmlUrl } from './client.ts';
 import { type ArxivPaper, parseFeed } from './parse.ts';
 

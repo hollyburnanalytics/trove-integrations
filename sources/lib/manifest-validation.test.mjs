@@ -1,5 +1,5 @@
 /**
- * What this catalog needs `@ontrove/sdk`'s manifest validator to say.
+ * What this catalog needs `@ontrove/extend/source`'s manifest validator to say.
  *
  * The rules used to live in `sources/lib/constants.mjs` as six functions, and
  * this file tested each of them. They are now one call, `validateSourceManifest`,
@@ -15,7 +15,7 @@
  * genuinely diverged.
  */
 
-import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/sdk';
+import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/extend/source';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -49,7 +49,7 @@ const STUB = { implemented: false };
  * The errors from validating `overrides` applied to {@link validManifest}.
  *
  * @param {Record<string, unknown>} [overrides] - Fields to replace or add.
- * @param {import('@ontrove/sdk').ManifestValidationOptions} [options] - Passed through.
+ * @param {import('@ontrove/extend/source').ManifestValidationOptions} [options] - Passed through.
  * @returns {string[]} Every error found.
  */
 function errorsFor(overrides = {}, options = IMPLEMENTED) {
@@ -339,7 +339,7 @@ describe('formatting', () => {
  * `scripts/validate-registry.mjs` injects the real one, which checks
  * `sources/lib/directories/`.
  *
- * @type {import('@ontrove/sdk').ManifestValidationOptions}
+ * @type {import('@ontrove/extend/source').ManifestValidationOptions}
  */
 const withKnownProviders = {
   implemented: true,

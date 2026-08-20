@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { companyFactsUrl, edgarJson, fmtMoney, requireCompany } from '../client.ts';
 import { METRICS, type Statement } from '../metrics.ts';
 import { assembleFinancials, type StatementPeriod } from '../xbrl.ts';

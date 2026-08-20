@@ -1,4 +1,4 @@
-import type { ToolContext } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
 import { createEgressClient } from '../lib/egress.ts';
 import { htmlToText } from './html.ts';
 import type { WcatDecision } from './shapes.ts';

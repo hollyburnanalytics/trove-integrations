@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError } from '@ontrove/mcp';
+import { type ToolContext, ToolError } from '@ontrove/extend/toolkit';
 import { htmlToText } from './html.ts';
 import type { ReviewDecision } from './shapes.ts';
 

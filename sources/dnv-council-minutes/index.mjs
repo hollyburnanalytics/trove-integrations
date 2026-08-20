@@ -18,7 +18,7 @@
  * download, a text extraction and a formatting pass.
  */
 
-import { fetchPage, idSetCursor, readIdSet } from '@ontrove/sdk';
+import { fetchPage, idSetCursor, readIdSet } from '@ontrove/extend/source';
 import { dayToLocalNoonIso } from '../lib/text.mjs';
 
 const SEARCH_URL = 'https://app.dnv.org/dnv_search/api/v1/councilsearch/search?pageSize=5000';

@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { commonSearchFields, dateField } from '../params.ts';
 import { renderFilters, renderList, renderPodcastLine } from '../render.ts';
 import { podcastSearchOutput, searchPodcasts } from '../search.ts';

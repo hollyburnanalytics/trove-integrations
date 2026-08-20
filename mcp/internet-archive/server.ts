@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /**
  * Internet Archive — a no-auth hosted MCP server over the public archive.org
@@ -69,7 +69,7 @@ function normalizeYear(value: string | number | null | undefined): string | unde
   return match ? match[0] : str || undefined;
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_archive',

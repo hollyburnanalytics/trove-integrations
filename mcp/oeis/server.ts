@@ -6,8 +6,8 @@
  * OEIS content is licensed CC BY-SA 4.0; no key required. The search endpoint
  * returns a bare JSON array of sequence records.
  */
-import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 const BASE_URL = 'https://oeis.org';
 
@@ -37,7 +37,7 @@ function normalizeId(id: string): string {
   return /^\d+$/.test(digits) ? `A${digits.padStart(6, '0')}` : id.toUpperCase();
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_sequences',

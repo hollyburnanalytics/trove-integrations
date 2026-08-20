@@ -212,7 +212,7 @@ export type FeedOutcome =
  *
  * The PLATFORM treats this as opaque — it stores whatever a source returns and
  * hands it back untouched. Within the catalog it is not opaque at all: these
- * are the shapes `@ontrove/sdk` reads and writes, and declaring them is what
+ * are the shapes `@ontrove/extend/source` reads and writes, and declaring them is what
  * lets a source (or its tests) assert on the cursor it produced instead of
  * reaching into an `unknown`.
  *
@@ -223,7 +223,7 @@ export type FeedOutcome =
  * the alias became `type Cursor = Cursor`. The arms are the SDK's: `date`,
  * `idSet`, and the `none` this catalog's sources express by returning nothing.
  */
-export type { Cursor } from '@ontrove/sdk';
+export type { Cursor } from '@ontrove/extend/source';
 
 /** What a source's `sync()` returns. */
 export interface SyncResult {

@@ -1,4 +1,4 @@
-import { z } from '@ontrove/mcp';
+import { z } from '@ontrove/extend/toolkit';
 
 /** Zod field helpers shared by the tool modules under `tools/`. */
 

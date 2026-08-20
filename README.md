@@ -8,7 +8,7 @@ There are two **kinds** — see [`docs/taxonomy.md`](docs/taxonomy.md):
 
 - **Toolkits** (`mcp/`) — named bundles of tools the agent **calls directly**,
   live, to read or act. Every toolkit runs as a full MCP server on Trove's
-  cloud, built on the [`@ontrove/mcp`](mcp/README.md) SDK and sandboxed over
+  cloud, built on the [`@ontrove/extend/toolkit`](mcp/README.md) SDK and sandboxed over
   public APIs. *(the current focus — see the [catalog](mcp/README.md))*
 - **Sources** (`sources/`) — fetch content you can already access (your own
   feeds and accounts, public APIs, RSS/Atom, sitemaps, archives), polling on a

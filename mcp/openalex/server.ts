@@ -10,7 +10,7 @@
  * (HTTP 429). A `mailto` is also sent for the polite pool. Set the key with
  * `trove secret set openalex OPENALEX_API_KEY <key>`.
  */
-import { defineMcpServer, tool, z } from '@ontrove/mcp';
+import { defineToolkit, tool, z } from '@ontrove/extend/toolkit';
 import { getJson } from '../lib/http.ts';
 
 /** Base host for the OpenAlex API. */
@@ -25,7 +25,7 @@ function metaCount(body: Record<string, unknown>, fallback: number): number {
   return typeof meta.count === 'number' ? meta.count : fallback;
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_works',

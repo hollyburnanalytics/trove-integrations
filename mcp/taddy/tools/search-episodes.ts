@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { uuidField } from '../fields.ts';
 import { commonSearchFields } from '../params.ts';
 import { renderEpisodeLine, renderFilters, renderList } from '../render.ts';

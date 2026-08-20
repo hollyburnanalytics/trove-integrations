@@ -22,7 +22,7 @@ The sources ship a single third-party runtime package:
 
 - [`node-html-parser`](https://github.com/taoqf/node-html-parser) — MIT
 
-The toolkits additionally run on the `@ontrove/mcp` SDK and `zod` when deployed
+The toolkits additionally run on the `@ontrove/extend/toolkit` SDK and `zod` when deployed
 — both MIT. Everything else is build- and test-time tooling (Biome, ESLint and its
 plugins, TypeScript, Zod, etc.); it is used to develop the project, not
 linked into or redistributed with the published source. One of those dev

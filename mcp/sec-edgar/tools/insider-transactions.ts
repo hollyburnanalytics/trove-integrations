@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { edgarDocument, filingDirUrl, fmtMoney, requireCompany, resolveOwner } from '../client.ts';
 import { listFilingDocuments } from '../documents.ts';
 import {

@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import {
   AIR_QUALITY_URL,
   ARCHIVE_URL,
@@ -26,7 +26,7 @@ import {
  * `./api.ts`.
  */
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'geocode_place',

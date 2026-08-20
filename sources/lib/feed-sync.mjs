@@ -1,4 +1,4 @@
-import { advanceDateCursor, readDateCursor } from '@ontrove/sdk';
+import { advanceDateCursor, readDateCursor } from '@ontrove/extend/source';
 import { parse as parseHtmlDocument } from 'node-html-parser';
 import { feedRelocation, feedSelfTitle, selfReport } from './feed-identity.mjs';
 import {

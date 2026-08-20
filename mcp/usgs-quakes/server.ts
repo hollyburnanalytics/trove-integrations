@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /**
  * USGS Earthquakes — a no-auth hosted MCP server over the public USGS feed.
@@ -60,7 +60,7 @@ function toQuake(feature: QuakeFeature): Quake | undefined {
   };
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'recent_quakes',

@@ -1,4 +1,4 @@
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { getBook } from './tools/get-book.ts';
 import { getExcerpt } from './tools/get-excerpt.ts';
 import { searchBooks } from './tools/search-books.ts';
@@ -19,6 +19,6 @@ import { searchInside } from './tools/search-inside.ts';
  * No API key. Everything Gutenberg distributes is out of copyright, so fetching
  * and searching the full text is unrestricted.
  */
-export default defineMcpServer({
+export default defineToolkit({
   tools: [searchBooks, getBook, searchInside, getExcerpt],
 });

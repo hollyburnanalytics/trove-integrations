@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 /**
  * Test helpers for the hosted MCP servers.
  *
- * A built server (the `defineMcpServer(...)` default export) resolves egress
+ * A built server (the `defineToolkit(...)` default export) resolves egress
  * through `globalThis.fetch` unless a `fetchImpl` is injected at definition
  * time. These helpers swap in a mocked `fetch`, drive a tool through the real
  * SDK request path (`server.handle`), and restore the original `fetch` after.
@@ -40,7 +40,7 @@ export function fetchMock(responder) {
  * callback to `${callbackBase}/internal/secret` — branch on the URL and reply
  * `{ json: { value: '<secret>' } }` to satisfy `ctx.requireSecret`.
  *
- * @param {object} server - The server's default export (from `defineMcpServer`).
+ * @param {object} server - The server's default export (from `defineToolkit`).
  * @param {string} tool - The tool name to invoke.
  * @param {object} args - The tool arguments.
  * @param {object|Function} [responder] - A `fetchMock` responder (omit for arg-validation tests).
@@ -51,7 +51,7 @@ export function fetchMock(responder) {
  *   response reaching another — cannot be tested at all against a fixed id: a
  *   constant prefix on every key is indistinguishable from no prefix, so the
  *   isolation is untested however many tests exist.
- * @returns {Promise<object>} The `McpToolCallResult`.
+ * @returns {Promise<object>} The `ToolCallResult`.
  */
 export async function callTool(
   server,

@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { uuidField } from '../fields.ts';
 import { episodeOutput, getEpisode } from '../lookup.ts';
 import { renderEpisode } from '../render.ts';

@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { ar5ivHtmlUrl } from '../client.ts';
 import { fetchPaper, paperShape } from '../papers.ts';
 

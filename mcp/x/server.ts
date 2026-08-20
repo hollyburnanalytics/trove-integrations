@@ -43,7 +43,7 @@
  * overlaps) inside 24h is free. Each tool states its cost in its description and
  * reports the actual per-call spend in its `note` field.
  */
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { countPosts } from './tools/count-posts.ts';
 import { getBookmarks } from './tools/get-bookmarks.ts';
 import { getPostReplies } from './tools/get-post-replies.ts';
@@ -56,7 +56,7 @@ import { searchPosts } from './tools/search-posts.ts';
 export { __resetBookmarkAuth } from './auth.ts';
 export { __resetUserCache } from './users.ts';
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     getUserTweets,
     getTweet,

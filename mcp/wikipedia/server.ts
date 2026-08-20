@@ -5,7 +5,7 @@
  *  - `get_article`     — an article's short description and full plain-text extract.
  * A descriptive User-Agent is sent per Wikimedia's User-Agent policy.
  */
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { getJson } from '../lib/http.ts';
 
 const BASE_URL = 'https://en.wikipedia.org';
@@ -14,7 +14,7 @@ const MAX_EXTRACT = 12_000;
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_articles',

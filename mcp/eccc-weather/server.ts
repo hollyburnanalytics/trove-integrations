@@ -1,4 +1,4 @@
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { airQuality } from './tools/air-quality.ts';
 import { findLocation } from './tools/find-location.ts';
 import { forecast } from './tools/forecast.ts';
@@ -35,6 +35,6 @@ import { wildfireSmoke } from './tools/wildfire-smoke.ts';
  * commercial use and redistribution on condition the source is acknowledged, so
  * every response carries the required attribution string.
  */
-export default defineMcpServer({
+export default defineToolkit({
   tools: [findLocation, forecast, observations, modelPoint, airQuality, wildfireSmoke],
 });
