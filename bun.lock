@@ -5,7 +5,7 @@
     "": {
       "name": "trove-integrations",
       "dependencies": {
-        "@ontrove/extend": "^3.2.0",
+        "@ontrove/extend": "^3.3.0",
         "fast-xml-parser": "^5.10.1",
         "node-html-parser": "^9.0.1",
       },
@@ -83,7 +83,7 @@
 
     "@nodable/entities": ["@nodable/entities@3.0.0", "", {}, "sha512-8L9xFeTYKhm49xfIypoe2W5wV1m/3Z58kT+7kR9A8OyFxcPduI4VmxaUMQyKYrRjUoLLSXv6EKKID5Tvj9cUVw=="],
 
-    "@ontrove/extend": ["@ontrove/extend@3.2.0", "", { "peerDependencies": { "zod": "^4" } }, "sha512-4Le1ga5xq5/z5QLAPnbeeM4wk+s1ssX171IFwyxLXAUY6lxiJZBCNtgV6XW/7BYNVzU3sBeprMye+iFTpER15Q=="],
+    "@ontrove/extend": ["@ontrove/extend@3.3.0", "", { "peerDependencies": { "zod": "^4" } }, "sha512-4kBduf44EyFjJCn1iqC4D6/9fF0bTiv3I3rRBfjyC17KsEA7oeL5MvXlZKfox+wPiufhBV0f9+TWReLGREg8Qw=="],
 
     "@oxc-project/types": ["@oxc-project/types@0.144.0", "", {}, "sha512-nuhZIOLuI6TFQ32I/WnUx+SCPY7SdSKwgnFHydAuoS1+Z4BRcaP+RRJmGzl9lw+0OFF7UmaESf7KQRXaNLHypg=="],
 
