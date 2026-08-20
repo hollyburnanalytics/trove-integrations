@@ -55,14 +55,22 @@ export function bookmarkOwnerCached(): boolean {
   return Boolean(bookmarkAuth?.userId);
 }
 
-/** Read an optional secret, treating "missing"/empty as `undefined`. */
+/**
+ * Read an optional secret, treating an empty string as `undefined`.
+ *
+ * The try/catch this used to be was a workaround for `ctx.secret` being able
+ * only to reject — the FOURTH independent copy of the same one across the two
+ * catalogs, which is what made the case for splitting `secret` (resolves
+ * `undefined` when unset) from `requireSecret` (raises). All that is left is
+ * collapsing `''`.
+ *
+ * @param ctx - The tool context.
+ * @param name - The credential's name.
+ * @returns Its value, or `undefined` when unset or empty.
+ */
 async function optionalSecret(ctx: ToolContext, name: string): Promise<string | undefined> {
-  try {
-    const value = await ctx.secret(name);
-    return value.length > 0 ? value : undefined;
-  } catch {
-    return undefined;
-  }
+  const value = await ctx.secret(name);
+  return value !== undefined && value.length > 0 ? value : undefined;
 }
 
 /**

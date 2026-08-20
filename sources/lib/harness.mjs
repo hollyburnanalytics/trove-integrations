@@ -51,14 +51,14 @@ export class InvalidSourceResponseError extends Error {
  * @param {Record<string, import('./types.d.ts').ConfigValue>} [options.config] - Source
  *   config. NOT `Record<string, string>`: a `url[]`/`text[]` field arrives as an
  *   array, which is what every fan-out source reads.
- * @param {Record<string, string>} [options.credentials] - Source credentials.
+ * @param {Record<string, string>} [options.credentials] - Source credentials, surfaced to the adapter as `ctx.secret(name)`.
  * @param {unknown} [options.cursor] - Resume cursor from a prior run.
  * @param {unknown} [options.browser] - Playwright browser context, or null.
  * @param {number} [options.timeoutMs] - Hard-timeout budget in ms.
  * @param {number} [options.now] - Current epoch ms (injectable for tests).
  * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [options.onLog] - Log sink.
  * @param {(documentsSoFar: number, message: string) => void} [options.onProgress] - Progress sink.
- * @returns {import('./types.d.ts').SyncContext} The source context.
+ * @returns {import('./types.d.ts').SourceContext} The source context.
  */
 export function buildContext({
   config,
@@ -73,19 +73,76 @@ export function buildContext({
   const budget = typeof timeoutMs === 'number' ? timeoutMs : DEFAULT_TIMEOUT_MS;
   const base = typeof now === 'number' ? now : Date.now();
   const softBudgetMs = Math.floor(budget * SOFT_BUDGET_RATIO);
-  return {
+  const secrets = credentials || {};
+  /**
+   * The credential a source asked for by name, or `undefined`.
+   *
+   * The map goes in and only this comes out: a source cannot enumerate what it
+   * was handed, so it cannot read a credential it never declared.
+   *
+   * @param {string} name - The credential's name.
+   * @returns {Promise<string | undefined>} Its value, when set.
+   */
+  const secret = (name) => Promise.resolve(secrets[name]);
+
+  const context = {
     config: config || {},
-    credentials: credentials || {},
     cursor: /** @type {import('./types.d.ts').Cursor | undefined} */ (cursor ?? undefined),
     browser: browser ?? undefined,
     deadline: base + softBudgetMs,
-    log: {
-      info: (message) => onLog?.('info', String(message)),
-      warn: (message) => onLog?.('warn', String(message)),
-      error: (message) => onLog?.('error', String(message)),
+    secret,
+    /**
+     * {@link secret}, for a credential the source cannot proceed without.
+     *
+     * @param {string} name - The credential's name.
+     * @returns {Promise<string>} Its value.
+     * @throws {Error} When it is unset or empty.
+     */
+    requireSecret: async (name) => {
+      const value = await secret(name);
+      if (value === undefined || value === '') {
+        throw new Error(`Secret "${name}" is not set for this source.`);
+      }
+      return value;
     },
+    // The seam's, so a source written against `ctx.fetch` behaves the same here
+    // as it does in the cloud. The guard lives in the caller that supplies it;
+    // locally there is nothing between the source and the network but this.
+    fetch: /** @type {import('@ontrove/extend/source').FetchLike} */ (
+      (url, init) => globalThis.fetch(url, init)
+    ),
+    now: () => new Date(base),
+    log: makeLogChannel(onLog),
+    /**
+     * @param {number} documentsSoFar - How many documents are done.
+     * @param {string} [message] - A line for a person watching.
+     */
     progress: (documentsSoFar, message) => onProgress?.(documentsSoFar, String(message ?? '')),
   };
+  return context;
+}
+
+/**
+ * Build the callable log a source is handed.
+ *
+ * `LogChannel` is a FUNCTION with `info`/`warn`/`error` on it, not a bag of
+ * three methods — a source may write `ctx.log('…')` and expect it to work.
+ * Building only the three methods typechecks against nothing and fails at the
+ * first bare call.
+ *
+ * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [onLog] - Sink.
+ * @returns {import('./types.d.ts').LogChannel} The channel.
+ */
+function makeLogChannel(onLog) {
+  /** @param {...unknown} args - What to log. */
+  const log = (...args) => onLog?.('info', args.map(String).join(' '));
+  log.info = /** @param {...unknown} args - What to log. */ (...args) =>
+    onLog?.('info', args.map(String).join(' '));
+  log.warn = /** @param {...unknown} args - What to log. */ (...args) =>
+    onLog?.('warn', args.map(String).join(' '));
+  log.error = /** @param {...unknown} args - What to log. */ (...args) =>
+    onLog?.('error', args.map(String).join(' '));
+  return log;
 }
 
 /**
@@ -165,13 +222,13 @@ function sourceModuleUrl(sourcePath) {
  * @param {Record<string, import('./types.d.ts').ConfigValue>} [options.config] - Source
  *   config. NOT `Record<string, string>`: a `url[]`/`text[]` field arrives as an
  *   array, which is what every fan-out source reads.
- * @param {Record<string, string>} [options.credentials] - Source credentials.
+ * @param {Record<string, string>} [options.credentials] - Source credentials, surfaced to the adapter as `ctx.secret(name)`.
  * @param {unknown} [options.cursor] - Resume cursor.
  * @param {unknown} [options.browser] - Playwright browser context, or null.
  * @param {number} [options.timeoutMs] - Hard-timeout budget in ms.
  * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [options.onLog] - Log sink.
  * @param {(documentsSoFar: number, message: string) => void} [options.onProgress] - Progress sink.
- * @returns {Promise<import('./types.d.ts').SyncResult & { stats: Record<string, unknown> }>} Normalized result.
+ * @returns {Promise<import('./types.d.ts').SourceSyncResult & { stats: Record<string, unknown> }>} Normalized result.
  * @throws {InvalidSourceResponseError} If the source lacks the method or returns an invalid shape.
  */
 export async function runSource({
@@ -206,7 +263,7 @@ export async function runSource({
   const durationMs = Date.now() - startedAt;
 
   validateResult(result);
-  const documents = /** @type {import('./types.d.ts').TroveDocument[]} */ (result.documents);
+  const documents = /** @type {import('./types.d.ts').Document[]} */ (result.documents);
   return {
     documents,
     cursor: result.cursor ?? undefined,

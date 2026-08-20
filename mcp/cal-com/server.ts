@@ -31,6 +31,16 @@ import {
  */
 
 export default defineToolkit({
+  id: 'cal-com',
+  name: 'Cal.com Scheduling',
+  description:
+    'Read and manage Cal.com scheduling: event types, open slots, and bookings — plus booking and cancelling. Requires a CALCOM_API_KEY secret (Cal.com → Settings → Developer → API keys). `create_booking` and `cancel_booking` are mutating, so the host confirms before either runs.',
+  icon: '📅',
+  version: '1.0.0',
+  secrets: ['CALCOM_API_KEY'],
+  egress: ['api.cal.com'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'list_event_types',

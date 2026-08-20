@@ -38,6 +38,16 @@ function normalizeId(id: string): string {
 }
 
 export default defineToolkit({
+  id: 'oeis',
+  name: 'OEIS',
+  description:
+    'Search the On-Line Encyclopedia of Integer Sequences — find a sequence by its leading terms or by name, then read its definition, formulas, comments, and references. Content is licensed CC BY-SA; no key required.',
+  icon: '🔢',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['oeis.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_sequences',

@@ -2,7 +2,7 @@
  * Fixture source that honours the soft deadline: if the deadline has already
  * passed it stops immediately with no documents (the time-budgeted-batch
  * contract every scraping source adapter follows). *
- * @param {import('../../../../sources/lib/types.d.ts').SyncContext} context - The harness context.
+ * @param {import('../../../../sources/lib/types.d.ts').SourceContext} context - The harness context.
  */
 export async function sync(context) {
   if (typeof context.deadline === 'number' && Date.now() >= context.deadline) {

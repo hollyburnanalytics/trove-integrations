@@ -157,6 +157,16 @@ function formatItemDetail(result: ReturnType<typeof mapItemDetail>): string {
 }
 
 export default defineToolkit({
+  id: 'ebay',
+  name: 'eBay',
+  description:
+    'Search live eBay listings and fetch listing details — price, condition, seller, shipping — across marketplaces. Real-time secondhand-market prices. Needs a free eBay developer key.',
+  icon: '🛒',
+  version: '1.0.0',
+  secrets: ['EBAY_CLIENT_ID', 'EBAY_CLIENT_SECRET'],
+  egress: ['api.ebay.com'],
+  scopes: [],
+  visibility: 'public',
   auth: {
     type: 'oauth2_client_credentials',
     tokenUrl: `${BASE_URL}/identity/v1/oauth2/token`,

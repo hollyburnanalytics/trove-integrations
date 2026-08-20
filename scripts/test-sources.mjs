@@ -108,7 +108,7 @@ function isScraper(path) {
  * already enforces hard, which is the pairing the sources are written against.
  *
  * @param {SourceEntry} entry - The source about to be run.
- * @returns {import('../sources/lib/types.d.ts').SyncContext} Its context.
+ * @returns {import('../sources/lib/types.d.ts').SourceContext} Its context.
  */
 function makeContext(entry) {
   return buildContext({
@@ -187,7 +187,7 @@ function withTimeout(promise, ms) {
 async function testSource(entry, now) {
   const start = now();
   try {
-    /** @type {{ sync: (context: import('../sources/lib/types.d.ts').SyncContext) => Promise<unknown> }} */
+    /** @type {{ sync: (context: import('../sources/lib/types.d.ts').SourceContext) => Promise<unknown> }} */
     const module = await import(new URL(`${entry.path}/index.mjs`, ROOT).href);
     const context = makeContext(entry);
     const result = await withTimeout(module.sync(context), entry.timeout);

@@ -4,7 +4,6 @@
   "description": "Global weather: forecasts, current conditions, historical archive (back to 1940), and air quality, from the free Open-Meteo API (no key required).",
   "icon": "🌦️",
   "version": "1.0.0",
-  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
   "egress": [
     "api.open-meteo.com",
@@ -13,5 +12,6 @@
     "archive-api.open-meteo.com"
   ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

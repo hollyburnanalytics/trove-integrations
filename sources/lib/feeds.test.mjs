@@ -13,7 +13,7 @@ import {
   syncRSS,
   xmlText,
 } from './feeds.mjs';
-import { at, fetchMock, makeSyncContext, setFetch } from './test-fixtures.mjs';
+import { at, fetchMock, makeSourceContext, setFetch } from './test-fixtures.mjs';
 
 // --- Shared test helpers ---
 
@@ -47,9 +47,9 @@ function mockFetch(xml) {
  * A context, optionally resuming from `cursor`.
  *
  * @param {import('./types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @returns {import('./types.d.ts').SyncContext} The context.
+ * @returns {import('./types.d.ts').SourceContext} The context.
  */
-const makeContext = (cursor) => makeSyncContext({ cursor });
+const makeContext = (cursor, overrides = {}) => makeSourceContext({ cursor, ...overrides });
 
 // --- stableId ---
 
@@ -491,7 +491,7 @@ describe('syncRSS', () => {
       defaultAuthor: 'Author',
     });
 
-    /** @type {Record<string, import('./types.d.ts').TroveDocument | undefined>} */
+    /** @type {Record<string, import('./types.d.ts').Document | undefined>} */
     const byTitle = Object.fromEntries(result.documents.map((d) => [d.title, d]));
     expect(byTitle.Dated?.date).toBe('2024-01-15T00:00:00.000Z');
     expect(byTitle.Undated?.date).toBeUndefined();
@@ -903,8 +903,7 @@ describe('syncFeedArticles', () => {
 
   it('stops at the time budget and reports the remainder', async () => {
     mockFetchByUrl({ '/feed': ARTICLE_FEED, '/new': ARTICLE_HTML, '/old': ARTICLE_HTML });
-    const context = makeContext();
-    context.deadline = Date.now() - 1;
+    const context = makeContext(undefined, { deadline: Date.now() - 1 });
     const result = await syncFeedArticles(context, options);
     expect(result.documents).toHaveLength(0);
     expect(result.stats?.remaining).toBeGreaterThan(0);

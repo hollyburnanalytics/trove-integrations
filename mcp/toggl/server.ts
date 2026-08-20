@@ -41,6 +41,16 @@ function summarise(entries: HydratedEntry[]): { label: string; seconds: number }
 }
 
 export default defineToolkit({
+  id: 'toggl',
+  name: 'Toggl Time Tracking',
+  description:
+    "Query Toggl Track time entries, resolved to project/client/tag names, with named periods (today, week, lastMonth…) and a per-client duration roll-up. Requires a TOGGL_API_TOKEN secret (Toggl profile → API token). Read-only; honours Toggl's 1 request/second limit and backs off on HTTP 429.",
+  icon: '⏱️',
+  version: '2.0.0',
+  secrets: ['TOGGL_API_TOKEN'],
+  egress: ['api.track.toggl.com'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'check_auth',

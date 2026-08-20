@@ -12,10 +12,12 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => ({
 }));
 
 import { syncRSS } from '../lib/feeds.mjs';
-import { makeSyncContext } from '../lib/test-fixtures.mjs';
-import { sync } from './index.mjs';
+import { makeSourceContext, syncOf } from '../lib/test-fixtures.mjs';
+import extension from './index.mjs';
 
-const makeContext = () => makeSyncContext();
+const sync = syncOf(extension);
+
+const makeContext = () => makeSourceContext();
 
 describe('the-conversation source', () => {
   beforeEach(() => vi.clearAllMocks());

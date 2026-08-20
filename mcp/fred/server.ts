@@ -48,6 +48,15 @@ const seriesSchema = z.object({
 });
 
 export default defineToolkit({
+  id: 'fred',
+  name: 'FRED Economic Data',
+  description:
+    'Search and fetch U.S. economic time-series (rates, CPI, GDP, employment…) from the St. Louis Fed FRED API. Requires a FRED_API_KEY secret (free from fred.stlouisfed.org).',
+  icon: '📈',
+  version: '2.0.0',
+  secrets: ['FRED_API_KEY'],
+  scopes: [],
+  visibility: 'public',
   egress: ['api.stlouisfed.org'],
   tools: [
     tool({

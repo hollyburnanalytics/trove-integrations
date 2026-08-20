@@ -21,6 +21,16 @@ import { ckanGet, datasetFormats, en, englishHalf, landingUrl } from './ckan.ts'
  */
 
 export default defineToolkit({
+  id: 'canada-open-data',
+  name: 'Canada Open Data',
+  description:
+    'Find and retrieve Canadian government open datasets (federal + provincial) via the open.canada.ca CKAN API. No key required.',
+  icon: '🇨🇦',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['open.canada.ca'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_datasets',

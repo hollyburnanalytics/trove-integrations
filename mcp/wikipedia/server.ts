@@ -15,6 +15,16 @@ const MAX_EXTRACT = 12_000;
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
 
 export default defineToolkit({
+  id: 'wikipedia',
+  name: 'Wikipedia',
+  description:
+    'Search and read Wikipedia articles — relevance-ranked search plus full plain-text article extracts and short descriptions. Content is licensed CC BY-SA; no key required.',
+  icon: '📖',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['en.wikipedia.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_articles',

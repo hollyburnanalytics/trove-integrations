@@ -146,6 +146,16 @@ async function resolveLabels(ids: string[], ctx: ToolContext): Promise<Map<strin
 }
 
 export default defineToolkit({
+  id: 'wikidata',
+  name: 'Wikidata',
+  description:
+    "Look up structured facts from Wikidata's CC0 knowledge graph — search entities, then read labels, descriptions, aliases, and statements (dates, relationships, properties) with property and value names resolved. No key required.",
+  icon: '🔗',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['www.wikidata.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_entities',

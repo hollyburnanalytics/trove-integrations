@@ -178,6 +178,16 @@ async function getWb(
 }
 
 export default defineToolkit({
+  id: 'world-bank',
+  name: 'World Bank Data',
+  description:
+    'Global development indicators (GDP, population, inflation, health…) from the free World Bank API. No key required.',
+  icon: '🌍',
+  version: '1.1.0',
+  secrets: [],
+  egress: ['api.worldbank.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_indicators',

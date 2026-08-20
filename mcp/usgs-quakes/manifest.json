@@ -4,9 +4,11 @@
   "description": "Recent earthquakes from the public USGS feed.",
   "icon": "🌎",
   "version": "1.0.0",
-  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
-  "egress": ["earthquake.usgs.gov"],
+  "egress": [
+    "earthquake.usgs.gov"
+  ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

@@ -2,7 +2,7 @@
   "id": "hacker-news",
   "name": "Hacker News",
   "description": "Top stories from the HN front page",
-  "icon": "\ud83d\udd36",
+  "icon": "🔶",
   "version": "0.1.0",
   "author": "Hollyburn Analytics Inc.",
   "kind": "scheduled-sync",
@@ -16,8 +16,9 @@
   "egress": [
     "hn.algolia.com"
   ],
+  "egressNote": "The Algolia HN search API only; news.ycombinator.com appears as a story's stored URL when the submission links nowhere else, and is never fetched.",
   "egressNotFetched": [
     "news.ycombinator.com"
   ],
-  "egressNote": "The Algolia HN search API only; news.ycombinator.com appears as a story's stored URL when the submission links nowhere else, and is never fetched."
+  "generated": true
 }

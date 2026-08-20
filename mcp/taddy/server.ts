@@ -56,6 +56,15 @@ import { searchPodcastsTool } from './tools/search-podcasts.ts';
  * tool.
  */
 export default defineToolkit({
+  id: 'taddy',
+  name: 'Taddy Podcast API',
+  description:
+    "Search 4M+ podcasts and 200M+ episodes, read episode transcripts with speakers and timecodes, and pull Apple Podcasts top charts — via Taddy's GraphQL API. Read-only; needs a Taddy developer account (free tier is 500 requests/month). An independent client for Taddy's public API; not affiliated with or endorsed by Taddy.",
+  icon: '🎙️',
+  version: '1.0.0',
+  secrets: ['TADDY_USER_ID', 'TADDY_API_KEY'],
+  scopes: [],
+  visibility: 'public',
   egress: ['api.taddy.org'],
   tools: [
     searchPodcastsTool,

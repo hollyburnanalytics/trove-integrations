@@ -31,6 +31,16 @@ const contextInput = z
   .describe('Buyer locale signals for relevance, localization, and pricing.');
 
 export default defineToolkit({
+  id: 'shopify-catalog',
+  name: 'Shopify Global Catalog',
+  description:
+    "Search products across every Shopify storefront worldwide via Shopify's Universal Commerce Protocol catalog — free-text and similar-item search with price, availability, condition, and shipping filters, plus variant-level product detail. Real-time, no key required.",
+  icon: '🛍️',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['catalog.shopify.com'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_products',

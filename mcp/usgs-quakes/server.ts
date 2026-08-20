@@ -61,6 +61,15 @@ function toQuake(feature: QuakeFeature): Quake | undefined {
 }
 
 export default defineToolkit({
+  id: 'quakes',
+  name: 'USGS Earthquakes',
+  description: 'Recent earthquakes from the public USGS feed.',
+  icon: '🌎',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['earthquake.usgs.gov'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'recent_quakes',

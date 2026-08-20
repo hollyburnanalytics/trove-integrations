@@ -4,9 +4,13 @@
   "description": "Walk/drive-time isochrones, geocoding, and directions via the Mapbox API. Requires a MAPBOX_TOKEN secret (set with `trove secret set`).",
   "icon": "📍",
   "version": "1.0.0",
-  "sdk": "@ontrove/extend@^2.0.1",
-  "secrets": ["MAPBOX_TOKEN"],
-  "egress": ["api.mapbox.com"],
+  "secrets": [
+    "MAPBOX_TOKEN"
+  ],
+  "egress": [
+    "api.mapbox.com"
+  ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

@@ -1,4 +1,4 @@
-import { stringList } from '@ontrove/extend/source';
+import { defineSource, stringList } from '@ontrove/extend/source';
 import { syncFeeds } from '../lib/feed-sync.mjs';
 import { decodeHtmlEntities, safeDate, stableId } from '../lib/feeds.mjs';
 
@@ -87,7 +87,7 @@ function isAudioEnclosure(enclosure) {
  * skipped rather than emitting a document with no body.
  *
  * @param {import('../lib/types.d.ts').FeedItem} item - a `parseRSS()` item, with resolved `url`
- * @returns {import('../lib/types.d.ts').TroveDocument | undefined} The audio
+ * @returns {import('../lib/types.d.ts').Document | undefined} The audio
  *   document, or nothing when the item carries no audio.
  */
 export function episodeDocument(item) {
@@ -110,22 +110,53 @@ export function episodeDocument(item) {
   };
 }
 
-/**
- * Sync this source: fetch what is new and return it as documents.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @returns {Promise<import('../lib/types.d.ts').SyncResult>} The round's documents, cursor and stats.
- */
-export async function sync(context) {
-  const feeds = stringList(context.config.feeds).map((url) => ({ url }));
-  return syncFeeds(context, {
-    feeds,
-    label: 'podcast feeds',
-    emptyWarning: 'No podcast feeds configured',
-    toDocument: episodeDocument,
-    maxDocuments: MAX_EPISODES_PER_RUN,
-    firstRunLookbackMs: FIRST_RUN_LOOKBACK_MS,
-    feedMaxBytes: FEED_MAX_BYTES,
-    concurrency: FEED_CONCURRENCY,
-  });
-}
+export default defineSource({
+  id: 'podcast-feeds',
+  name: 'Podcasts',
+  description:
+    'Subscribe to any podcast by feed URL. Trove downloads each new episode and transcribes it, so the whole show becomes searchable text.',
+  icon: '🎧',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'feed',
+  cursor: 'date',
+  ingest: 'append',
+  runsIn: 'cloud',
+  schedule: 'every 6 hours',
+  status: 'implemented',
+  needsBrowser: false,
+  egress: ['config:feeds'],
+  historyReach: {
+    kind: 'window',
+    note: "Most podcast feeds carry the full back catalogue, but some publishers truncate theirs to recent episodes. How far back you get is the publisher's choice.",
+  },
+  egressNote:
+    "Fetches the podcast feed URLs the user configures, so the reachable hosts are theirs and cannot be listed here; the audio enclosures those feeds point at are downloaded by Trove's transcription workflow, not by this adapter.",
+  config: {
+    feeds: {
+      label: 'Podcast feed URLs',
+      type: 'url[]',
+      directory: {
+        provider: 'podcasts',
+        mode: 'search',
+        placeholder: 'Search shows by name',
+      },
+    },
+  },
+  fanOut: 'feeds',
+  available: true,
+  async sync(context) {
+    const feeds = stringList(context.config.feeds).map((url) => ({ url }));
+    return syncFeeds(context, {
+      feeds,
+      label: 'podcast feeds',
+      emptyWarning: 'No podcast feeds configured',
+      toDocument: episodeDocument,
+      maxDocuments: MAX_EPISODES_PER_RUN,
+      firstRunLookbackMs: FIRST_RUN_LOOKBACK_MS,
+      feedMaxBytes: FEED_MAX_BYTES,
+      concurrency: FEED_CONCURRENCY,
+    });
+  },
+});

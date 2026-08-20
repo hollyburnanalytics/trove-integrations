@@ -57,6 +57,16 @@ function str(value: unknown): string | null {
 }
 
 export default defineToolkit({
+  id: 'hathitrust',
+  name: 'HathiTrust',
+  description:
+    "Look up whether HathiTrust's 18M-volume digital library holds a book (by ISBN/OCLC/LCCN), with per-copy access rights and reading links. No key required.",
+  icon: '📚',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['catalog.hathitrust.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'lookup_volume',

@@ -63,6 +63,16 @@ function snippet(value: unknown, max = 240): string | null {
 }
 
 export default defineToolkit({
+  id: 'openfda',
+  name: 'openFDA',
+  description:
+    'Search FDA drug labels and food/drug/device recalls via the free openFDA API. No key required.',
+  icon: '💊',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['api.fda.gov'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_drug_labels',

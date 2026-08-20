@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stableId, syncRSS } from './feeds.mjs';
-import { at, fetchMock, makeSyncContext, setFetch } from './test-fixtures.mjs';
+import { at, fetchMock, makeSourceContext, setFetch } from './test-fixtures.mjs';
 
 // Multi-run / cursor round-trip tests.
 //
@@ -44,7 +44,7 @@ function streamBody(content) {
 /**
  * Sorted document ids for a sync result — used to compare runs order-independently.
  *
- * @type {(result: import('./types.d.ts').SyncResult) => string[]}
+ * @type {(result: import('./types.d.ts').SourceSyncResult) => string[]}
  */
 const documentIds = (result) => result.documents.map((d) => d.id).toSorted();
 
@@ -67,9 +67,9 @@ function respond(map) {
  * A context, optionally resuming from `cursor`.
  *
  * @param {import('./types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @returns {import('./types.d.ts').SyncContext} The context.
+ * @returns {import('./types.d.ts').SourceContext} The context.
  */
-const makeContext = (cursor) => makeSyncContext({ cursor });
+const makeContext = (cursor) => makeSourceContext({ cursor });
 
 beforeEach(() => {
   setFetch();

@@ -106,6 +106,16 @@ async function getJsonArray(path: string, ctx: Pick<ToolContext, 'fetch'>): Prom
 }
 
 export default defineToolkit({
+  id: 'dnv-permits',
+  name: 'DNV Building Permits',
+  description:
+    'Search District of North Vancouver building permits by address or case number via the public DNV permit API.',
+  icon: '🏗️',
+  version: '1.0.0',
+  secrets: [],
+  egress: ['app.dnv.org'],
+  scopes: [],
+  visibility: 'public',
   tools: [
     tool({
       name: 'search_permits',

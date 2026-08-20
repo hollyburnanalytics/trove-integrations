@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updated_at": "2026-08-17T00:07:53.526Z",
+  "updated_at": "2026-08-20T05:23:22.304Z",
   "source_count": 25,
   "sources": [
     {
       "id": "arxiv-papers",
       "name": "arXiv Papers",
       "description": "ML and CS paper abstracts matching your search queries",
-      "icon": "\ud83d\udcc4",
+      "icon": "📄",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "every 6 hours",
@@ -43,13 +43,14 @@
       "egressNotFetched": [
         "arxiv.org"
       ],
-      "egressNote": "The adapter queries the arXiv API on export.arxiv.org. arxiv.org appears only as the paper's HTML/PDF `file_url`, which Trove's ingest fetches when it captures the artifact."
+      "egressNote": "The adapter queries the arXiv API on export.arxiv.org. arxiv.org appears only as the paper's HTML/PDF `file_url`, which Trove's ingest fetches when it captures the artifact.",
+      "generated": true
     },
     {
       "id": "avc",
       "name": "AVC (Fred Wilson)",
       "description": "Fred Wilson on venture capital and startups",
-      "icon": "\ud83d\udcb5",
+      "icon": "💵",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -68,13 +69,14 @@
       },
       "egress": [
         "avc.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "bbc-news-headlines",
       "name": "BBC News Headlines",
       "description": "Headlines and summaries from BBC News via RSS (no full article text)",
-      "icon": "\ud83d\udcfb",
+      "icon": "📻",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "every 2 hours",
@@ -102,17 +104,18 @@
       "runsIn": "cloud",
       "historyReach": {
         "kind": "recent-only",
-        "note": "A news feed carries only what is on the front page now \u2014 typically the last day or two. Older stories are not in the feed and cannot be fetched."
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
       },
       "egress": [
         "feeds.bbci.co.uk"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "benedict-evans",
       "name": "Benedict Evans",
       "description": "Weekly analysis of technology trends and shifts",
-      "icon": "\ud83d\udcf1",
+      "icon": "📱",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -131,13 +134,14 @@
       },
       "egress": [
         "www.ben-evans.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "benn-stancil",
       "name": "Benn Stancil",
       "description": "Benn Stancil on the business of data and analytics",
-      "icon": "\ud83e\uddee",
+      "icon": "🧮",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -156,13 +160,14 @@
       },
       "egress": [
         "benn.substack.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "bits-about-money",
       "name": "Bits about Money",
       "description": "Patrick McKenzie (patio11) on how money and banking actually work",
-      "icon": "\ud83c\udfe6",
+      "icon": "🏦",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -181,13 +186,14 @@
       },
       "egress": [
         "www.bitsaboutmoney.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "daring-fireball",
       "name": "Daring Fireball",
       "description": "John Gruber link posts and articles",
-      "icon": "\ud83d\udd25",
+      "icon": "🔥",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "daily",
@@ -206,13 +212,14 @@
       },
       "egress": [
         "daringfireball.net"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "dnv-council-minutes",
       "name": "DNV Council Meetings",
-      "description": "Agendas, minutes, and reports from District of North Vancouver council meetings \u2014 the public record of local government decisions (2026 onwards)",
-      "icon": "\ud83c\udfdb\ufe0f",
+      "description": "Agendas, minutes, and reports from District of North Vancouver council meetings — the public record of local government decisions (2026 onwards)",
+      "icon": "🏛️",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -229,13 +236,14 @@
       "egress": [
         "app.dnv.org"
       ],
-      "egressNote": "The council search API and the meeting PDFs it points at are both on app.dnv.org."
+      "egressNote": "The council search API and the meeting PDFs it points at are both on app.dnv.org.",
+      "generated": true
     },
     {
       "id": "financial-times-headlines",
       "name": "Financial Times Headlines",
       "description": "Headlines and summaries from the Financial Times via RSS (no full article text)",
-      "icon": "\ud83d\udcf0",
+      "icon": "📰",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "every 2 hours",
@@ -263,17 +271,18 @@
       "runsIn": "cloud",
       "historyReach": {
         "kind": "recent-only",
-        "note": "A news feed carries only what is on the front page now \u2014 typically the last day or two. Older stories are not in the feed and cannot be fetched."
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
       },
       "egress": [
         "www.ft.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "guardian-headlines",
       "name": "Guardian Headlines",
       "description": "Top headlines and summaries from The Guardian via RSS (no full article text)",
-      "icon": "\ud83d\udcf0",
+      "icon": "📰",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "every 2 hours",
@@ -300,17 +309,18 @@
       },
       "historyReach": {
         "kind": "recent-only",
-        "note": "A news feed carries only what is on the front page now \u2014 typically the last day or two. Older stories are not in the feed and cannot be fetched."
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
       },
       "egress": [
         "www.theguardian.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "hacker-news",
       "name": "Hacker News",
       "description": "Top stories from the HN front page",
-      "icon": "\ud83d\udd36",
+      "icon": "🔶",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "every 1 hour",
@@ -329,13 +339,14 @@
       "egressNotFetched": [
         "news.ycombinator.com"
       ],
-      "egressNote": "The Algolia HN search API only; news.ycombinator.com appears as a story's stored URL when the submission links nowhere else, and is never fetched."
+      "egressNote": "The Algolia HN search API only; news.ycombinator.com appears as a story's stored URL when the submission links nowhere else, and is never fetched.",
+      "generated": true
     },
     {
       "id": "lennys-newsletter",
       "name": "Lenny's Newsletter",
       "description": "Lenny Rachitsky on product, growth, and career",
-      "icon": "\ud83c\udfaf",
+      "icon": "🎯",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -354,13 +365,14 @@
       },
       "egress": [
         "www.lennysnewsletter.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "marginal-revolution",
       "name": "Marginal Revolution",
       "description": "Tyler Cowen and Alex Tabarrok on economics and ideas",
-      "icon": "\ud83d\udcc8",
+      "icon": "📈",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -379,13 +391,14 @@
       },
       "egress": [
         "marginalrevolution.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "not-boring",
       "name": "Not Boring",
       "description": "Packy McCormick on companies, strategy, and what's getting funded",
-      "icon": "\ud83d\ude80",
+      "icon": "🚀",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -404,13 +417,14 @@
       },
       "egress": [
         "www.notboring.co"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "nytimes-headlines",
       "name": "NYTimes Headlines",
       "description": "Top headlines from the New York Times homepage via RSS (no full article text)",
-      "icon": "\ud83d\udcf0",
+      "icon": "📰",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "every 2 hours",
@@ -434,17 +448,18 @@
       },
       "historyReach": {
         "kind": "recent-only",
-        "note": "A news feed carries only what is on the front page now \u2014 typically the last day or two. Older stories are not in the feed and cannot be fetched."
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
       },
       "egress": [
         "rss.nytimes.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "openstax",
       "name": "OpenStax",
-      "description": "Free, peer-reviewed, openly licensed (Creative Commons) college textbooks across the sciences, social sciences, humanities, and business \u2014 full section text pulled from OpenStax's official content API. A bounded corpus (~130 books) backfilled incrementally.",
-      "icon": "\ud83d\udcda",
+      "description": "Free, peer-reviewed, openly licensed (Creative Commons) college textbooks across the sciences, social sciences, humanities, and business — full section text pulled from OpenStax's official content API. A bounded corpus (~130 books) backfilled incrementally.",
+      "icon": "📚",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "monthly",
@@ -460,13 +475,14 @@
       "egress": [
         "openstax.org"
       ],
-      "egressNote": "The REX release manifest, the CMS book catalogue and the content archive are all paths on openstax.org."
+      "egressNote": "The REX release manifest, the CMS book catalogue and the content archive are all paths on openstax.org.",
+      "generated": true
     },
     {
       "id": "our-world-in-data",
       "name": "Our World in Data",
       "description": "Research and data on how the world is changing, across health, poverty, energy and more (CC-BY)",
-      "icon": "\ud83c\udf0d",
+      "icon": "🌍",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -486,13 +502,14 @@
       "egress": [
         "ourworldindata.org"
       ],
-      "egressNote": "The Atom feed and every article page it links are on ourworldindata.org \u2014 this source fetches the page, not just the feed entry."
+      "egressNote": "The Atom feed and every article page it links are on ourworldindata.org — this source fetches the page, not just the feed entry.",
+      "generated": true
     },
     {
       "id": "podcast-feeds",
       "name": "Podcasts",
       "description": "Subscribe to any podcast by feed URL. Trove downloads each new episode and transcribes it, so the whole show becomes searchable text.",
-      "icon": "\ud83c\udfa7",
+      "icon": "🎧",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -525,13 +542,14 @@
       "egress": [
         "config:feeds"
       ],
-      "egressNote": "Fetches the podcast feed URLs the user configures, so the reachable hosts are theirs and cannot be listed here; the audio enclosures those feeds point at are downloaded by Trove's transcription workflow, not by this adapter."
+      "egressNote": "Fetches the podcast feed URLs the user configures, so the reachable hosts are theirs and cannot be listed here; the audio enclosures those feeds point at are downloaded by Trove's transcription workflow, not by this adapter.",
+      "generated": true
     },
     {
       "id": "quanta-magazine",
       "name": "Quanta Magazine",
       "description": "In-depth journalism on math, physics, biology and computer science (CC-BY-NC-ND)",
-      "icon": "\ud83d\udd2c",
+      "icon": "🔬",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -551,13 +569,14 @@
       "egress": [
         "www.quantamagazine.org"
       ],
-      "egressNote": "The feed and every article page it links are on www.quantamagazine.org \u2014 this source fetches the page, not just the feed entry."
+      "egressNote": "The feed and every article page it links are on www.quantamagazine.org — this source fetches the page, not just the feed entry.",
+      "generated": true
     },
     {
       "id": "rss-feeds",
       "name": "RSS Feeds",
-      "description": "Subscribe to any blog or news feed \u2014 RSS, Atom, or JSON Feed. Paste feed URLs (or just the site URL) and Trove stores the full text of every post.",
-      "icon": "\ud83d\udce1",
+      "description": "Subscribe to any blog or news feed — RSS, Atom, or JSON Feed. Paste feed URLs (or just the site URL) and Trove stores the full text of every post.",
+      "icon": "📡",
       "version": "0.2.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "every 2 hours",
@@ -586,18 +605,19 @@
       "formatting": "reformat",
       "historyReach": {
         "kind": "window",
-        "note": "How far back an RSS feed goes is the publisher's choice \u2014 some carry years, many carry only the last few dozen posts."
+        "note": "How far back an RSS feed goes is the publisher's choice — some carry years, many carry only the last few dozen posts."
       },
       "egress": [
         "config:feeds"
       ],
-      "egressNote": "Fetches the feed or site URLs the user configures, so the reachable hosts are theirs and cannot be listed here; a pasted site URL is followed once more to the feed that page advertises."
+      "egressNote": "Fetches the feed or site URLs the user configures, so the reachable hosts are theirs and cannot be listed here; a pasted site URL is followed once more to the feed that page advertises.",
+      "generated": true
     },
     {
       "id": "sec-filings",
       "name": "SEC Filings",
       "description": "10-K, 10-Q, 20-F, S-1, and F-1 filings for tracked companies via SEC EDGAR",
-      "icon": "\ud83c\udfdb\ufe0f",
+      "icon": "🏛️",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "daily",
@@ -609,7 +629,7 @@
           "type": "text[]",
           "default": [],
           "pattern": "^[A-Za-z][A-Za-z.-]{0,9}$",
-          "hint": "a ticker symbol such as SHOP or BRK-B, not a company name \u2014 search by name in the picker and it fills the symbol in",
+          "hint": "a ticker symbol such as SHOP or BRK-B, not a company name — search by name in the picker and it fills the symbol in",
           "directory": {
             "provider": "companies",
             "mode": "search",
@@ -628,19 +648,20 @@
       "fanOut": "tickers",
       "historyReach": {
         "kind": "window",
-        "note": "EDGAR's submissions endpoint returns only a company's recent filings \u2014 roughly the last thousand. Older filings live in separate archives this source does not read."
+        "note": "EDGAR's submissions endpoint returns only a company's recent filings — roughly the last thousand. Older filings live in separate archives this source does not read."
       },
       "egress": [
         "www.sec.gov",
         "data.sec.gov"
       ],
-      "egressNote": "The ticker\u2192CIK map and each filing's EDGAR archive document are on www.sec.gov; the company submissions index is on data.sec.gov."
+      "egressNote": "The ticker→CIK map and each filing's EDGAR archive document are on www.sec.gov; the company submissions index is on data.sec.gov.",
+      "generated": true
     },
     {
       "id": "simon-willison",
       "name": "Simon Willison",
       "description": "All posts from simonwillison.net (2002-present)",
-      "icon": "\u270d\ufe0f",
+      "icon": "✍️",
       "version": "0.1.1",
       "author": "Hollyburn Analytics Inc.",
       "schedule": "daily",
@@ -660,13 +681,14 @@
       },
       "egress": [
         "simonwillison.net"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "stratechery",
       "name": "Stratechery",
       "description": "Ben Thompson on tech strategy and business models",
-      "icon": "\ud83d\udcca",
+      "icon": "📊",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -685,13 +707,14 @@
       },
       "egress": [
         "stratechery.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "the-conversation",
       "name": "The Conversation",
       "description": "Explainers and analysis written by academics across every field (CC-BY-ND)",
-      "icon": "\ud83c\udf93",
+      "icon": "🎓",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -706,17 +729,18 @@
       "runsIn": "cloud",
       "historyReach": {
         "kind": "recent-only",
-        "note": "A news feed carries only what is on the front page now \u2014 typically the last day or two. Older stories are not in the feed and cannot be fetched."
+        "note": "A news feed carries only what is on the front page now — typically the last day or two. Older stories are not in the feed and cannot be fetched."
       },
       "egress": [
         "theconversation.com"
-      ]
+      ],
+      "generated": true
     },
     {
       "id": "x-bookmarks",
       "name": "X Bookmarks",
       "description": "Your saved X (Twitter) bookmarks, synced into Trove (your ~800 most recent, newest-first). Not yet available: X sign-in for this source can't be completed in the app yet.",
-      "icon": "\ud83d\udd16",
+      "icon": "🔖",
       "version": "0.1.0",
       "author": "Hollyburn Analytics Inc.",
       "kind": "scheduled-sync",
@@ -741,7 +765,8 @@
         "X_OAUTH_CLIENT_ID",
         "X_OAUTH_CLIENT_SECRET",
         "X_OAUTH_REFRESH_TOKEN"
-      ]
+      ],
+      "generated": true
     }
   ]
 }

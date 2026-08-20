@@ -4,9 +4,13 @@
   "description": "Search and fetch U.S. economic time-series (rates, CPI, GDP, employment…) from the St. Louis Fed FRED API. Requires a FRED_API_KEY secret (free from fred.stlouisfed.org).",
   "icon": "📈",
   "version": "2.0.0",
-  "sdk": "@ontrove/extend@^2.0.1",
-  "secrets": ["FRED_API_KEY"],
-  "egress": ["api.stlouisfed.org"],
+  "secrets": [
+    "FRED_API_KEY"
+  ],
+  "egress": [
+    "api.stlouisfed.org"
+  ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

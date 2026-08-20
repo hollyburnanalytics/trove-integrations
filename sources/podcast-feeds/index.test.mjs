@@ -5,11 +5,14 @@ import {
   dateCursorValue,
   fetchMock,
   makeFeedItem,
-  makeSyncContext,
+  makeSourceContext,
   okResponse as ok,
   setFetch,
+  syncOf,
 } from '../lib/test-fixtures.mjs';
-import { episodeDocument, sync } from './index.mjs';
+import extension, { episodeDocument } from './index.mjs';
+
+const sync = syncOf(extension);
 
 /**
  * These drive the real `syncFeeds` path with only `fetch` mocked, rather than
@@ -28,9 +31,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *
  * @param {Record<string, import('../lib/types.d.ts').ConfigValue>} [config] - Source config.
  * @param {import('../lib/types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @returns {import('../lib/types.d.ts').SyncContext} The context.
+ * @returns {import('../lib/types.d.ts').SourceContext} The context.
  */
-const makeContext = (config = {}, cursor) => makeSyncContext({ config, cursor });
+const makeContext = (config = {}, cursor) => makeSourceContext({ config, cursor });
 
 /**
  * A podcast feed document wrapping `items`.
@@ -75,8 +78,8 @@ function episode({
  * @param {object} [options] - How to run it.
  * @param {Record<string, import('../lib/types.d.ts').ConfigValue>} [options.config] - Source config.
  * @param {import('../lib/types.d.ts').Cursor} [options.cursor] - The previous run's cursor.
- * @param {import('../lib/types.d.ts').SyncContext} [options.context] - A context to reuse.
- * @returns {Promise<import('../lib/types.d.ts').SyncResult>} The round's result.
+ * @param {import('../lib/types.d.ts').SourceContext} [options.context] - A context to reuse.
+ * @returns {Promise<import('../lib/types.d.ts').SourceSyncResult>} The round's result.
  */
 async function run(xml, { config = { feeds: ['https://a.test/rss'] }, cursor, context } = {}) {
   setFetch(() => Promise.resolve(ok(xml)));

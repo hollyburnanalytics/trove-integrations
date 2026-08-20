@@ -36,6 +36,7 @@ const validManifest = {
   runsIn: 'cloud',
   schedule: 'daily',
   needsBrowser: false,
+  egress: ['example.com'],
   config: {},
 };
 

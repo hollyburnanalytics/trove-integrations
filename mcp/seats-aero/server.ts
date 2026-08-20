@@ -42,6 +42,23 @@ import { searchAwards } from './tools/search-awards.ts';
  * unknown mileage-program slug, and a cabin no requested program supports.
  */
 export default defineToolkit({
+  id: 'seats-aero',
+  name: 'Seats.aero Award Search',
+  description:
+    'Search airline award availability across 26 mileage programs via the Seats.aero partner API: cached search by airport and date, per-program Explore, flight-level trips with miles and taxes, and real-time live search. Requires a SEATS_AERO_API_KEY secret — a Seats.aero Pro subscription, key generated on the API tab of seats.aero/settings (1,000 calls/day, non-commercial use). Read-only.',
+  icon: '✈️',
+  version: '1.0.0',
+  secrets: ['SEATS_AERO_API_KEY'],
+  scopes: [],
+  visibility: 'public',
+  config: {
+    home_airports: {
+      label: 'Home airports',
+      type: 'text[]',
+      pattern: '^[A-Z]{3}$',
+      hint: 'Three-letter IATA airport codes, e.g. YVR. Airports, not cities.',
+    },
+  },
   egress: ['seats.aero'],
   tools: [listPrograms, searchAwards, exploreAvailability, getTrips, liveSearch],
 });

@@ -51,7 +51,7 @@ export function discoverFeedUrl(html, baseUrl) {
 }
 
 /**
- * Build a TroveDocument from a parsed feed item, the standard way every
+ * Build a Document from a parsed feed item, the standard way every
  * multi-feed source adapter wants it: stable ID, entity-decoded title, body as
  * plain text, and a safe date.
  *
@@ -72,7 +72,7 @@ export function discoverFeedUrl(html, baseUrl) {
  * @param {string[]} [options.tags] - tags to attach (omitted when empty)
  * @param {boolean} [options.fullText] - store the fullest available body
  *   instead of the excerpt
- * @returns {import('./types.d.ts').TroveDocument & { text: string }} The document.
+ * @returns {import('./types.d.ts').Document & { text: string }} The document.
  *   `text` is narrowed to always present — it is built here from the title and
  *   body rather than copied — so a caller that post-processes the body (the
  *   Guardian's boilerplate strip) does not have to guard a field this never
@@ -80,7 +80,7 @@ export function discoverFeedUrl(html, baseUrl) {
  */
 export function feedItemDocument(idPrefix, item, { defaultAuthor, tags, fullText = false } = {}) {
   const body = fullText ? item.bodyHtml || item.description : item.description;
-  /** @type {import('./types.d.ts').TroveDocument & { text: string }} */
+  /** @type {import('./types.d.ts').Document & { text: string }} */
   const document = {
     // itemIdentity, NOT a second hand-rolled `guid || link`. The dedupe key and
     // the stored id have to be the same string or an item can be judged unseen
@@ -104,7 +104,7 @@ export function feedItemDocument(idPrefix, item, { defaultAuthor, tags, fullText
  * page rather than a feed (users paste site URLs), follow the feed the page
  * advertises instead of failing.
  *
- * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').SourceContext} context - The harness context.
  * @param {import('./types.d.ts').Feed} feed - The feed to fetch.
  * @param {(xml: string) => import('./types.d.ts').FeedItem[]} parseFeed - The parser to run over the body.
  * @param {number} [maxBytes] - Per-response size cap.
@@ -146,12 +146,12 @@ async function fetchFeedItems(context, feed, parseFeed, maxBytes) {
  * @param {import('./types.d.ts').Feed} options.feed - The feed these items came from.
  * @param {Set<string>} options.seenIdentities - Identities already emitted, across all feeds.
  * @param {Date} [options.lastDate] - The date cursor; items at or before it are skipped.
- * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} options.toDocument -
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').Document | undefined} options.toDocument -
  *   Build a document, or return undefined to reject the item.
- * @returns {{ entries: Array<{document: import('./types.d.ts').TroveDocument, ms: number}>, skipped: number }} Its entries.
+ * @returns {{ entries: Array<{document: import('./types.d.ts').Document, ms: number}>, skipped: number }} Its entries.
  */
 function collectFeedItems(items, { feed, seenIdentities, lastDate, toDocument }) {
-  /** @type {Array<{document: import('./types.d.ts').TroveDocument, ms: number}>} */
+  /** @type {Array<{document: import('./types.d.ts').Document, ms: number}>} */
   const entries = [];
   let skipped = 0;
 
@@ -199,9 +199,9 @@ function collectFeedItems(items, { feed, seenIdentities, lastDate, toDocument })
  * individual items (`idSet`), not a different sort. Measured against 22 live
  * podcast feeds this is unreached: 0 of 12,213 episodes lacked a date.
  *
- * @param {Array<{document: import('./types.d.ts').TroveDocument, ms: number}>} entries - Every collected entry.
+ * @param {Array<{document: import('./types.d.ts').Document, ms: number}>} entries - Every collected entry.
  * @param {number} [maxDocuments] - The per-run cap, if the source declares one.
- * @returns {Array<{document: import('./types.d.ts').TroveDocument, ms: number}>} The entries to emit.
+ * @returns {Array<{document: import('./types.d.ts').Document, ms: number}>} The entries to emit.
  */
 function selectEntries(entries, maxDocuments) {
   if (!maxDocuments || entries.length <= maxDocuments) return entries;
@@ -244,7 +244,7 @@ function selectEntries(entries, maxDocuments) {
 /**
  * Warn about one feed's fetch failure, naming it and why it failed.
  *
- * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').SourceContext} context - The harness context.
  * @param {import('./types.d.ts').FeedOutcome & {error: Error}} outcome - The failed outcome.
  */
 function warnFetchFailure(context, outcome) {
@@ -259,13 +259,13 @@ function warnFetchFailure(context, outcome) {
 /**
  * Collect one successfully-fetched feed's items into the shared accumulator.
  *
- * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').SourceContext} context - The harness context.
  * @param {import('./types.d.ts').FeedOutcome & {items: import('./types.d.ts').FeedItem[]}} outcome - The successful outcome.
  * @param {object} state - The shared accumulator.
  * @param {import('./types.d.ts').FeedEntry[]} state.entries - Where collected entries go.
  * @param {Set<string>} state.seenIdentities - Identities already emitted.
  * @param {Date} [state.lastDate] - The date cursor.
- * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} state.toDocument -
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').Document | undefined} state.toDocument -
  *   Build a document, or reject the item.
  * @returns {number} How many items this feed's cursor skipped.
  */
@@ -295,7 +295,7 @@ function absorbFeedItems(context, outcome, { entries, seenIdentities, lastDate, 
  * separate concerns, and nesting them made the whole fetch too tangled to read
  * (or to lint).
  *
- * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').SourceContext} context - The harness context.
  * @param {import('./types.d.ts').FeedOutcome[]} outcomes - One batch's fetch outcomes, in feed order.
  * @param {object} state - The shared accumulators.
  * @param {import('./types.d.ts').FeedEntry[]} state.entries - Where collected entries go.
@@ -303,7 +303,7 @@ function absorbFeedItems(context, outcome, { entries, seenIdentities, lastDate, 
  * @param {string[]} state.relocations - 301 targets the feeds reported.
  * @param {Set<string>} state.seenIdentities - Identities already emitted.
  * @param {Date} [state.lastDate] - The date cursor.
- * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} state.toDocument -
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').Document | undefined} state.toDocument -
  *   Build a document, or reject the item.
  * @param {number} state.total - How many feeds this source has, for progress lines.
  * @param {number} state.start - This batch's offset into the feed list.
@@ -361,13 +361,13 @@ function absorbBatch(context, outcomes, state) {
 /**
  * Fetch every feed, `concurrency` at a time, collecting in feed order.
  *
- * @param {import('./types.d.ts').SyncContext} context - The harness context.
+ * @param {import('./types.d.ts').SourceContext} context - The harness context.
  * @param {object} options - What to fetch and how.
  * @param {import('./types.d.ts').Feed[]} options.feeds - The feeds to fetch, in order.
  * @param {string} options.label - The noun for log lines.
  * @param {(xml: string) => import('./types.d.ts').FeedItem[]} options.parseFeed - The parser.
  * @param {Date} [options.lastDate] - The date cursor.
- * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument | undefined} options.toDocument -
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').Document | undefined} options.toDocument -
  *   Build a document, or reject the item.
  * @param {number} [options.maxBytes] - Per-feed response-size cap.
  * @param {number} options.concurrency - How many feeds to fetch at once.
@@ -443,12 +443,12 @@ async function fetchAllFeeds(
  * Per-feed failures are warned and skipped; if *every* feed fails the whole
  * sync throws (the source is unreachable — a fatal error).
  *
- * @param {import('./types.d.ts').SyncContext} context - harness context
+ * @param {import('./types.d.ts').SourceContext} context - harness context
  * @param {object} options
  * @param {import('./types.d.ts').Feed[]} options.feeds - feed descriptors; each needs `url`,
  *   plus any per-feed metadata the `toDocument` callback wants (e.g. `section`)
- * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').TroveDocument|undefined} options.toDocument -
- *   build a TroveDocument from a parsed item (with resolved `url`) and its feed;
+ * @param {(item: import('./types.d.ts').FeedItem, feed: import('./types.d.ts').Feed) => import('./types.d.ts').Document|undefined} options.toDocument -
+ *   build a Document from a parsed item (with resolved `url`) and its feed;
  *   return `undefined` to skip an item the source cannot represent
  * @param {(xml: string) => import('./types.d.ts').FeedItem[]} [options.parseFeed] - parser; defaults to
  *   `parseRSS`. Items must expose `link`/`guid` and `pubDate`.
@@ -469,7 +469,7 @@ async function fetchAllFeeds(
  *   (default 1, i.e. sequential). Raise it for sources whose feed list is long
  *   or whose feeds are large enough that fetching them in sequence risks the
  *   harness's soft deadline — see {@link fetchAllFeeds}.
- * @returns {Promise<import('./types.d.ts').SyncResult>} The round's documents, cursor and stats.
+ * @returns {Promise<import('./types.d.ts').SourceSyncResult>} The round's documents, cursor and stats.
  */
 export async function syncFeeds(
   context,

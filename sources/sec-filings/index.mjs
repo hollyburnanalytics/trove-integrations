@@ -19,7 +19,12 @@
  * Config: tickers[] — array of stock ticker symbols (e.g., SHOP, SNOW, OKTA).
  */
 
-import { advanceDateCursor, readDateCursor, stringList } from '@ontrove/extend/source';
+import {
+  advanceDateCursor,
+  defineSource,
+  readDateCursor,
+  stringList,
+} from '@ontrove/extend/source';
 import { dayToLocalNoonIso, fetchPage, stableId } from '../lib/feeds.mjs';
 
 const FILING_TYPES = new Set([
@@ -66,7 +71,7 @@ const DELAY_MS = 200;
  * @typedef {{ name?: string, filings?: { recent?: RecentFilings } }} Submissions
  * @typedef {{ accessionNumber: string, filingDate: string, reportDate: string, form: string,
  *   primaryDocument: string }} Filing
- * @typedef {{ documents: import('../lib/types.d.ts').TroveDocument[], rawDates: number[],
+ * @typedef {{ documents: import('../lib/types.d.ts').Document[], rawDates: number[],
  *   updatedTickerMap: Record<string, TickerEntry>, skipped: number, anyFailed: boolean }} SyncState
  */
 
@@ -188,12 +193,12 @@ function delay(ms) {
  * Turn one filing into a Trove document, or nothing when EDGAR names no HTML
  * primary document for it.
  *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
  * @param {Filing} filing - The filing to emit.
  * @param {number | string} cik - The filer's CIK, for the archive URL.
  * @param {string} companyName - The filer's name, used as the document's author.
  * @param {string} upperTicker - The configured ticker, uppercased, carried as a tag.
- * @returns {import('../lib/types.d.ts').TroveDocument | undefined} The document, when there is one.
+ * @returns {import('../lib/types.d.ts').Document | undefined} The document, when there is one.
  */
 function processFiling(context, filing, cik, companyName, upperTicker) {
   if (!filing.primaryDocument?.endsWith('.htm')) {
@@ -238,7 +243,7 @@ function processFiling(context, filing, cik, companyName, upperTicker) {
  * Resolve a ticker to its CIK and company name, loading EDGAR's ticker file
  * once per run and only when the cache misses.
  *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
  * @param {string} upperTicker - The ticker, uppercased.
  * @param {Record<string, TickerEntry>} cachedTickers - Tickers resolved on a previous run.
  * @param {{ map: Record<string, TickerEntry> | undefined }} tickerMapReference - The
@@ -263,7 +268,7 @@ async function resolveTicker(context, upperTicker, cachedTickers, tickerMapRefer
  * Sync one ticker: resolve it, fetch its filings, and push what is new onto the
  * run's shared state.
  *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
+ * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
  * @param {string} upperTicker - The ticker, uppercased.
  * @param {Date | undefined} lastDate - The previous run's cursor, when resuming.
  * @param {Record<string, TickerEntry>} cachedTickers - Tickers resolved on a previous run.
@@ -335,62 +340,95 @@ function newestTime(rawDates, lastDate) {
 
 // --- Main sync ---
 
-/**
- * Sync this source: fetch what is new and return it as documents.
- *
- * @param {import('../lib/types.d.ts').SyncContext} context - The harness context.
- * @returns {Promise<import('../lib/types.d.ts').SyncResult>} The round's documents, cursor and stats.
- */
-export async function sync(context) {
-  const tickers = stringList(context.config?.tickers);
-  if (tickers.length === 0) {
-    context.log.warn('No tickers configured');
-    return { documents: [], cursor: undefined, stats: { fetched: 0 } };
-  }
-
-  const lastDate = readDateCursor(context.cursor);
-  /** @type {Record<string, TickerEntry>} */
-  const cachedTickers = {};
-  /** @type {{ map: Record<string, TickerEntry> | undefined }} */
-  const tickerMapReference = { map: undefined };
-  /** @type {SyncState} */
-  const state = {
-    documents: [],
-    rawDates: [],
-    updatedTickerMap: { ...cachedTickers },
-    skipped: 0,
-    anyFailed: false,
-  };
-
-  for (const ticker of tickers) {
-    const upperTicker = ticker.toUpperCase();
-    try {
-      await syncTicker(context, upperTicker, lastDate, cachedTickers, tickerMapReference, state);
-    } catch (error) {
-      state.anyFailed = true;
-      context.log.warn(
-        `Failed to process ${upperTicker}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+export default defineSource({
+  id: 'sec-filings',
+  name: 'SEC Filings',
+  description: '10-K, 10-Q, 20-F, S-1, and F-1 filings for tracked companies via SEC EDGAR',
+  icon: '🏛️',
+  version: '0.1.0',
+  author: 'Hollyburn Analytics Inc.',
+  kind: 'scheduled-sync',
+  transport: 'api',
+  cursor: 'date',
+  ingest: 'append',
+  runsIn: 'cloud',
+  schedule: 'daily',
+  status: 'implemented',
+  needsBrowser: false,
+  egress: ['www.sec.gov', 'data.sec.gov'],
+  historyReach: {
+    kind: 'window',
+    note: "EDGAR's submissions endpoint returns only a company's recent filings — roughly the last thousand. Older filings live in separate archives this source does not read.",
+  },
+  egressNote:
+    "The ticker→CIK map and each filing's EDGAR archive document are on www.sec.gov; the company submissions index is on data.sec.gov.",
+  config: {
+    tickers: {
+      label: 'Company Tickers',
+      type: 'text[]',
+      default: [],
+      pattern: '^[A-Za-z][A-Za-z.-]{0,9}$',
+      hint: 'a ticker symbol such as SHOP or BRK-B, not a company name — search by name in the picker and it fills the symbol in',
+      directory: {
+        provider: 'companies',
+        mode: 'search',
+        placeholder: 'Search companies by name',
+      },
+    },
+  },
+  fanOut: 'tickers',
+  available: true,
+  async sync(context) {
+    const tickers = stringList(context.config?.tickers);
+    if (tickers.length === 0) {
+      context.log.warn('No tickers configured');
+      return { documents: [], cursor: undefined, stats: { fetched: 0 } };
     }
-  }
 
-  // Held when a ticker or an individual filing failed: advancing on the
-  // healthy items' dates would permanently skip the failed ones.
-  const maxTime = newestTime(state.rawDates, lastDate);
-  const cursor = advanceDateCursor({
-    previous: context.cursor || undefined,
-    maxIso: maxTime > 0 ? new Date(maxTime).toISOString() : undefined,
-    anyFailed: state.anyFailed,
-  });
+    const lastDate = readDateCursor(context.cursor);
+    /** @type {Record<string, TickerEntry>} */
+    const cachedTickers = {};
+    /** @type {{ map: Record<string, TickerEntry> | undefined }} */
+    const tickerMapReference = { map: undefined };
+    /** @type {SyncState} */
+    const state = {
+      documents: [],
+      rawDates: [],
+      updatedTickerMap: { ...cachedTickers },
+      skipped: 0,
+      anyFailed: false,
+    };
 
-  const seenNote = state.skipped > 0 ? ` (${state.skipped} already seen)` : '';
-  context.log.info(`Collected ${state.documents.length} filings${seenNote}`);
+    for (const ticker of tickers) {
+      const upperTicker = ticker.toUpperCase();
+      try {
+        await syncTicker(context, upperTicker, lastDate, cachedTickers, tickerMapReference, state);
+      } catch (error) {
+        state.anyFailed = true;
+        context.log.warn(
+          `Failed to process ${upperTicker}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
 
-  return {
-    documents: state.documents,
-    cursor,
-    stats: { fetched: state.documents.length, skipped: state.skipped },
-  };
-}
+    // Held when a ticker or an individual filing failed: advancing on the
+    // healthy items' dates would permanently skip the failed ones.
+    const maxTime = newestTime(state.rawDates, lastDate);
+    const cursor = advanceDateCursor({
+      previous: context.cursor || undefined,
+      maxIso: maxTime > 0 ? new Date(maxTime).toISOString() : undefined,
+      anyFailed: state.anyFailed,
+    });
+
+    const seenNote = state.skipped > 0 ? ` (${state.skipped} already seen)` : '';
+    context.log.info(`Collected ${state.documents.length} filings${seenNote}`);
+
+    return {
+      documents: state.documents,
+      cursor,
+      stats: { fetched: state.documents.length, skipped: state.skipped },
+    };
+  },
+});

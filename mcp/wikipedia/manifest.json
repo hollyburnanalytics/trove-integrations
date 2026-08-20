@@ -4,9 +4,11 @@
   "description": "Search and read Wikipedia articles — relevance-ranked search plus full plain-text article extracts and short descriptions. Content is licensed CC BY-SA; no key required.",
   "icon": "📖",
   "version": "1.0.0",
-  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
-  "egress": ["en.wikipedia.org"],
+  "egress": [
+    "en.wikipedia.org"
+  ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

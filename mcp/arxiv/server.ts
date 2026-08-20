@@ -22,6 +22,15 @@ import { searchPapers } from './tools/search-papers.ts';
  *  - `save_paper` — ingest a paper into the Trove knowledge base.
  */
 export default defineToolkit({
+  id: 'arxiv',
+  name: 'arXiv',
+  description:
+    'Search, read, and save scientific papers from the public arXiv.org preprint server — full-text sections, references, date and field filters, and one-tool save into your Trove knowledge base.',
+  icon: '📚',
+  version: '1.1.0',
+  secrets: [],
+  egress: ['export.arxiv.org', 'arxiv.org', 'ar5iv.labs.arxiv.org'],
+  visibility: 'public',
   scopes: ['trove:ingest'],
   tools: [searchPapers, getPaper, getPaperContent, savePaper],
 });

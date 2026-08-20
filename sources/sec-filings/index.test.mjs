@@ -3,10 +3,13 @@ import {
   at,
   dateCursorValue,
   fetchMock,
-  makeSyncContext,
+  makeSourceContext,
   setFetch,
+  syncOf,
 } from '../lib/test-fixtures.mjs';
-import { filterFilings, sync } from './index.mjs';
+import extension, { filterFilings } from './index.mjs';
+
+const sync = syncOf(extension);
 
 /**
  * A real `Response`, because the adapter fetches through the shared
@@ -37,9 +40,9 @@ function textResponse(body, status = 200) {
  *
  * @param {import('../lib/types.d.ts').Cursor} [cursor] - The previous run's cursor.
  * @param {Record<string, import('../lib/types.d.ts').ConfigValue>} [config] - Source config.
- * @returns {import('../lib/types.d.ts').SyncContext} The context.
+ * @returns {import('../lib/types.d.ts').SourceContext} The context.
  */
-const makeContext = (cursor, config = {}) => makeSyncContext({ config, cursor });
+const makeContext = (cursor, config = {}) => makeSourceContext({ config, cursor });
 
 // Mock SEC ticker map response
 const TICKER_MAP_RESPONSE = {

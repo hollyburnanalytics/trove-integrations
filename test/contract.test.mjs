@@ -5,14 +5,15 @@
  * unit tests (which mock `fetch` and exercise behavior), these assert the
  * invariants that must hold for ALL sources: a well-formed manifest, type-system
  * fields within the allowed sets, an `id` that matches the directory, a registry
- * entry, and — for implemented sources — an importable module that exports
- * `async function sync`. No network or fetch mocking is involved.
+ * entry, and — for implemented sources — a module whose default export is the
+ * `defineSource` declaration the manifest was generated from. No network or
+ * fetch mocking is involved.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/extend/source';
+import { toSourceManifest, VALID_SCHEDULES, validateSourceManifest } from '@ontrove/extend/source';
 import { describe, expect, it } from 'vitest';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -82,9 +83,21 @@ describe('source contract', () => {
     });
 
     if (implemented) {
-      it('exports an async sync(ctx) function', async () => {
+      it('default-exports a source declaration with an async sync(ctx)', async () => {
         const module = await import(indexPath);
-        expect(typeof module.sync).toBe('function');
+        // The default export is what `defineSource` returned, so importing the
+        // module has already run the eager manifest validation. Reaching here
+        // at all is half the assertion.
+        expect(typeof module.default?.sync).toBe('function');
+      });
+
+      it('manifest.json matches the declaration it is generated from', async () => {
+        const module = await import(indexPath);
+        // The committed manifest is an artifact of the code (`toSourceManifest`),
+        // and the readers that need it — Trove's catalog build, the Mac app —
+        // cannot execute the source to derive it. Nothing else notices when the
+        // declaration changes and the file is not regenerated, so this does.
+        expect(toSourceManifest(module.default)).toEqual(manifest);
       });
     }
   });

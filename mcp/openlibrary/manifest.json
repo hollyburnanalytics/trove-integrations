@@ -4,9 +4,11 @@
   "description": "Search books and look up editions by ISBN via the free Open Library API (no key required).",
   "icon": "📖",
   "version": "1.0.0",
-  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
-  "egress": ["openlibrary.org"],
+  "egress": [
+    "openlibrary.org"
+  ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

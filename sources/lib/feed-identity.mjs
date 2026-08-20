@@ -70,7 +70,7 @@ export function feedRelocation(items, fetchedUrl, redirectedTo) {
  * The self-reported facts to attach to a sync result, or nothing.
  *
  * @param {{feedCount: number, titles: string[], relocations: string[]}} seen
- * @returns {{feedName?: string, feedUrl?: string}} Spreadable onto a SyncResult.
+ * @returns {{feedName?: string, feedUrl?: string}} Spreadable onto a SourceSyncResult.
  */
 export function selfReport({ feedCount, titles, relocations }) {
   if (feedCount !== 1) return {};

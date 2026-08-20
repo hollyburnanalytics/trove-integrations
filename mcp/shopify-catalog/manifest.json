@@ -4,9 +4,11 @@
   "description": "Search products across every Shopify storefront worldwide via Shopify's Universal Commerce Protocol catalog — free-text and similar-item search with price, availability, condition, and shipping filters, plus variant-level product detail. Real-time, no key required.",
   "icon": "🛍️",
   "version": "1.0.0",
-  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
-  "egress": ["catalog.shopify.com"],
+  "egress": [
+    "catalog.shopify.com"
+  ],
   "scopes": [],
-  "visibility": "public"
+  "visibility": "public",
+  "generated": true
 }

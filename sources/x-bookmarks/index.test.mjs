@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { at, idSetCursor, makeSyncContext, setFetch } from '../lib/test-fixtures.mjs';
-import { sync } from './index.mjs';
+import { at, idSetCursor, makeSourceContext, setFetch, syncOf } from '../lib/test-fixtures.mjs';
+import extension from './index.mjs';
+
+const sync = syncOf(extension);
 
 /**
  * Every test mocks `fetch` — the network is never touched. The source runs
@@ -9,17 +11,25 @@ import { sync } from './index.mjs';
  */
 
 /**
+ * The credentials this source needs, as the harness would supply them.
+ *
+ * @type {Record<string, string>}
+ */
+const SECRETS = {
+  X_OAUTH_CLIENT_ID: 'client-id-123',
+  X_OAUTH_REFRESH_TOKEN: 'refresh-token-abc',
+};
+
+/**
  * A context carrying the two credentials this source requires.
  *
  * @param {import('../lib/types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @returns {import('../lib/types.d.ts').SyncContext} The context.
+ * @param {Record<string, string>} [secrets] - What `ctx.secret()` resolves from.
+ * @returns {import('../lib/types.d.ts').SourceContext} The context.
  */
-const makeContext = (cursor) =>
-  makeSyncContext({
-    credentials: {
-      X_OAUTH_CLIENT_ID: 'client-id-123',
-      X_OAUTH_REFRESH_TOKEN: 'refresh-token-abc',
-    },
+const makeContext = (cursor, secrets = SECRETS) =>
+  makeSourceContext({
+    secrets,
     cursor,
   });
 
@@ -233,9 +243,12 @@ describe('x-bookmarks source', () => {
     await expect(sync(makeContext())).rejects.not.toThrow(/refresh-token-abc/);
   });
 
-  it('throws when required OAuth credentials are missing', async () => {
-    const context = makeContext();
-    context.credentials = {};
-    await expect(sync(context)).rejects.toThrow(/X_OAUTH_CLIENT_ID and X_OAUTH_REFRESH_TOKEN/);
+  it('throws, naming the credential, when a required one is missing', async () => {
+    // `requireSecret` raises per credential rather than listing both, so the
+    // message names the one actually absent instead of restating the pair.
+    await expect(sync(makeContext(undefined, {}))).rejects.toThrow(/X_OAUTH_CLIENT_ID/);
+    await expect(
+      sync(makeContext(undefined, { X_OAUTH_CLIENT_ID: 'client-id-123' })),
+    ).rejects.toThrow(/X_OAUTH_REFRESH_TOKEN/);
   });
 });
