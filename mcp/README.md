@@ -888,9 +888,9 @@ empty. WCAT paging/caching go through the shared throttled egress client;
 ## Deploying one
 
 ```bash
-trove mcp deploy --dir mcp/<slug>               # bundle, upload, activate
+trove toolkit deploy --dir mcp/<slug>               # bundle, upload, activate
 trove secret set <slug> <NAME> <value>          # for servers that declare secrets
-trove mcp ls                                    # list your deployed servers
+trove toolkit ls                                    # list your deployed servers
 ```
 
 Servers declaring secrets (`mapbox`, `fred`, `ebay`, `x`, `jonas-premier`, `seats-aero`) return a clear "not set" /
@@ -908,4 +908,4 @@ logged. `ebay` uses OAuth2 client-credentials: it exchanges the App ID + Cert ID
   allowlist; sources that require an authenticated, logged-in session are out of
   scope for this gallery.
 - **Authoring:** servers are built on the [`@ontrove/extend/toolkit`](https://www.npmjs.com/package/@ontrove/extend/toolkit)
-  SDK (published to npm); `trove mcp init <name>` scaffolds a new server once the CLI is installed.
+  SDK (published to npm); `trove toolkit init <name>` scaffolds a new server once the CLI is installed.
