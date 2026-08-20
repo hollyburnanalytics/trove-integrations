@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { getQuota, quotaOutput } from '../discover.ts';
 
 /**

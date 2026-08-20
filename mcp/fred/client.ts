@@ -16,8 +16,8 @@
  *  3. `frequency` only ever **down**-samples. Asking a quarterly series for
  *     daily data is a 400 from FRED, so it is rejected here by name instead.
  */
-import type { ToolContext } from '@ontrove/mcp';
-import { ToolError } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /** Base host for the FRED API. */
 const BASE_URL = 'https://api.stlouisfed.org/fred';

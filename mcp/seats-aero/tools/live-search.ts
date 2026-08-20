@@ -1,4 +1,4 @@
-import { ToolError, tool, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { apiKey, isAccessToken, quotaNote, seatsJson } from '../client.ts';
 import { bookingLinkOutput, quotaOutput, tripOutput } from '../fields.ts';
 import { airportList, isoDate } from '../params.ts';

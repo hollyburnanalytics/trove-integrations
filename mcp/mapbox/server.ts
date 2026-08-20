@@ -12,8 +12,8 @@
  * features arrive longest-time-first, so callers should key on
  * `properties.contour`, not array index.
  */
-import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /** Mapbox API host. */
 const BASE_URL = 'https://api.mapbox.com';
@@ -49,7 +49,7 @@ async function getJson(url: string, ctx: ToolContext): Promise<Record<string, un
   return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'isochrone',

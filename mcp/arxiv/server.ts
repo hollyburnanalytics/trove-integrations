@@ -1,4 +1,4 @@
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { getPaper } from './tools/get-paper.ts';
 import { getPaperContent } from './tools/get-paper-content.ts';
 import { savePaper } from './tools/save-paper.ts';
@@ -21,7 +21,7 @@ import { searchPapers } from './tools/search-papers.ts';
  *  - `get_paper_content` — a paper's full text as labelled sections + refs;
  *  - `save_paper` — ingest a paper into the Trove knowledge base.
  */
-export default defineMcpServer({
+export default defineToolkit({
   scopes: ['trove:ingest'],
   tools: [searchPapers, getPaper, getPaperContent, savePaper],
 });

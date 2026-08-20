@@ -17,7 +17,7 @@
  * "did you mean" contract the rest of the repo uses for an unknown slug.
  */
 
-import { ToolError } from '@ontrove/mcp';
+import { ToolError } from '@ontrove/extend/toolkit';
 import { COUNTRIES } from './vocab/countries.ts';
 import { PODCAST_GENRES } from './vocab/genres.ts';
 import { LANGUAGES } from './vocab/languages.ts';

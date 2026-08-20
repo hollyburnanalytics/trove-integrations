@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, z } from '@ontrove/extend/toolkit';
 import { graphql } from './client.ts';
 import { resolveCountry, resolveGenres, resolveLanguage } from './enums.ts';
 import { resolvedFiltersSchema } from './params.ts';

@@ -1,4 +1,4 @@
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { listCertifiedEmployers, listCertifyingPartners } from './tools/certifying-partners.ts';
 import { getEmployerCertificates } from './tools/get-employer-certificates.ts';
 import { searchEmployers } from './tools/search-employers.ts';
@@ -22,7 +22,7 @@ import { searchEmployers } from './tools/search-employers.ts';
  * WorkSafeBC's *clearance letter* service does — it identifies the requester and
  * issues an addressed letter — and is deliberately not exposed.
  */
-export default defineMcpServer({
+export default defineToolkit({
   egress: ['corcp.online.worksafebc.com'],
   tools: [searchEmployers, getEmployerCertificates, listCertifyingPartners, listCertifiedEmployers],
 });

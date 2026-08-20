@@ -4,14 +4,14 @@ The **Toolkit** half of the repo (see [`../docs/taxonomy.md`](../docs/taxonomy.m
 Every toolkit runs as a full MCP server on Trove's cloud; each subdirectory is
 one — a `manifest.json`
 (identity, egress allowlist, declared secrets) plus a `server.ts` built on the
-`@ontrove/mcp` SDK (`defineMcpServer`, Zod input/output schemas, `ToolError`, the
+`@ontrove/extend/toolkit` SDK (`defineToolkit`, Zod input/output schemas, `ToolError`, the
 `ctx` capability object). They run as sandboxed servers behind the single Trove
 `/mcp` endpoint, with deny-by-default egress and per-tenant secret redemption via
 `ctx.secret`.
 
-> **SDK & toolchain note.** These servers are built on the `@ontrove/mcp` SDK
-> (`defineMcpServer`, Zod schemas, `ToolError`, the `ctx` capability object) and
-> deployed with the `trove` CLI. `@ontrove/mcp` is published to npm; this repo
+> **SDK & toolchain note.** These servers are built on the `@ontrove/extend/toolkit` SDK
+> (`defineToolkit`, Zod schemas, `ToolError`, the `ctx` capability object) and
+> deployed with the `trove` CLI. `@ontrove/extend/toolkit` is published to npm; this repo
 > pins it as a dev dependency and **typechecks every `server.ts` against the
 > published API in CI** (`bun run typecheck`), so the examples stay honest.
 
@@ -907,5 +907,5 @@ logged. `ebay` uses OAuth2 client-credentials: it exchanges the App ID + Cert ID
 - **Hosted servers reach only public HTTP/JSON APIs** in their manifest `egress`
   allowlist; sources that require an authenticated, logged-in session are out of
   scope for this gallery.
-- **Authoring:** servers are built on the [`@ontrove/mcp`](https://www.npmjs.com/package/@ontrove/mcp)
+- **Authoring:** servers are built on the [`@ontrove/extend/toolkit`](https://www.npmjs.com/package/@ontrove/extend/toolkit)
   SDK (published to npm); `trove mcp init <name>` scaffolds a new server once the CLI is installed.

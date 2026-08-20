@@ -1,4 +1,4 @@
-import { defineMcpServer, tool, z } from '@ontrove/mcp';
+import { defineToolkit, tool, z } from '@ontrove/extend/toolkit';
 import {
   dateRangeFor,
   fmtDuration,
@@ -40,7 +40,7 @@ function summarise(entries: HydratedEntry[]): { label: string; seconds: number }
     .sort((a, b) => b.seconds - a.seconds);
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'check_auth',

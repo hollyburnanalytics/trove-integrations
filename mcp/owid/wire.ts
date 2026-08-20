@@ -1,4 +1,4 @@
-import { z } from '@ontrove/mcp';
+import { z } from '@ontrove/extend/toolkit';
 
 /**
  * The shapes Our World in Data actually sends back.

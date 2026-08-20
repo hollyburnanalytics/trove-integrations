@@ -1,4 +1,4 @@
-import { type ToolDefinition, z } from '@ontrove/mcp';
+import { type ToolDefinition, z } from '@ontrove/extend/toolkit';
 import {
   AQHI_FORECASTS_COLLECTION,
   AQHI_OBSERVATIONS_COLLECTION,

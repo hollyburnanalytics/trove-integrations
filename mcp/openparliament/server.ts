@@ -1,4 +1,4 @@
-import { defineMcpServer, type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, type ToolContext, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { getJson as sharedGetJson } from '../lib/http.ts';
 
 /**
@@ -98,7 +98,7 @@ async function resolveSlug(
   return null;
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'find_mp',

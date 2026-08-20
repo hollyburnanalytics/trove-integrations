@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError } from '@ontrove/mcp';
+import { type ToolContext, ToolError } from '@ontrove/extend/toolkit';
 
 /** Options for {@link getJson}. */
 export interface GetJsonOptions {

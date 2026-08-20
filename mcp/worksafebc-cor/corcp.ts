@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError } from '@ontrove/mcp';
+import { type ToolContext, ToolError } from '@ontrove/extend/toolkit';
 import {
   type Certificate,
   corTypeLabel,

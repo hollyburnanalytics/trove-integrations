@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /**
  * Public Holidays — a no-auth hosted MCP server over the Nager.Date API
@@ -74,7 +74,7 @@ function holidayResult<T extends Record<string, unknown>>(
   };
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'public_holidays',

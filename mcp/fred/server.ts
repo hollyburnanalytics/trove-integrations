@@ -18,7 +18,7 @@
  *    `frequency`/`aggregation_method` (server-side downsampling) are free at
  *    FRED and cost logarithms-by-language-model here, so both are forwarded.
  */
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { runObservations } from './observations.ts';
 import { runSearch } from './search.ts';
 
@@ -47,7 +47,7 @@ const seriesSchema = z.object({
   popularity: z.number().nullable(),
 });
 
-export default defineMcpServer({
+export default defineToolkit({
   egress: ['api.stlouisfed.org'],
   tools: [
     tool({

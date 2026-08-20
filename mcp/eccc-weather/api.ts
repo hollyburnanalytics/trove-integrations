@@ -1,4 +1,4 @@
-import { ToolError } from '@ontrove/mcp';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Environment and Climate Change Canada (ECCC) API constants + response helpers.

@@ -18,7 +18,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/sdk';
+import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/extend/source';
 
 /** Directory provider modules that exist on disk, resolved once. */
 const DIRECTORY_PROVIDER_DIR = new URL('../sources/lib/directories/', import.meta.url);
@@ -169,7 +169,7 @@ for (const { manifest, path } of fsSources) {
 }
 
 // --- Check 3b: cross-cutting manifest invariants ---
-// One call, owned by `@ontrove/sdk`: identity (`id`/`name`/`version`), the
+// One call, owned by `@ontrove/extend/source`: identity (`id`/`name`/`version`), the
 // credential lint over `config`, the four type-system fields (held to the MVP
 // cut when the source has code), `location` + the cloud-eligibility predicate,
 // and the optional `schedule`, `fanOut`, `formatting` and `directory`

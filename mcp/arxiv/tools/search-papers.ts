@@ -1,4 +1,4 @@
-import { ToolError, tool, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { ARXIV_API, arxivFetch } from '../client.ts';
 import { authorLine, paperShape, truncate } from '../papers.ts';
 import { parseFeed, totalResults } from '../parse.ts';

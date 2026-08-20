@@ -1,4 +1,4 @@
-import { ToolError, tool, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { fetchBook, fetchBookText } from '../client.ts';
 
 /** `get_excerpt` — read a windowed slice of a book's text by character offset. */

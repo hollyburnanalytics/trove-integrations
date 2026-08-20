@@ -1,4 +1,4 @@
-import { z } from '@ontrove/mcp';
+import { z } from '@ontrove/extend/toolkit';
 
 /** Shared wire shapes for the WorkSafeBC COR server modules. */
 

@@ -4,7 +4,7 @@
   "description": "Public holidays for 100+ countries via the free Nager.Date API. No key required.",
   "icon": "📅",
   "version": "1.0.0",
-  "sdk": "@ontrove/mcp@^0.1",
+  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
   "egress": ["date.nager.at"],
   "scopes": [],

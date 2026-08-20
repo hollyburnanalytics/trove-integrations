@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { type Company, edgarJson, requireCompany, submissionsUrl } from '../client.ts';
 import { JURISDICTIONS } from '../jurisdictions.ts';
 

@@ -1,4 +1,4 @@
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { companyFilings } from './tools/company-filings.ts';
 import { getCompany } from './tools/get-company.ts';
 import { getFilingDocument } from './tools/get-filing-document.ts';
@@ -27,7 +27,7 @@ import { searchFilings } from './tools/search-filings.ts';
  * window regardless of which form reported them, so foreign private issuers
  * whose numbers arrive in 6-K furnishings are covered too.
  */
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     getFinancials,
     getXbrlConcept,

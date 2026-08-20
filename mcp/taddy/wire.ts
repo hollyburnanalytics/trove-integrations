@@ -1,4 +1,4 @@
-import { z } from '@ontrove/mcp';
+import { z } from '@ontrove/extend/toolkit';
 
 /**
  * Lenient Zod schemas for Taddy's GraphQL payloads.

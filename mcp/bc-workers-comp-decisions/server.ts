@@ -1,4 +1,4 @@
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { getWcatDecision } from './tools/get-wcat-decision.ts';
 import { searchReviewDecisions } from './tools/search-review-decisions.ts';
 import { searchWcatDecisions } from './tools/search-wcat-decisions.ts';
@@ -20,6 +20,6 @@ import { searchWcatDecisions } from './tools/search-wcat-decisions.ts';
  * summaries and link to the official record — no full decision text is stored or
  * reproduced.
  */
-export default defineMcpServer({
+export default defineToolkit({
   tools: [searchWcatDecisions, getWcatDecision, searchReviewDecisions],
 });

@@ -1,4 +1,4 @@
-import { type ToolDefinition, ToolError, z } from '@ontrove/mcp';
+import { type ToolDefinition, ToolError, z } from '@ontrove/extend/toolkit';
 import { ATTRIBUTION } from '../api.ts';
 import {
   HRDPS_VARIABLES,

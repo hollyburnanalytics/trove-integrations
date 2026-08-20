@@ -4,7 +4,7 @@
   "description": "Look up chemical compounds in PubChem (NIH/NLM) — resolve a name to its CID, molecular formula, weight, IUPAC name, SMILES/InChIKey, and key properties, plus a plain-language description. No key required.",
   "icon": "⚗️",
   "version": "1.0.0",
-  "sdk": "@ontrove/mcp@^0.1",
+  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
   "egress": ["pubchem.ncbi.nlm.nih.gov"],
   "scopes": [],

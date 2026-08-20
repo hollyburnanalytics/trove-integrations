@@ -1,4 +1,4 @@
-import { defineMcpServer, tool, z } from '@ontrove/mcp';
+import { defineToolkit, tool, z } from '@ontrove/extend/toolkit';
 import { dataOutput, getChartData } from './chart.ts';
 import { GRAPHER, searchCharts, searchIndicators } from './client.ts';
 import { getIndicatorData, indicatorOutput } from './indicator.ts';
@@ -41,7 +41,7 @@ import { renderData, renderIndicator, renderMetadata } from './render.ts';
 const TIME_POINT = String.raw`(?:latest|earliest|-?\d{1,6}(?:-\d{2}-\d{2})?)`;
 const TIME_PATTERN = new RegExp(`^${TIME_POINT}(?:\\.\\.${TIME_POINT})?$`);
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_charts',

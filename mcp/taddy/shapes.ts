@@ -1,4 +1,4 @@
-import { z } from '@ontrove/mcp';
+import { z } from '@ontrove/extend/toolkit';
 import { formatGenre, formatRole } from './enums.ts';
 import type {
   ChapterWire,

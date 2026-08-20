@@ -1,5 +1,5 @@
-import type { ToolContext } from '@ontrove/mcp';
-import { ToolError } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Transport and shared shapes for the Cal.com v2 API — everything the tool

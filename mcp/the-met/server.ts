@@ -5,7 +5,7 @@
  *  - `search_objects` — search the collection (resolving the top hits to details), and
  *  - `get_object`     — full details for one object by id.
  */
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { getJson } from '../lib/http.ts';
 
 const BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
@@ -30,7 +30,7 @@ function toArtwork(object: Record<string, unknown>) {
   };
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_objects',

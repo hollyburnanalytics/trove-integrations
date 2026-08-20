@@ -1,5 +1,5 @@
-import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /**
  * eBay — a hosted MCP server over eBay's Browse API (api.ebay.com), the
@@ -156,7 +156,7 @@ function formatItemDetail(result: ReturnType<typeof mapItemDetail>): string {
   );
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   auth: {
     type: 'oauth2_client_credentials',
     tokenUrl: `${BASE_URL}/identity/v1/oauth2/token`,

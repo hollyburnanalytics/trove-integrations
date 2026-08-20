@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { chartsOutput, getTopCharts } from '../discover.ts';
 import { renderEpisodeLine, renderList, renderPodcastLine } from '../render.ts';
 

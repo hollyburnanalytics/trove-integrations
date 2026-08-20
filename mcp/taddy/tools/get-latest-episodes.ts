@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { getLatestEpisodes, latestOutput } from '../discover.ts';
 import { uuidField } from '../fields.ts';
 import { renderEpisodeLine, renderList } from '../render.ts';

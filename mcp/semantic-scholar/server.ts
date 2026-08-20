@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { PAPER_FIELDS, paperSchema, type S2Paper, s2Fetch } from './client.ts';
 
 /**
@@ -46,7 +46,7 @@ function paperLine(p: z.infer<typeof paperSchema>): string {
   return `  ${p.title}${yr} — ${who}${etal} · ${p.citationCount} citations [${p.paperId}]`;
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_papers',

@@ -1,5 +1,5 @@
-import type { ToolContext } from '@ontrove/mcp';
-import { ToolError } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Shared X API v2 plumbing for the x server modules: the API host, the default

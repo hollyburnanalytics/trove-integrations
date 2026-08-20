@@ -1,4 +1,4 @@
-import { z } from '@ontrove/mcp';
+import { z } from '@ontrove/extend/toolkit';
 
 /**
  * Shared row-field readers, amount formatting, and reusable zod input schemas

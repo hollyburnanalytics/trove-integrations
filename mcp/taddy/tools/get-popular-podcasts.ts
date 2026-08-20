@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { getPopular, popularOutput } from '../discover.ts';
 import { renderFilters, renderList, renderPodcastLine } from '../render.ts';
 

@@ -1,4 +1,4 @@
-import { z } from '@ontrove/mcp';
+import { z } from '@ontrove/extend/toolkit';
 import { CABINS, REGIONS } from './programs.ts';
 
 /**

@@ -1,4 +1,4 @@
-import { ToolError } from '@ontrove/mcp';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Compose an arXiv `search_query` from the structured search params (or a raw

@@ -4,7 +4,7 @@
   "description": "Charts, indicators and the data behind them from Our World in Data — with units, definitions, and per-source licensing. No key required. An independent client for OWID's public APIs; not affiliated with or endorsed by Our World in Data.",
   "icon": "🌍",
   "version": "1.0.0",
-  "sdk": "@ontrove/mcp@^0.1",
+  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [],
   "egress": [
     "ourworldindata.org",

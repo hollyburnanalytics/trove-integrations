@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /**
  * Resend — a hosted MCP server that **sends email** via the Resend API
@@ -44,7 +44,7 @@ function isValidAddress(value: string): boolean {
 /** A successful `POST /emails` response (lenient). */
 const SendResponse = z.object({ id: z.string().nullish() });
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'send_email',

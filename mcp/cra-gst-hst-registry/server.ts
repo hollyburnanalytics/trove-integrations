@@ -1,4 +1,4 @@
-import { defineMcpServer, type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, type ToolContext, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /**
  * CRA GST/HST Registry — a hosted MCP server over the Canada Revenue Agency's
@@ -180,7 +180,7 @@ async function readResultPage(post: Response, cookie: string, ctx: ToolContext):
 /** Nine digits — the BN portion of a GST/HST number, without the `RT0001` suffix. */
 const BUSINESS_NUMBER_RE = /^\d{9}$/;
 
-export default defineMcpServer({
+export default defineToolkit({
   egress: ['www.businessregistration-inscriptionentreprise.gc.ca'],
   tools: [
     tool({

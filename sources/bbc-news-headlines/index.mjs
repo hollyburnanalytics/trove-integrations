@@ -10,7 +10,7 @@
  * science_and_environment, health, education, entertainment_and_arts, politics.
  */
 
-import { stringList } from '@ontrove/sdk';
+import { stringList } from '@ontrove/extend/source';
 import { feedItemDocument, syncFeeds } from '../lib/feed-sync.mjs';
 
 const FEED_BASE = 'https://feeds.bbci.co.uk/news';

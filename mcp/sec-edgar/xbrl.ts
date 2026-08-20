@@ -1,4 +1,4 @@
-import { ToolError } from '@ontrove/mcp';
+import { ToolError } from '@ontrove/extend/toolkit';
 import {
   type Fact,
   factsForUnit,

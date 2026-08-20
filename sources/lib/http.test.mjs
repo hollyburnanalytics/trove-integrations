@@ -1,5 +1,5 @@
 /**
- * This catalog's proof that `@ontrove/sdk`'s HTTP guard refuses everything this
+ * This catalog's proof that `@ontrove/extend/source`'s HTTP guard refuses everything this
  * catalog needs refused.
  *
  * These do not test catalog code. `http.mjs` used to re-export the SDK's
@@ -26,7 +26,7 @@
  * `globalThis.fetch` through `test-fixtures.mjs`.
  */
 
-import { fetchBytes, fetchPage, fetchPageWithMeta, isTooLargeError } from '@ontrove/sdk';
+import { fetchBytes, fetchPage, fetchPageWithMeta, isTooLargeError } from '@ontrove/extend/source';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fetchMock, setFetch } from './test-fixtures.mjs';
 

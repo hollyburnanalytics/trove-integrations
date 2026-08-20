@@ -4,7 +4,7 @@
   "description": "Query Toggl Track time entries, resolved to project/client/tag names, with named periods (today, week, lastMonth\u2026) and a per-client duration roll-up. Requires a TOGGL_API_TOKEN secret (Toggl profile \u2192 API token). Read-only; honours Toggl's 1 request/second limit and backs off on HTTP 429.",
   "icon": "\u23f1\ufe0f",
   "version": "2.0.0",
-  "sdk": "@ontrove/mcp@^0.1",
+  "sdk": "@ontrove/extend@^2.0.1",
   "secrets": [
     "TOGGL_API_TOKEN"
   ],

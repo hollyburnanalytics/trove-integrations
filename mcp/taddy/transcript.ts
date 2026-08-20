@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, z } from '@ontrove/extend/toolkit';
 import { graphql, TRANSCRIPT_TIMEOUT_MS } from './client.ts';
 import { GET_TRANSCRIPT } from './queries.ts';
 import { mapTranscript, transcriptSegmentSchema } from './shapes.ts';

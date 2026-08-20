@@ -6,8 +6,8 @@
  *    with property names and entity-valued targets resolved to readable labels.
  * A descriptive User-Agent is sent per Wikimedia's User-Agent policy.
  */
-import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { getJson } from '../lib/http.ts';
 
 const BASE_URL = 'https://www.wikidata.org';
@@ -145,7 +145,7 @@ async function resolveLabels(ids: string[], ctx: ToolContext): Promise<Map<strin
   return labels;
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_entities',

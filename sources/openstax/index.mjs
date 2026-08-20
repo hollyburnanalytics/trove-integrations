@@ -1,4 +1,4 @@
-import { stringList } from '@ontrove/sdk';
+import { stringList } from '@ontrove/extend/source';
 import { parse } from 'node-html-parser';
 import { fetchPage, hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
 

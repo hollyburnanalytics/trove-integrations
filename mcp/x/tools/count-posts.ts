@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { numOrNull, strOrNull, xGet } from '../client.ts';
 import { POST_READ_USD } from '../cost.ts';
 import { applyPostTypes, POST_TYPES } from '../post-types.ts';

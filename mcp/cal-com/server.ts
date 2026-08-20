@@ -1,4 +1,4 @@
-import { defineMcpServer, tool, z } from '@ontrove/mcp';
+import { defineToolkit, tool, z } from '@ontrove/extend/toolkit';
 import {
   apiKey,
   BOOKING_STATUS,
@@ -30,7 +30,7 @@ import {
  * confirmation step, plus per-uid (never bulk) cancellation, is the control.
  */
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'list_event_types',

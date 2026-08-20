@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /**
  * openFDA — a no-auth hosted MCP server over the FDA's open data API
@@ -62,7 +62,7 @@ function snippet(value: unknown, max = 240): string | null {
   return typeof text === 'string' ? text.replace(/\s+/g, ' ').trim().slice(0, max) : null;
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_drug_labels',

@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import { fetchPaper, paperShape } from '../papers.ts';
 
 /** `get_paper` — fetch a single arXiv paper's metadata by identifier. */

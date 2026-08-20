@@ -1,4 +1,4 @@
-import { stringList } from '@ontrove/sdk';
+import { stringList } from '@ontrove/extend/source';
 import { feedItemDocument, syncFeeds } from '../lib/feed-sync.mjs';
 
 /**

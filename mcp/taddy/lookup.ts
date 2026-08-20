@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, z } from '@ontrove/extend/toolkit';
 import { graphql } from './client.ts';
 import { exactlyOne } from './params.ts';
 import { GET_EPISODE, GET_EPISODE_WITH_CHAPTERS, GET_PODCAST } from './queries.ts';

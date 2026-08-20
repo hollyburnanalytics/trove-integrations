@@ -1,4 +1,4 @@
-import { defineMcpServer, type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, type ToolContext, ToolError, tool, z } from '@ontrove/extend/toolkit';
 
 /**
  * DNV Building Permits — a no-auth hosted MCP server over the District of North
@@ -105,7 +105,7 @@ async function getJsonArray(path: string, ctx: Pick<ToolContext, 'fetch'>): Prom
   return Array.isArray(parsed) ? parsed : [];
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_permits',

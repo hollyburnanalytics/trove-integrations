@@ -1,4 +1,4 @@
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { buildSearchFilters, resolveCatalogId, ucpCall } from './catalog-client.ts';
 import { formatProduct, mapProduct, mapSearchPage, price } from './map.ts';
 
@@ -30,7 +30,7 @@ const contextInput = z
   .optional()
   .describe('Buyer locale signals for relevance, localization, and pricing.');
 
-export default defineMcpServer({
+export default defineToolkit({
   tools: [
     tool({
       name: 'search_products',

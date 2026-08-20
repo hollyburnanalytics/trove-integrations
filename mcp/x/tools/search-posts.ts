@@ -1,4 +1,4 @@
-import { tool, z } from '@ontrove/mcp';
+import { tool, z } from '@ontrove/extend/toolkit';
 import {
   MEDIA_EXPANSION,
   MEDIA_FIELDS,

@@ -1,5 +1,5 @@
-import type { ToolContext } from '@ontrove/mcp';
-import { defineMcpServer, ToolError, tool, z } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { getJson } from '../lib/http.ts';
 
 /**
@@ -204,7 +204,7 @@ function parseCredentialSets(body: unknown): ReturnType<typeof mapCredential>[] 
     .map(mapCredential);
 }
 
-export default defineMcpServer({
+export default defineToolkit({
   egress: ['orgbook.gov.bc.ca'],
   tools: [
     tool({

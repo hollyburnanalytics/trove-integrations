@@ -1,4 +1,4 @@
-import { ToolError, tool, z } from '@ontrove/mcp';
+import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { normalizeAccession, requireCompany } from '../client.ts';
 import {
   type FilingEntry,

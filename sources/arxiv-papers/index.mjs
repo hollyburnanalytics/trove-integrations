@@ -1,4 +1,4 @@
-import { advanceDateCursor, readDateCursor, stringList } from '@ontrove/sdk';
+import { advanceDateCursor, readDateCursor, stringList } from '@ontrove/extend/source';
 import { decodeHtmlEntities, fetchPage, hasDeadlinePassed, safeDate } from '../lib/feeds.mjs';
 
 /** Results per arXiv API page. */

@@ -1,5 +1,5 @@
-import type { ToolContext } from '@ontrove/mcp';
-import { ToolError } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Shared Jonas Premier plumbing for the jonas-premier server modules: the

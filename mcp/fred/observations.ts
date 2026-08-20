@@ -9,8 +9,8 @@
  * block carries the series' title, units, applied transform and seasonal
  * adjustment.
  */
-import type { ToolContext } from '@ontrove/mcp';
-import { ToolError } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { ToolError } from '@ontrove/extend/toolkit';
 import {
   fetchSeriesMeta,
   frequencyConflict,

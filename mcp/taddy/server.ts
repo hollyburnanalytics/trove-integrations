@@ -1,4 +1,4 @@
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { checkQuotaTool } from './tools/check-quota.ts';
 import { getEpisodeTool } from './tools/get-episode.ts';
 import { getLatestEpisodesTool } from './tools/get-latest-episodes.ts';
@@ -55,7 +55,7 @@ import { searchPodcastsTool } from './tools/search-podcasts.ts';
  * Nothing here writes to the knowledge base — no `trove:ingest` scope, no save
  * tool.
  */
-export default defineMcpServer({
+export default defineToolkit({
   egress: ['api.taddy.org'],
   tools: [
     searchPodcastsTool,

@@ -1,4 +1,4 @@
-import { type ToolContext, ToolError, tool, z } from '@ontrove/mcp';
+import { type ToolContext, ToolError, tool, z } from '@ontrove/extend/toolkit';
 import {
   type Company,
   edgarDocument,

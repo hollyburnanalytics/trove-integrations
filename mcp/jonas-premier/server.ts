@@ -1,4 +1,4 @@
-import { defineMcpServer } from '@ontrove/mcp';
+import { defineToolkit } from '@ontrove/extend/toolkit';
 import { getApInvoices } from './tools/get-ap-invoices.ts';
 import { getApPayments } from './tools/get-ap-payments.ts';
 import { getGlAccounts } from './tools/get-gl-accounts.ts';
@@ -38,7 +38,7 @@ export { __resetTokenCache } from './client.ts';
  * via `parameter.pageNumber`/`parameter.pageSize` (max 1000). Amounts are
  * doubles in the tenant's ledger currency.
  */
-export default defineMcpServer({
+export default defineToolkit({
   egress: ['api.jonas-premier.com'],
   tools: [
     listCompanies,

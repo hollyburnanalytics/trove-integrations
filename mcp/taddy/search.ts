@@ -1,5 +1,5 @@
-import type { ToolContext } from '@ontrove/mcp';
-import { z } from '@ontrove/mcp';
+import type { ToolContext } from '@ontrove/extend/toolkit';
+import { z } from '@ontrove/extend/toolkit';
 import { graphql } from './client.ts';
 import {
   assertRange,

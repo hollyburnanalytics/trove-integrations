@@ -1,4 +1,4 @@
-import { ToolError } from '@ontrove/mcp';
+import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Open-Meteo API constants + response helpers: the per-surface host URLs, the
