@@ -1339,4 +1339,166 @@ describe('meta-ads MCP server', () => {
       expect(result.result.text).toContain('GBP');
     });
   });
+  describe('second review pass', () => {
+    it('sums a count list but never a CTR list, though Meta types them alike', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '8000000001', metrics: ['core', 'engagement'] },
+        authed({
+          json: {
+            data: [
+              campaignRow({
+                outbound_clicks: [
+                  { action_type: 'outbound_click', value: '800' },
+                  { action_type: 'link_click', value: '200' },
+                ],
+                // Same list<AdsActionStats> shape, and percentages: adding
+                // 1.2% to 0.4% describes nothing.
+                outbound_clicks_ctr: [
+                  { action_type: 'outbound_click', value: '1.2' },
+                  { action_type: 'link_click', value: '0.4' },
+                ],
+              }),
+            ],
+          },
+        }),
+      );
+      const [row] = result.result.structured.rows;
+      expect(row.metrics.outbound_clicks).toBe(1000);
+      expect(row.metrics.outbound_clicks_ctr).toBeUndefined();
+      expect(row.rates.outbound_clicks_ctr).toEqual({ outbound_click: 1.2, link_click: 0.4 });
+    });
+
+    it('treats an unrecognised list as a map, because guessing wrong invents a number', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '8000000002', extra_fields: ['some_future_ratio'] },
+        authed({
+          json: {
+            data: [
+              campaignRow({
+                some_future_ratio: [
+                  { action_type: 'a', value: '3' },
+                  { action_type: 'b', value: '4' },
+                ],
+              }),
+            ],
+          },
+        }),
+      );
+      const [row] = result.result.structured.rows;
+      expect(row.metrics.some_future_ratio).toBeUndefined();
+      expect(row.rates.some_future_ratio).toEqual({ a: 3, b: 4 });
+    });
+
+    it('reads one campaign with no ad account configured at all', async () => {
+      let path;
+      const result = await callTool(
+        server,
+        'get_insights',
+        // A distinct id: an entity-edge URL carries no account, so an id used
+        // in an earlier test would be served from the in-isolate cache and this
+        // would assert nothing.
+        { campaign_ids: ['23999'] },
+        authed((url) => {
+          path = new URL(url).pathname;
+          return { json: { data: [campaignRow()] } };
+        }),
+      );
+      // The account is never used on this path, so demanding one would refuse
+      // a request that works.
+      expect(result.ok).toBe(true);
+      expect(path).toBe('/v26.0/23999/insights');
+
+      const needsAccount = await callTool(server, 'get_insights', { campaign_ids: ['1', '2'] });
+      expect(needsAccount.ok).toBe(false);
+      expect(needsAccount.error).toContain('No ad account given');
+    });
+
+    it('clamps a leap day rather than rolling it into March', async () => {
+      const seen = [];
+      await callTool(
+        server,
+        'compare_periods',
+        {
+          ad_account_id: '8000000003',
+          since: '2028-02-01',
+          until: '2028-02-29',
+          compare_to: 'previous_year',
+        },
+        authed((url) => {
+          seen.push(JSON.parse(query(url).get('time_range')));
+          return { json: { data: [] } };
+        }),
+      );
+      // 2027 has no 29th; rolling would have ended this window on 1 March.
+      expect(seen[1]).toEqual({ since: '2027-02-01', until: '2027-02-28' });
+    });
+
+    it('does not report an empty page as complete when Meta says there is more', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '8000000004' },
+        authed({
+          json: {
+            data: [],
+            paging: { cursors: { after: 'MORE' }, next: 'https://graph.facebook.com/next' },
+          },
+        }),
+      );
+      expect(result.result.structured.truncated).toBe(true);
+      expect(result.result.structured.nextCursor).toBe('MORE');
+    });
+
+    it('prints a valueless purchase as zero revenue, not as missing data', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '8000000005' },
+        authed({
+          json: {
+            data: [
+              campaignRow({
+                actions: [{ action_type: 'omni_purchase', value: '37' }],
+                action_values: [{ action_type: 'omni_purchase', value: '0' }],
+              }),
+            ],
+          },
+        }),
+      );
+      expect(result.result.text).toContain('37 purchases worth CAD 0.00');
+      expect(result.result.text).not.toContain('worth n/a');
+    });
+
+    it("prices a foreign campaign's budgets in that campaign's own currency", async () => {
+      const asked = [];
+      const result = await callTool(
+        server,
+        'list_entities',
+        { ad_account_id: '8000000006', level: 'adset', campaign_id: '23851' },
+        authed((url) => {
+          const { pathname } = new URL(url);
+          asked.push(pathname);
+          if (pathname === '/v26.0/act_9999999999') return { json: { currency: 'JPY' } };
+          if (pathname === '/v26.0/act_8000000006') return { json: { currency: 'USD' } };
+          return {
+            json: {
+              // The campaign edge reached a campaign in another account.
+              data: [
+                { id: '1', name: 'Tokyo set', account_id: '9999999999', daily_budget: '5000' },
+              ],
+            },
+          };
+        }),
+      );
+      // ¥5,000/day, not USD 50.00/day.
+      expect(result.result.structured.entities[0].dailyBudget).toBe(5000);
+      expect(result.result.text).toContain('JPY 5,000.00/day');
+      expect(result.result.text).toContain('not the act_8000000006 this call resolved');
+      expect(asked).not.toContain('/v26.0/act_8000000006');
+    });
+  });
 });

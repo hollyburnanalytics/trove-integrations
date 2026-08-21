@@ -67,6 +67,7 @@ function mapEntity(raw: Record<string, unknown>, currency: string | undefined) {
   return {
     id: str(raw.id) ?? '',
     name: str(raw.name),
+    accountId: str(raw.account_id),
     status: str(raw.status),
     effectiveStatus: str(raw.effective_status),
     campaignId: str(raw.campaign_id),
@@ -151,6 +152,7 @@ export const listEntities = tool({
       z.object({
         id: z.string(),
         name: z.string().optional(),
+        accountId: z.string().optional(),
         status: z.string().optional(),
         effectiveStatus: z.string().optional(),
         campaignId: z.string().optional(),
@@ -188,12 +190,20 @@ export const listEntities = tool({
     if (args.after) params.set('after', args.after);
     ctx.log('list_entities', { accountId, level: args.level, path });
 
-    const currency = await accountCurrency(ctx, accountId);
     const { body, rateLimit } = await graphGet(ctx, path, params);
     const raw = Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [];
-    const entities = raw.map((entity) => mapEntity(entity, currency));
     const paging = readPaging(body);
+    // The currency is fetched for the account these entities SAY they are in,
+    // which a parent edge can make different from the one resolved above.
+    const owner = str(raw[0]?.account_id);
+    const owningAccount = owner === undefined ? accountId : `act_${owner}`;
+    const currency = raw.length > 0 ? await accountCurrency(ctx, owningAccount) : undefined;
+    const entities = raw.map((entity) => mapEntity(entity, currency));
     const notes = [
+      owningAccount === accountId
+        ? undefined
+        : `These belong to ${owningAccount}, not the ${accountId} this call resolved — budgets ` +
+          'are shown in ITS currency.',
       paging.hasMore
         ? `TRUNCATED: ${entities.length} shown and more exist${
             paging.after ? ` — pass after: "${paging.after}"` : ''
@@ -209,7 +219,7 @@ export const listEntities = tool({
     return {
       text: [header, ...entities.map((entity) => entityLine(entity)), ...notes].join('\n'),
       structured: {
-        accountId,
+        accountId: owningAccount,
         level: args.level,
         count: entities.length,
         entities,

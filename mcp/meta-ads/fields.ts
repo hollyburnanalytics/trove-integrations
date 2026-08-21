@@ -232,15 +232,22 @@ export function checkStatuses(level: EntityLevel, requested: readonly string[]):
  * Deliberately shallow — no `targeting`, no `creative{…}` expansion. Those are
  * large nested objects that would dominate a listing whose job is to say what
  * exists, what state it is in, and what it may spend.
+ *
+ * `account_id` is on every level for one reason: budgets come back in the
+ * account currency's minimum unit with no currency attached, and a parent edge
+ * (`/{campaign_id}/adsets`) can reach a campaign in a DIFFERENT account from
+ * the one resolved for the call. Without this, a ¥5,000/day budget over there
+ * prints as USD 50.00 over here.
  */
 export const ENTITY_FIELDS: Record<EntityLevel, string> = {
   campaign:
-    'id,name,status,effective_status,objective,buying_type,bid_strategy,daily_budget,' +
+    'id,name,account_id,status,effective_status,objective,buying_type,bid_strategy,daily_budget,' +
     'lifetime_budget,budget_remaining,start_time,stop_time,updated_time',
   adset:
-    'id,name,status,effective_status,campaign_id,optimization_goal,billing_event,bid_amount,' +
-    'bid_strategy,daily_budget,lifetime_budget,budget_remaining,start_time,end_time,updated_time',
-  ad: 'id,name,status,effective_status,adset_id,campaign_id,created_time,updated_time',
+    'id,name,account_id,status,effective_status,campaign_id,optimization_goal,billing_event,' +
+    'bid_amount,bid_strategy,daily_budget,lifetime_budget,budget_remaining,start_time,end_time,' +
+    'updated_time',
+  ad: 'id,name,account_id,status,effective_status,adset_id,campaign_id,created_time,updated_time',
 };
 
 /**

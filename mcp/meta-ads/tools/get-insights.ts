@@ -1,5 +1,5 @@
 import { tool, z } from '@ontrove/extend/toolkit';
-import { resolveAccountId } from '../client.ts';
+import { findAccountId } from '../client.ts';
 import {
   ATTRIBUTION_WINDOWS,
   BREAKDOWNS,
@@ -116,7 +116,7 @@ export const getInsights = tool({
       ),
   }),
   output: z.object({
-    accountId: z.string(),
+    accountId: z.string().optional(),
     level: z.string(),
     window: z.string(),
     count: z.number(),
@@ -145,7 +145,9 @@ export const getInsights = tool({
     notes: z.array(z.string()),
   }),
   async handler(args, ctx) {
-    const accountId = resolveAccountId(ctx, args.ad_account_id);
+    // Resolved lazily: a query narrowed to one campaign/ad set/ad reads from
+    // that object's own edge and needs no account at all.
+    const accountId = findAccountId(ctx, args.ad_account_id);
     const breakdowns = args.breakdowns ?? [];
     const fields = fieldsFor(args.level, args.metrics, args.extra_fields ?? []);
     ctx.log('get_insights', { accountId, level: args.level, breakdowns: breakdowns.length });
@@ -177,7 +179,7 @@ export const getInsights = tool({
     // The rows say which account they belong to; that beats the one assumed.
     const reportedAccount = result.reportedAccountId ?? accountId;
     const notes = [
-      result.reportedAccountId
+      result.reportedAccountId && accountId !== undefined
         ? `These rows are from ${result.reportedAccountId}, not the ${accountId} this call ` +
           'resolved — the entity id given belongs to that account. Amounts are in ITS currency.'
         : undefined,
@@ -210,7 +212,11 @@ export const getInsights = tool({
           count: 0,
           rows: [],
           totals,
-          truncated: false,
+          // Read from the response, not assumed: an empty page that Meta says
+          // has more behind it would otherwise be reported as complete while
+          // the notes above already said TRUNCATED.
+          truncated: result.paging.hasMore,
+          nextCursor: result.paging.after,
           sortedLocally: false,
           notes: [empty, ...notes],
         },
@@ -220,7 +226,7 @@ export const getInsights = tool({
     const lines = result.rows.slice(0, PROSE_ROWS).map((row) => rowLine(row));
     const hidden = result.rows.length - lines.length;
     const text = [
-      `${result.rows.length} ${args.level} row(s) for ${reportedAccount} ${window}:`,
+      `${result.rows.length} ${args.level} row(s) for ${reportedAccount ?? 'the entity asked for'} ${window}:`,
       ...lines,
       hidden > 0 ? `… ${hidden} more row(s) in the structured result.` : undefined,
       totalsLine(totals, result.rows.length),

@@ -946,14 +946,25 @@ a cost per purchase and a cost per lead is the cost of nothing. Counts are now
 totalled; costs, averages, ratios and rates become a per-type map (`rates`, or a
 named one like `costPerConversion`), with the scalar kept only where a single
 type makes it real. The same rule stops two ROAS ratios being added into a
-return nobody earned. The other findings from that review: `effective_status` is
-a **different enum per level** (6 values for a campaign, 7 for an ad set, 12 for
-an ad — review statuses are ad-only), so it is validated per level and audited
-per level rather than as a union; and campaign/ad set/ad ids now have to be
-numeric before they are interpolated into a URL path, since `/{id}/insights`
-with a non-id would point an authenticated call somewhere the caller never
-named. A single-entity query also reports the account the rows actually came
-from — an entity id is not scoped to the account that was resolved for it.
+return nobody earned. A second pass found the same defect one field further out —
+`outbound_clicks_ctr`, in the DEFAULT metric set, is a list of per-action-type
+percentages — so the rule was inverted: only an explicit allowlist of count
+fields is summed, everything else (including anything a caller adds through
+`extra_fields`) becomes a map, and `audit:meta` fails if a name on that
+allowlist stops being list-typed upstream. Its `--verbose` output prints every
+list-typed field the toolkit requests and how it combines it.
+
+The other findings across the two reviews: `effective_status` is a **different
+enum per level** (6 values for a campaign, 7 for an ad set, 12 for an ad —
+review statuses are ad-only), so it is validated per level and audited per level
+rather than as a union; campaign/ad set/ad ids have to be numeric before they
+are interpolated into a URL path, since `/{id}/insights` with a non-id would
+point an authenticated call somewhere the caller never named; an entity id is
+not scoped to the account resolved for it, so both `get_insights` and
+`list_entities` now report the account the DATA came from and price budgets in
+its currency; a query narrowed to one entity no longer demands an ad account it
+would never use; and a `previous_year` baseline clamps 29 February instead of
+rolling it into March.
 
 Three capabilities are deliberately **not** exposed, and the audit is what makes
 that a decision rather than an oversight. `action_breakdowns` re-shapes `actions`

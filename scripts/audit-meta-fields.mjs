@@ -16,6 +16,12 @@
  * field. So this compares what the toolkit declares against what the SDK says
  * exists, and fails on anything that is not there.
  *
+ * It checks one more thing the names alone cannot: Meta types costs, averages
+ * and ratios with the SAME `list<AdsActionStats>` shape as counts, so the
+ * toolkit keeps an allowlist of the lists it is allowed to ADD UP. A name on
+ * that list that is not list-typed upstream is a stale claim, and this fails on
+ * it.
+ *
  * It reports the reverse direction too — what the API offers that the toolkit
  * does not expose — as information rather than as a failure. Meta ships ~219
  * insights fields and 89 breakdowns; exposing all of them would be a worse
@@ -42,6 +48,7 @@ import {
   STATUSES_BY_LEVEL,
 } from '../mcp/meta-ads/fields.ts';
 import { SORTABLE } from '../mcp/meta-ads/insights.ts';
+import { SUMMABLE_LISTS } from '../mcp/meta-ads/rows.ts';
 
 const SDK = 'https://raw.githubusercontent.com/facebook/facebook-python-business-sdk';
 const verbose = process.argv.includes('--verbose');
@@ -95,6 +102,22 @@ function enums(source) {
     if (member && current) found.get(current).add(member[2]);
   }
   return found;
+}
+
+/**
+ * The declared type of every AdsInsights field, from the generated
+ * `_field_types` map — the only place that says a field arrives as a list.
+ *
+ * @param {string} source - The adsinsights module source.
+ * @returns {Map<string, string>} Field name → declared type.
+ */
+function fieldTypes(source) {
+  /** @type {Map<string, string>} */
+  const types = new Map();
+  for (const match of source.matchAll(/^ {8}'(\w+)': '([^']*)',/gm)) {
+    if (match[1] !== undefined && match[2] !== undefined) types.set(match[1], match[2]);
+  }
+  return types;
 }
 
 /**
@@ -191,9 +214,38 @@ audit('campaign effective_status', STATUSES_BY_LEVEL.campaign, enumOf(campaign, 
 audit('adset effective_status', STATUSES_BY_LEVEL.adset, enumOf(adset, 'EffectiveStatus'));
 audit('ad effective_status', STATUSES_BY_LEVEL.ad, enumOf(ad, 'EffectiveStatus'));
 
+// Costs, averages and ratios wear the same list shape as counts, so the one
+// thing a name check cannot see is whether the toolkit will ADD one up.
+const types = fieldTypes(await sdkSource('adsinsights'));
+const stale = [...SUMMABLE_LISTS].filter((field) => !(types.get(field) ?? '').startsWith('list<'));
+if (stale.length > 0) {
+  failures += stale.length;
+  console.log(
+    `\n✗ SUMMABLE_LISTS names a field that is not list-typed upstream: ${stale.join(', ')}`,
+  );
+} else {
+  console.log(`\n✓ every summable list (${SUMMABLE_LISTS.size}) is list-typed upstream`);
+}
+
+if (verbose) {
+  const requested = new Set(
+    LEVELS.flatMap((level) =>
+      fieldsFor(
+        level,
+        METRIC_GROUPS.filter((group) => group !== 'quality' || level === 'ad'),
+      ),
+    ),
+  );
+  console.log('\n  list-typed fields requested, and how they combine:');
+  for (const field of [...requested].toSorted()) {
+    if (!(types.get(field) ?? '').startsWith('list<')) continue;
+    console.log(`    ${field.padEnd(34)} ${SUMMABLE_LISTS.has(field) ? 'summed' : 'per-type map'}`);
+  }
+}
+
 console.log(
   failures === 0
     ? '\nEvery name meta-ads sends exists in the SDK.'
-    : `\n${failures} name(s) the API would reject. Each one fails the whole request it appears in.`,
+    : `\n${failures} problem(s). An invalid name fails the whole request it appears in.`,
 );
 process.exit(failures === 0 ? 0 : 1);

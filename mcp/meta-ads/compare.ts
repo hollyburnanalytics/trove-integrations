@@ -36,6 +36,22 @@ function day(value: string, field: string): number {
 const iso = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
 /**
+ * The same calendar day one year earlier, clamped rather than rolled.
+ *
+ * `setUTCFullYear(year - 1)` on 29 February answers 1 March, because the target
+ * year has no 29th — so a February window compared year-over-year would quietly
+ * start a day late and end in the wrong month. A day that does not exist in the
+ * earlier year clamps to that month's last day instead.
+ */
+function yearBefore(ms: number): string {
+  const date = new Date(ms);
+  const year = date.getUTCFullYear() - 1;
+  const month = date.getUTCMonth();
+  const lastOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return iso(Date.UTC(year, month, Math.min(date.getUTCDate(), lastOfMonth)));
+}
+
+/**
  * The window to compare against.
  *
  * `previous_period` is the same NUMBER OF DAYS immediately before the current
@@ -54,14 +70,7 @@ export function baselineWindow(
   if (from > to) {
     throw new ToolError(`since (${since}) is after until (${until}).`, { retryable: false });
   }
-  if (mode === 'previous_year') {
-    const shift = (ms: number): string => {
-      const date = new Date(ms);
-      date.setUTCFullYear(date.getUTCFullYear() - 1);
-      return iso(date.getTime());
-    };
-    return { since: shift(from), until: shift(to) };
-  }
+  if (mode === 'previous_year') return { since: yearBefore(from), until: yearBefore(to) };
   const lengthMs = to - from + DAY_MS;
   return { since: iso(from - lengthMs), until: iso(from - DAY_MS) };
 }

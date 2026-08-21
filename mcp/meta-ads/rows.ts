@@ -57,15 +57,35 @@ function actionMap(
 }
 
 /**
- * List-valued fields whose entries are costs, averages, ratios or rates.
+ * The list-valued fields whose entries are COUNTS, and may therefore be totalled.
  *
- * Meta types a great many fields as `list<AdsActionStats>` — not just counts.
- * `cost_per_conversion` and `video_avg_time_watched_actions` have exactly the
- * same wire shape as `video_p25_watched_actions`, and adding their entries up
- * produces a number with no meaning: the sum of the cost per purchase and the
- * cost per lead is not a cost of anything.
+ * An allowlist, not a pattern, and that direction is the point. Meta types a
+ * great many fields as `list<AdsActionStats>` — costs, averages and ratios wear
+ * exactly the same wire shape as counts, and `video_avg_time_watched_actions`
+ * even ends in `_watched_actions` like the milestone counters it is nothing
+ * like. Any name-shaped rule gets one of those wrong eventually, and the way it
+ * is wrong is a plausible number rather than an error.
+ *
+ * So the DEFAULT is the safe one: an unrecognised list becomes a per-type map,
+ * which cannot invent anything, and only these are added up. A field arriving
+ * via `extra_fields` therefore lands on the cautious side by construction.
+ * `bun run audit:meta` checks every name here is still list-typed upstream.
+ *
+ * `actions`, `action_values`, `conversions` and `conversion_values` are counts
+ * too, but they never reach here — each has its own named map on the row.
  */
-const RATIO_LIKE = /^cost_per_|^average_|_avg_|_rate$|roas/;
+export const SUMMABLE_LISTS = new Set([
+  'outbound_clicks',
+  'unique_outbound_clicks',
+  'video_play_actions',
+  'video_p25_watched_actions',
+  'video_p50_watched_actions',
+  'video_p75_watched_actions',
+  'video_p100_watched_actions',
+  'video_thruplay_watched_actions',
+  'video_15_sec_watched_actions',
+  'video_30_sec_watched_actions',
+]);
 
 /** Sum an action list into a single count (video milestones and the like). */
 function actionTotal(raw: unknown): number | undefined {
@@ -163,13 +183,14 @@ interface Buckets {
 /**
  * File a list-valued field.
  *
- * Counts are totalled. Costs, averages and ratios become a per-type map
- * instead, because adding them together invents a number — and when such a map
- * holds exactly ONE type, that value is a valid scalar too, so it also lands in
- * `metrics` where sorting and prose can reach it.
+ * A known count is totalled. Everything else — costs, averages, ratios, and
+ * anything unrecognised — becomes a per-type map instead, because adding those
+ * together invents a number. When such a map holds exactly ONE type, that value
+ * is a valid scalar too, so it also lands in `metrics` where sorting and prose
+ * can reach it.
  */
 function bucketList(buckets: Buckets, key: string, value: unknown[]): void {
-  if (!RATIO_LIKE.test(key)) {
+  if (SUMMABLE_LISTS.has(key)) {
     const total = actionTotal(value);
     if (total !== undefined) buckets.metrics[key] = total;
     return;
@@ -361,7 +382,10 @@ export function totalsOf(rows: readonly InsightRow[]): Totals {
     cpc: clicks > 0 ? spend / clicks : undefined,
     cpm: impressions > 0 ? (spend / impressions) * 1000 : undefined,
     purchases: purchaseCount > 0 ? purchaseCount : undefined,
-    purchaseValue: purchaseValue > 0 ? purchaseValue : undefined,
+    // Tied to the COUNT, not to the value: a purchase event carrying no revenue
+    // is still a purchase, and dropping a zero here printed "37 purchases worth
+    // n/a" — which reads as missing data rather than as nothing.
+    purchaseValue: purchaseCount > 0 ? purchaseValue : undefined,
     currency: rows.find((row) => row.currency)?.currency,
   };
 }

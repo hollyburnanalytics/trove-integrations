@@ -284,15 +284,33 @@ const ACCOUNT_ID = /^\d{1,20}$/;
  * the id both ways.
  */
 export function resolveAccountId(ctx: ToolContext, given: string | undefined): string {
+  const resolved = findAccountId(ctx, given);
+  if (resolved === undefined) throw noAccountError();
+  return resolved;
+}
+
+/** The error for "no ad account, and one is needed". */
+export function noAccountError(): ToolError {
+  return new ToolError(
+    'No ad account given. Pass ad_account_id (e.g. act_1234567890), or set a default ' +
+      "in the toolkit's settings. list_ad_accounts shows the ones this token can reach.",
+    { retryable: false },
+  );
+}
+
+/**
+ * {@link resolveAccountId}, for a call that may not need one.
+ *
+ * A query narrowed to a single campaign, ad set or ad reads from that object's
+ * OWN insights edge, where the account never appears — so demanding one there
+ * refuses a request for an id that would have worked, over a value it would not
+ * have used. The requirement moves to the point where the account edge is
+ * actually chosen.
+ */
+export function findAccountId(ctx: ToolContext, given: string | undefined): string | undefined {
   const stored = ctx.config?.default_ad_account_id;
   const raw = (given ?? (typeof stored === 'string' ? stored : '')).trim();
-  if (!raw) {
-    throw new ToolError(
-      'No ad account given. Pass ad_account_id (e.g. act_1234567890), or set a default ' +
-        "in the toolkit's settings. list_ad_accounts shows the ones this token can reach.",
-      { retryable: false },
-    );
-  }
+  if (!raw) return undefined;
   const digits = raw.startsWith('act_') ? raw.slice(4) : raw;
   if (!ACCOUNT_ID.test(digits)) {
     throw new ToolError(

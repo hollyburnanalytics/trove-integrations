@@ -1,5 +1,12 @@
 import { type ToolContext, ToolError } from '@ontrove/extend/toolkit';
-import { graphGet, objectId, type Paging, type RateLimitReading, readPaging } from './client.ts';
+import {
+  graphGet,
+  noAccountError,
+  objectId,
+  type Paging,
+  type RateLimitReading,
+  readPaging,
+} from './client.ts';
 import type { Level } from './fields.ts';
 import { type InsightRow, mapRow } from './rows.ts';
 
@@ -35,7 +42,8 @@ export type Sortable = (typeof SORTABLE)[number];
 
 /** One fully-specified insights query. */
 export interface InsightsQuery {
-  accountId: string;
+  /** The ad account, or undefined when narrowing picks an entity edge instead. */
+  accountId: string | undefined;
   level: Level;
   fields: readonly string[];
   datePreset?: string;
@@ -148,6 +156,7 @@ function narrowing(query: InsightsQuery): { path: string; filters: Filter[] } {
   const only = present.length === 1 ? present[0] : undefined;
   const single = only?.[0]?.length === 1 ? only[0][0] : undefined;
   if (single !== undefined) return { path: `/${single}/insights`, filters: [] };
+  if (query.accountId === undefined) throw noAccountError();
   return {
     path: `/${query.accountId}/insights`,
     filters: present.map(([ids, field]) => ({ field, operator: 'IN', value: ids })),

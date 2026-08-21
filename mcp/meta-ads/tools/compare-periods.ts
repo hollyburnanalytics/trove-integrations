@@ -1,5 +1,5 @@
 import { ToolError, tool, z } from '@ontrove/extend/toolkit';
-import { resolveAccountId } from '../client.ts';
+import { findAccountId } from '../client.ts';
 import {
   baselineWindow,
   COMPARE_MODES,
@@ -122,7 +122,7 @@ export const comparePeriods = tool({
       .describe('Top-spending rows to fetch per window (1–500).'),
   }),
   output: z.object({
-    accountId: z.string(),
+    accountId: z.string().optional(),
     level: z.string(),
     current: z.object({ since: z.string(), until: z.string() }),
     baseline: z.object({ since: z.string(), until: z.string() }),
@@ -141,7 +141,7 @@ export const comparePeriods = tool({
     notes: z.array(z.string()),
   }),
   async handler(args, ctx) {
-    const accountId = resolveAccountId(ctx, args.ad_account_id);
+    const accountId = findAccountId(ctx, args.ad_account_id);
     if (!args.baseline_since !== !args.baseline_until) {
       throw new ToolError(
         'baseline_since and baseline_until go together — give both, or neither.',
