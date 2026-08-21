@@ -174,7 +174,13 @@ export const getInsights = tool({
 
     const window = windowLabel(args.date_preset, args.since, args.until);
     const totals = totalsOf(result.rows);
+    // The rows say which account they belong to; that beats the one assumed.
+    const reportedAccount = result.reportedAccountId ?? accountId;
     const notes = [
+      result.reportedAccountId
+        ? `These rows are from ${result.reportedAccountId}, not the ${accountId} this call ` +
+          'resolved — the entity id given belongs to that account. Amounts are in ITS currency.'
+        : undefined,
       truncationNote(result.rows.length, result.paging.hasMore, result.paging.after),
       coverageNote(totals, result.summary),
       granularityNote(args.level, args.time_increment, breakdowns.length),
@@ -198,7 +204,7 @@ export const getInsights = tool({
       return {
         text: [empty, ...notes].join('\n'),
         structured: {
-          accountId,
+          accountId: reportedAccount,
           level: args.level,
           window,
           count: 0,
@@ -214,7 +220,7 @@ export const getInsights = tool({
     const lines = result.rows.slice(0, PROSE_ROWS).map((row) => rowLine(row));
     const hidden = result.rows.length - lines.length;
     const text = [
-      `${result.rows.length} ${args.level} row(s) for ${accountId} ${window}:`,
+      `${result.rows.length} ${args.level} row(s) for ${reportedAccount} ${window}:`,
       ...lines,
       hidden > 0 ? `… ${hidden} more row(s) in the structured result.` : undefined,
       totalsLine(totals, result.rows.length),
@@ -226,7 +232,7 @@ export const getInsights = tool({
     return {
       text,
       structured: {
-        accountId,
+        accountId: reportedAccount,
         level: args.level,
         window,
         count: result.rows.length,

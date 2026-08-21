@@ -149,13 +149,47 @@ export const ENTITY_LEVELS = ['campaign', 'adset', 'ad'] as const;
 export type EntityLevel = (typeof ENTITY_LEVELS)[number];
 
 /**
- * Delivery statuses worth filtering on.
+ * Delivery statuses, per level, exactly as Meta's enums define them.
  *
  * `effective_status` rather than `status`, because they differ in the case that
  * matters: an ACTIVE ad inside a paused campaign has `status: ACTIVE` and
  * `effective_status: CAMPAIGN_PAUSED`, and only the second one explains why it
  * is not spending.
+ *
+ * Per level, because the enums are NOT the same: a campaign has six values, an
+ * ad set seven, an ad twelve. Review is an ad-level concept, so `DISAPPROVED`
+ * and `PENDING_REVIEW` do not exist on the campaign edge — sending one there is
+ * a rejected request, not an empty list. The tool advertises the union (so the
+ * whole vocabulary is discoverable) and refuses the mismatch by name.
  */
+export const STATUSES_BY_LEVEL = {
+  campaign: ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES'],
+  adset: [
+    'ACTIVE',
+    'PAUSED',
+    'DELETED',
+    'ARCHIVED',
+    'CAMPAIGN_PAUSED',
+    'IN_PROCESS',
+    'WITH_ISSUES',
+  ],
+  ad: [
+    'ACTIVE',
+    'PAUSED',
+    'DELETED',
+    'ARCHIVED',
+    'CAMPAIGN_PAUSED',
+    'ADSET_PAUSED',
+    'IN_PROCESS',
+    'WITH_ISSUES',
+    'PENDING_REVIEW',
+    'DISAPPROVED',
+    'PENDING_BILLING_INFO',
+    'PREAPPROVED',
+  ],
+} as const satisfies Record<EntityLevel, readonly string[]>;
+
+/** Every delivery status, for the input schema. Validity is per level. */
 export const ENTITY_STATUSES = [
   'ACTIVE',
   'PAUSED',
@@ -167,11 +201,30 @@ export const ENTITY_STATUSES = [
   'WITH_ISSUES',
   'PENDING_REVIEW',
   'DISAPPROVED',
-  // Both of these are reasons an ad is not spending today, which is the
-  // question this filter exists to answer.
   'PENDING_BILLING_INFO',
   'PREAPPROVED',
 ] as const;
+
+/**
+ * Refuse a status the requested level does not have, naming the ones it does.
+ *
+ * Meta answers an out-of-enum value with a parameter error that does not
+ * mention the level, so "DISAPPROVED is an ad-level status" is knowledge the
+ * caller has to already have.
+ */
+export function checkStatuses(level: EntityLevel, requested: readonly string[]): void {
+  const allowed: readonly string[] = STATUSES_BY_LEVEL[level];
+  const wrong = requested.filter((status) => !allowed.includes(status));
+  if (wrong.length === 0) return;
+  throw new ToolError(
+    `${wrong.join(', ')} ${wrong.length === 1 ? 'is not a' : 'are not'} ${level} status. ` +
+      `A ${level} can be: ${allowed.join(', ')}.` +
+      (level === 'campaign' || level === 'adset'
+        ? ' Review statuses (PENDING_REVIEW, DISAPPROVED, PREAPPROVED) exist per ad — ask at level: "ad".'
+        : ''),
+    { retryable: false },
+  );
+}
 
 /**
  * What to read about each object type.

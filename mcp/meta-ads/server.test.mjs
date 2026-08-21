@@ -1173,4 +1173,170 @@ describe('meta-ads MCP server', () => {
       expect(result.result.structured.rows[0].presence).toBe('new');
     });
   });
+  describe('what the SDK audit found in review', () => {
+    it('refuses an ad-level delivery status at campaign level, and names the valid ones', async () => {
+      // Meta's EffectiveStatus enums differ by level: 6 values for a campaign,
+      // 7 for an ad set, 12 for an ad. Review is an ad-level concept.
+      const wrong = await callTool(server, 'list_entities', {
+        ad_account_id: '7000000001',
+        level: 'campaign',
+        effective_status: ['ACTIVE', 'DISAPPROVED'],
+      });
+      expect(wrong.ok).toBe(false);
+      expect(wrong.error).toContain('DISAPPROVED is not a campaign status');
+      expect(wrong.error).toContain('level: "ad"');
+
+      const okAtAdLevel = await callTool(
+        server,
+        'list_entities',
+        { ad_account_id: '7000000001', level: 'ad', effective_status: ['DISAPPROVED'] },
+        authed((url) =>
+          new URL(url).pathname.endsWith('/act_7000000001')
+            ? { json: { currency: 'USD' } }
+            : { json: { data: [] } },
+        ),
+      );
+      expect(okAtAdLevel.ok).toBe(true);
+    });
+
+    it('keeps costs and averages per type instead of adding them together', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '7000000002' },
+        authed({
+          json: {
+            data: [
+              campaignRow({
+                cost_per_action_type: [
+                  { action_type: 'omni_purchase', value: '19.75' },
+                  { action_type: 'lead', value: '4.10' },
+                ],
+                cost_per_conversion: [
+                  { action_type: 'omni_purchase', value: '19.75' },
+                  { action_type: 'lead', value: '4.10' },
+                ],
+                // Same wire shape as a video milestone count, and yet a sum of
+                // it would be a duration nobody watched.
+                video_avg_time_watched_actions: [
+                  { action_type: 'video_view', value: '7' },
+                  { action_type: 'video_view_organic', value: '3' },
+                ],
+              }),
+            ],
+          },
+        }),
+      );
+      const [row] = result.result.structured.rows;
+      expect(row.costPerAction).toEqual({ omni_purchase: 19.75, lead: 4.1 });
+      expect(row.costPerConversion).toEqual({ omni_purchase: 19.75, lead: 4.1 });
+      // 19.75 + 4.10 is not the cost of anything.
+      expect(row.metrics.cost_per_conversion).toBeUndefined();
+      expect(row.rates.video_avg_time_watched_actions).toEqual({
+        video_view: 7,
+        video_view_organic: 3,
+      });
+      expect(row.metrics.video_avg_time_watched_actions).toBeUndefined();
+    });
+
+    it('still gives a single-type ratio as a scalar, so it stays printable', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '7000000003' },
+        authed({
+          json: {
+            data: [
+              campaignRow({
+                video_avg_time_watched_actions: [{ action_type: 'video_view', value: '9' }],
+              }),
+            ],
+          },
+        }),
+      );
+      const [row] = result.result.structured.rows;
+      expect(row.metrics.video_avg_time_watched_actions).toBe(9);
+      expect(row.rates.video_avg_time_watched_actions).toEqual({ video_view: 9 });
+    });
+
+    it('never adds two ROAS ratios together', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '7000000004' },
+        authed({
+          json: {
+            data: [
+              campaignRow({
+                purchase_roas: [
+                  { action_type: 'omni_purchase', value: '4.40' },
+                  { action_type: 'omni_purchase', value: '2.10' },
+                ],
+              }),
+            ],
+          },
+        }),
+      );
+      // 6.5× would be a fabricated return on ad spend.
+      expect(result.result.structured.rows[0].purchaseRoas).toBe(4.4);
+    });
+
+    it('counts, however, do add up across repeated slices', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '7000000005' },
+        authed({
+          json: {
+            data: [
+              campaignRow({
+                video_p25_watched_actions: [
+                  { action_type: 'video_view', value: '900' },
+                  { action_type: 'video_view_organic', value: '100' },
+                ],
+              }),
+            ],
+          },
+        }),
+      );
+      expect(result.result.structured.rows[0].metrics.video_p25_watched_actions).toBe(1000);
+    });
+
+    it('refuses an entity id that is not an id, before it reaches a URL path', async () => {
+      // These ids are interpolated into `/{id}/insights`, so a non-id is not a
+      // failed lookup — it is a redirect of an authenticated call.
+      const injected = await callTool(server, 'get_insights', {
+        ad_account_id: '7000000006',
+        campaign_ids: ['me/adaccounts?x='],
+      });
+      expect(injected.ok).toBe(false);
+      expect(injected.error).toContain('is not a Meta object id');
+
+      const viaListing = await callTool(server, 'list_entities', {
+        ad_account_id: '7000000006',
+        level: 'ad',
+        adset_id: '../../me',
+      });
+      expect(viaListing.ok).toBe(false);
+      expect(viaListing.error).toContain('is not a Meta object id');
+    });
+
+    it('reports the account the rows actually came from', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '7000000007', campaign_ids: ['23851'] },
+        authed({
+          json: {
+            // An entity id is not scoped to the account we resolved: this
+            // campaign belongs to a different account the token also reaches.
+            data: [campaignRow({ account_id: '9999999999', account_currency: 'GBP' })],
+          },
+        }),
+      );
+      expect(result.result.structured.accountId).toBe('act_9999999999');
+      expect(result.result.text).toContain('not the act_7000000007 this call resolved');
+      expect(result.result.text).toContain('GBP');
+    });
+  });
 });

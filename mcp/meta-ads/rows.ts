@@ -30,23 +30,42 @@ interface ActionEntry {
 /**
  * Flatten an action list into `{action_type: value}`.
  *
- * Repeats are ADDED rather than overwritten. With the default
+ * Repeats are combined rather than overwritten. With the default
  * `action_breakdowns` an action type appears once, so this never fires today —
  * but the moment a list is broken down by anything else (device, destination),
  * the same action type appears once per slice, and last-one-wins would report
- * one slice as the whole. A total is the one answer that stays true under
- * either shape.
+ * one slice as the whole.
+ *
+ * HOW they combine depends on what the numbers are. Counts add up. Costs,
+ * averages and ratios do not: two slices of a 4× ROAS are not an 8× ROAS, so
+ * for those the first slice is kept and nothing is invented.
  */
-function actionMap(raw: unknown): Record<string, number> | undefined {
+function actionMap(
+  raw: unknown,
+  combine: 'sum' | 'first' = 'sum',
+): Record<string, number> | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: Record<string, number> = {};
   for (const entry of raw as ActionEntry[]) {
     const type = typeof entry?.action_type === 'string' ? entry.action_type : undefined;
     const value = num(entry?.value);
-    if (type !== undefined && value !== undefined) out[type] = (out[type] ?? 0) + value;
+    if (type === undefined || value === undefined) continue;
+    if (combine === 'first' && out[type] !== undefined) continue;
+    out[type] = combine === 'sum' ? (out[type] ?? 0) + value : value;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
+
+/**
+ * List-valued fields whose entries are costs, averages, ratios or rates.
+ *
+ * Meta types a great many fields as `list<AdsActionStats>` — not just counts.
+ * `cost_per_conversion` and `video_avg_time_watched_actions` have exactly the
+ * same wire shape as `video_p25_watched_actions`, and adding their entries up
+ * produces a number with no meaning: the sum of the cost per purchase and the
+ * cost per lead is not a cost of anything.
+ */
+const RATIO_LIKE = /^cost_per_|^average_|_avg_|_rate$|roas/;
 
 /** Sum an action list into a single count (video milestones and the like). */
 function actionTotal(raw: unknown): number | undefined {
@@ -74,7 +93,14 @@ const IDENTITY_KEYS = new Set([
 ]);
 
 /** Action lists that get their own named home on the row. */
-const ACTION_KEYS = new Set(['actions', 'action_values', 'cost_per_action_type']);
+const ACTION_KEYS = new Set([
+  'actions',
+  'action_values',
+  'cost_per_action_type',
+  'conversions',
+  'conversion_values',
+  'cost_per_conversion',
+]);
 
 const str = (value: unknown): string | undefined =>
   typeof value === 'string' && value.length > 0 ? value : undefined;
@@ -104,6 +130,15 @@ export const insightRowShape = z.object({
   actions: z.record(z.string(), z.number()).optional(),
   actionValues: z.record(z.string(), z.number()).optional(),
   costPerAction: z.record(z.string(), z.number()).optional(),
+  conversions: z.record(z.string(), z.number()).optional(),
+  conversionValues: z.record(z.string(), z.number()).optional(),
+  costPerConversion: z.record(z.string(), z.number()).optional(),
+  /**
+   * Per-type costs, averages and ratios that arrive as lists — kept as maps
+   * because a total of them would be meaningless. A single-entry one also
+   * appears in `metrics` under the same name, where it IS a scalar.
+   */
+  rates: z.record(z.string(), z.record(z.string(), z.number())).optional(),
   purchaseRoas: z.number().optional(),
 });
 
@@ -122,6 +157,29 @@ interface Buckets {
   metrics: Record<string, number>;
   labels: Record<string, string>;
   breakdowns: Record<string, string>;
+  rates: Record<string, Record<string, number>>;
+}
+
+/**
+ * File a list-valued field.
+ *
+ * Counts are totalled. Costs, averages and ratios become a per-type map
+ * instead, because adding them together invents a number — and when such a map
+ * holds exactly ONE type, that value is a valid scalar too, so it also lands in
+ * `metrics` where sorting and prose can reach it.
+ */
+function bucketList(buckets: Buckets, key: string, value: unknown[]): void {
+  if (!RATIO_LIKE.test(key)) {
+    const total = actionTotal(value);
+    if (total !== undefined) buckets.metrics[key] = total;
+    return;
+  }
+  const perType = actionMap(value, 'first');
+  if (perType === undefined) return;
+  buckets.rates[key] = perType;
+  const values = Object.values(perType);
+  const only = values.length === 1 ? values[0] : undefined;
+  if (only !== undefined) buckets.metrics[key] = only;
 }
 
 /**
@@ -143,8 +201,7 @@ function bucket(
     return;
   }
   if (Array.isArray(value)) {
-    const total = actionTotal(value);
-    if (total !== undefined) buckets.metrics[key] = total;
+    bucketList(buckets, key, value);
     return;
   }
   const parsed = num(value);
@@ -172,14 +229,15 @@ export function mapRow(
   level: Level,
   breakdownKeys: readonly string[],
 ): InsightRow {
-  const buckets: Buckets = { metrics: {}, labels: {}, breakdowns: {} };
+  const buckets: Buckets = { metrics: {}, labels: {}, breakdowns: {}, rates: {} };
   for (const [key, value] of Object.entries(raw)) {
     if (!claimed(key)) bucket(buckets, key, value, breakdownKeys);
   }
 
   // ROAS is a one-entry list (`omni_purchase`), and its entries are ratios:
-  // summing them the way video milestones are summed would invent a number.
-  const roas = actionMap(raw.purchase_roas) ?? actionMap(raw.website_purchase_roas);
+  // combining them the way video milestones are combined would invent a number.
+  const roas =
+    actionMap(raw.purchase_roas, 'first') ?? actionMap(raw.website_purchase_roas, 'first');
   const { id, name } = identityFor(level, raw);
 
   return {
@@ -205,7 +263,11 @@ export function mapRow(
     labels: Object.keys(buckets.labels).length > 0 ? buckets.labels : undefined,
     actions: actionMap(raw.actions),
     actionValues: actionMap(raw.action_values),
-    costPerAction: actionMap(raw.cost_per_action_type),
+    costPerAction: actionMap(raw.cost_per_action_type, 'first'),
+    conversions: actionMap(raw.conversions),
+    conversionValues: actionMap(raw.conversion_values),
+    costPerConversion: actionMap(raw.cost_per_conversion, 'first'),
+    rates: Object.keys(buckets.rates).length > 0 ? buckets.rates : undefined,
     purchaseRoas: roas ? Object.values(roas)[0] : undefined,
   };
 }

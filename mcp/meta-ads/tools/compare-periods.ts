@@ -6,8 +6,9 @@ import {
   comparePairs,
   comparisonLine,
   comparisonShape,
-  delta,
   deltaShape,
+  totalsDelta,
+  totalsDeltaLine,
 } from '../compare.ts';
 import { fieldsFor, LEVELS } from '../fields.ts';
 import { fetchInsights, type InsightsQuery } from '../insights.ts';
@@ -37,12 +38,18 @@ const PROSE_ROWS = 25;
 function comparisonNotes(input: {
   truncated: boolean;
   limit: number;
+  crossAccount: string | undefined;
   calendarYear: boolean;
   hasOneSided: boolean;
   hasUnpaired: boolean;
   rateLimit: Parameters<typeof rateLimitNote>[0];
 }): string[] {
+  const crossAccount = input.crossAccount
+    ? `These rows are from ${input.crossAccount}, not the account this call resolved — the ` +
+      'entity id given belongs to that account.'
+    : undefined;
   return [
+    crossAccount,
     input.truncated
       ? `TRUNCATED: one or both windows returned a full page of ${input.limit} row(s) with more ` +
         'behind it, so this compares the top spenders only — the totals below are of the rows ' +
@@ -178,6 +185,7 @@ export const comparePeriods = tool({
       until: baseline.until,
     });
 
+    const reportedAccount = current.reportedAccountId ?? accountId;
     const truncation = {
       baseline: previous.paging.hasMore,
       current: current.paging.hasMore,
@@ -185,20 +193,13 @@ export const comparePeriods = tool({
     const rows = comparePairs(previous.rows, current.rows, truncation);
     const currentTotals = totalsOf(current.rows);
     const previousTotals = totalsOf(previous.rows);
-    const totals = {
-      spend: delta(previousTotals.spend, currentTotals.spend),
-      impressions: delta(previousTotals.impressions, currentTotals.impressions),
-      clicks: delta(previousTotals.clicks, currentTotals.clicks),
-      ctr: delta(previousTotals.ctr, currentTotals.ctr),
-      purchases: delta(previousTotals.purchases, currentTotals.purchases),
-      purchaseValue: delta(previousTotals.purchaseValue, currentTotals.purchaseValue),
-      currency: currentTotals.currency ?? previousTotals.currency,
-    };
+    const totals = totalsDelta(previousTotals, currentTotals);
 
     const truncated = truncation.baseline || truncation.current;
     const notes = comparisonNotes({
       truncated,
       limit: args.limit,
+      crossAccount: current.reportedAccountId,
       calendarYear: args.compare_to === 'previous_year' && !args.baseline_since,
       hasOneSided: rows.some((row) => row.presence === 'new' || row.presence === 'stopped'),
       hasUnpaired: rows.some((row) => row.presence === 'unpaired'),
@@ -211,7 +212,7 @@ export const comparePeriods = tool({
       return {
         text: [empty, ...notes].join('\n'),
         structured: {
-          accountId,
+          accountId: reportedAccount,
           level: args.level,
           current: { since: args.since, until: args.until },
           baseline,
@@ -226,12 +227,7 @@ export const comparePeriods = tool({
 
     const lines = rows.slice(0, PROSE_ROWS).map((row) => comparisonLine(row));
     const hidden = rows.length - lines.length;
-    const totalLine =
-      `Totals across the rows shown: spend ${totals.spend.before?.toFixed(2) ?? '—'} → ` +
-      `${totals.spend.after?.toFixed(2) ?? '—'} ${totals.currency ?? ''}` +
-      (totals.spend.changePct === undefined
-        ? ''
-        : ` (${totals.spend.changePct >= 0 ? '+' : ''}${totals.spend.changePct.toFixed(1)}%)`);
+    const totalLine = totalsDeltaLine(totals);
 
     return {
       text: [
@@ -244,7 +240,7 @@ export const comparePeriods = tool({
         .filter(Boolean)
         .join('\n'),
       structured: {
-        accountId,
+        accountId: reportedAccount,
         level: args.level,
         current: { since: args.since, until: args.until },
         baseline,

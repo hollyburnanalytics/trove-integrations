@@ -249,6 +249,29 @@ export function readPaging(body: Record<string, unknown>): Paging {
   return { after: hasMore ? after : undefined, hasMore };
 }
 
+const OBJECT_ID = /^\d{1,25}$/;
+
+/**
+ * Validate a campaign/ad set/ad id.
+ *
+ * These reach a URL PATH — `/{campaign_id}/insights` — so a value that is not
+ * an id is not merely a failed lookup: `me/adaccounts?x=` would send this
+ * call, Bearer token attached, somewhere the caller never named. Meta object
+ * ids are decimal digits, so anything else is refused before a request is
+ * built. The account id is checked for the same reason a few lines down.
+ */
+export function objectId(value: string, field: string): string {
+  const trimmed = value.trim();
+  if (!OBJECT_ID.test(trimmed)) {
+    throw new ToolError(
+      `${field}: "${value}" is not a Meta object id. Ids are numeric (e.g. 23851234567890123) — ` +
+        'list_entities returns them.',
+      { retryable: false },
+    );
+  }
+  return trimmed;
+}
+
 const ACCOUNT_ID = /^\d{1,20}$/;
 
 /**

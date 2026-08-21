@@ -1,7 +1,8 @@
 import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { accountCurrency } from '../account.ts';
-import { graphGet, readPaging, resolveAccountId } from '../client.ts';
+import { graphGet, objectId, readPaging, resolveAccountId } from '../client.ts';
 import {
+  checkStatuses,
   ENTITY_FIELDS,
   ENTITY_LEVELS,
   ENTITY_STATUSES,
@@ -52,10 +53,10 @@ function edgeFor(
         retryable: false,
       });
     }
-    return campaignId ? `/${campaignId}/adsets` : `/${accountId}/adsets`;
+    return campaignId ? `/${objectId(campaignId, 'campaign_id')}/adsets` : `/${accountId}/adsets`;
   }
-  if (adsetId) return `/${adsetId}/ads`;
-  return campaignId ? `/${campaignId}/ads` : `/${accountId}/ads`;
+  if (adsetId) return `/${objectId(adsetId, 'adset_id')}/ads`;
+  return campaignId ? `/${objectId(campaignId, 'campaign_id')}/ads` : `/${accountId}/ads`;
 }
 
 const str = (value: unknown): string | undefined =>
@@ -134,7 +135,10 @@ export const listEntities = tool({
       .array(z.enum(ENTITY_STATUSES))
       .optional()
       .describe(
-        "Keep only these delivery statuses. Omit for Meta's default (everything not deleted).",
+        "Keep only these delivery statuses. Omit for Meta's default (everything not deleted). " +
+          'The vocabulary differs by level: review statuses (PENDING_REVIEW, DISAPPROVED, ' +
+          'PREAPPROVED, PENDING_BILLING_INFO) exist per ad, CAMPAIGN_PAUSED from ad set down, ' +
+          'ADSET_PAUSED per ad.',
       ),
     limit: z.number().int().min(1).max(200).default(50).describe('Rows per page (1–200).'),
     after: z.string().optional().describe("Cursor from a previous call's next_cursor."),
@@ -172,6 +176,7 @@ export const listEntities = tool({
   }),
   async handler(args, ctx) {
     const accountId = resolveAccountId(ctx, args.ad_account_id);
+    if (args.effective_status?.length) checkStatuses(args.level, args.effective_status);
     const path = edgeFor(args.level, accountId, args.campaign_id, args.adset_id);
     const params = new URLSearchParams({
       fields: ENTITY_FIELDS[args.level],

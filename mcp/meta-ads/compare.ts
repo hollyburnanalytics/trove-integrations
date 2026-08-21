@@ -1,6 +1,6 @@
 import { ToolError, z } from '@ontrove/extend/toolkit';
 import { group, money } from './fields.ts';
-import { type InsightRow, purchases } from './rows.ts';
+import { type InsightRow, purchases, type Totals } from './rows.ts';
 
 /**
  * Period-over-period maths: pairing two windows of rows and saying what moved.
@@ -210,4 +210,39 @@ export function comparisonLine(row: Comparison): string {
   }
   const tag = row.presence === 'both' ? '' : ` [${row.presence.toUpperCase()}]`;
   return `• ${row.name ?? row.id ?? 'account'}${tag} — ${bits.join(' · ')}`;
+}
+
+/** The window-over-window movement of the totals of the rows returned. */
+export interface TotalsDelta {
+  spend: Delta;
+  impressions: Delta;
+  clicks: Delta;
+  ctr: Delta;
+  purchases: Delta;
+  purchaseValue: Delta;
+  currency?: string;
+}
+
+/**
+ * Compare two windows' totals.
+ *
+ * These are totals of the ROWS RETURNED, not of the account — a distinction the
+ * caller is told about whenever either page was truncated.
+ */
+export function totalsDelta(before: Totals, after: Totals): TotalsDelta {
+  return {
+    spend: delta(before.spend, after.spend),
+    impressions: delta(before.impressions, after.impressions),
+    clicks: delta(before.clicks, after.clicks),
+    ctr: delta(before.ctr, after.ctr),
+    purchases: delta(before.purchases, after.purchases),
+    purchaseValue: delta(before.purchaseValue, after.purchaseValue),
+    currency: after.currency ?? before.currency,
+  };
+}
+
+/** The totals line for a comparison's prose mirror. */
+export function totalsDeltaLine(totals: TotalsDelta): string {
+  const spend = deltaText(totals.spend, (value) => money(value, totals.currency));
+  return `Totals across the rows shown: spend ${spend}`;
 }

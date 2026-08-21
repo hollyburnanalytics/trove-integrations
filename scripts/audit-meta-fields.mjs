@@ -36,10 +36,10 @@ import {
   BREAKDOWNS,
   DATE_PRESETS,
   ENTITY_FIELDS,
-  ENTITY_STATUSES,
   fieldsFor,
   LEVELS,
   METRIC_GROUPS,
+  STATUSES_BY_LEVEL,
 } from '../mcp/meta-ads/fields.ts';
 import { SORTABLE } from '../mcp/meta-ads/insights.ts';
 
@@ -184,15 +184,12 @@ audit('campaign listing fields', ENTITY_FIELDS.campaign.split(','), enumOf(campa
 audit('adset listing fields', ENTITY_FIELDS.adset.split(','), enumOf(adset, 'Field'));
 audit('ad listing fields', ENTITY_FIELDS.ad.split(','), enumOf(ad, 'Field'));
 audit('ad account fields', ACCOUNT_FIELDS.split(','), enumOf(adaccount, 'Field'));
-audit(
-  'effective_status',
-  ENTITY_STATUSES,
-  new Set([
-    ...enumOf(campaign, 'EffectiveStatus'),
-    ...enumOf(adset, 'EffectiveStatus'),
-    ...enumOf(ad, 'EffectiveStatus'),
-  ]),
-);
+// Per level, never unioned: the three enums differ (6/7/12 values), so a union
+// would vouch for an ad-only status on the campaign edge — which is exactly the
+// mistake this audit exists to catch.
+audit('campaign effective_status', STATUSES_BY_LEVEL.campaign, enumOf(campaign, 'EffectiveStatus'));
+audit('adset effective_status', STATUSES_BY_LEVEL.adset, enumOf(adset, 'EffectiveStatus'));
+audit('ad effective_status', STATUSES_BY_LEVEL.ad, enumOf(ad, 'EffectiveStatus'));
 
 console.log(
   failures === 0

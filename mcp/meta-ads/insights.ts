@@ -1,5 +1,5 @@
 import { type ToolContext, ToolError } from '@ontrove/extend/toolkit';
-import { graphGet, type Paging, type RateLimitReading, readPaging } from './client.ts';
+import { graphGet, objectId, type Paging, type RateLimitReading, readPaging } from './client.ts';
 import type { Level } from './fields.ts';
 import { type InsightRow, mapRow } from './rows.ts';
 
@@ -133,18 +133,24 @@ interface Filter {
  * edge with `filtering`, which is the only way to express it.
  */
 function narrowing(query: InsightsQuery): { path: string; filters: Filter[] } {
-  const lists: [readonly string[] | undefined, string][] = [
-    [query.adIds, 'ad.id'],
-    [query.adsetIds, 'adset.id'],
-    [query.campaignIds, 'campaign.id'],
+  const lists: [readonly string[] | undefined, string, string][] = [
+    [query.adIds, 'ad.id', 'ad_ids'],
+    [query.adsetIds, 'adset.id', 'adset_ids'],
+    [query.campaignIds, 'campaign.id', 'campaign_ids'],
   ];
-  const present = lists.filter(([ids]) => ids !== undefined && ids.length > 0);
+  const present = lists
+    .filter(([ids]) => ids !== undefined && ids.length > 0)
+    .map(([ids, field, argument]) => [
+      (ids ?? []).map((id) => objectId(id, argument)),
+      field,
+      argument,
+    ]) as [string[], string, string][];
   const only = present.length === 1 ? present[0] : undefined;
-  const single = only?.[0]?.length === 1 ? only[0]?.[0] : undefined;
+  const single = only?.[0]?.length === 1 ? only[0][0] : undefined;
   if (single !== undefined) return { path: `/${single}/insights`, filters: [] };
   return {
     path: `/${query.accountId}/insights`,
-    filters: present.map(([ids, field]) => ({ field, operator: 'IN', value: [...(ids ?? [])] })),
+    filters: present.map(([ids, field]) => ({ field, operator: 'IN', value: ids })),
   };
 }
 
@@ -213,6 +219,12 @@ export interface InsightsResult {
   summary?: { spend?: number; impressions?: number; clicks?: number };
   /** True when Meta ignored the requested sort and the rows were ordered here. */
   sortedLocally: boolean;
+  /**
+   * The ad account the rows actually came from, when it is not the one asked
+   * for — which a single-entity query can do: an id belonging to another
+   * account this token reaches answers from THAT account.
+   */
+  reportedAccountId?: string;
 }
 
 /** Read the `summary` envelope Meta returns when asked for account-wide totals. */
@@ -264,11 +276,19 @@ export async function fetchInsights(
   const raw = Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [];
   const rows = raw.map((row) => mapRow(row, query.level, query.breakdowns));
   const sortedLocally = enforceSort(rows, query);
+  // An entity id is not scoped to the account that was resolved for it, so a
+  // campaign belonging to another reachable account answers from there. The
+  // rows say whose they are; labelling them with the account we assumed would
+  // be a quiet lie.
+  const reported = rows.find((row) => row.accountId !== undefined)?.accountId;
+  const reportedAccountId =
+    reported !== undefined && `act_${reported}` !== query.accountId ? `act_${reported}` : undefined;
   return {
     rows,
     paging: readPaging(body),
     rateLimit,
     summary: readSummary(body),
     sortedLocally,
+    reportedAccountId,
   };
 }

@@ -937,17 +937,33 @@ surface (`summary` is `list<string>`, `filtering` is `list<Object>`,
 `time_range` is a `map`, `sort` is `list<string>`) and that `effective_status`
 is accepted on the parent edges this toolkit uses.
 
+The audit's second use is reading the SDK's `_field_types`, which is where a
+review of this work found the sharpest bug: Meta types **costs and averages as
+the same `list<AdsActionStats>` shape as counts**. `cost_per_conversion` and
+`video_avg_time_watched_actions` are wire-identical to
+`video_p25_watched_actions`, so the obvious mapping totals them — and the sum of
+a cost per purchase and a cost per lead is the cost of nothing. Counts are now
+totalled; costs, averages, ratios and rates become a per-type map (`rates`, or a
+named one like `costPerConversion`), with the scalar kept only where a single
+type makes it real. The same rule stops two ROAS ratios being added into a
+return nobody earned. The other findings from that review: `effective_status` is
+a **different enum per level** (6 values for a campaign, 7 for an ad set, 12 for
+an ad — review statuses are ad-only), so it is validated per level and audited
+per level rather than as a union; and campaign/ad set/ad ids now have to be
+numeric before they are interpolated into a URL path, since `/{id}/insights`
+with a non-id would point an authenticated call somewhere the caller never
+named. A single-entity query also reports the account the rows actually came
+from — an entity id is not scoped to the account that was resolved for it.
+
 Three capabilities are deliberately **not** exposed, and the audit is what makes
 that a decision rather than an oversight. `action_breakdowns` re-shapes `actions`
 from a list into a matrix (one entry per action type × slice) that a flat
-`{action_type: count}` map cannot represent — `actionMap` now totals repeats
-rather than keeping the last, so the shape cannot silently mislead if it ever
-arrives. `results`/`cost_per_result` — what Ads Manager's own "Results" column
-shows — use an `indicator` + nested `values` shape rather than
-`{action_type, value}`, so they would parse to nothing. And `time_ranges` would
-let `compare_periods` fetch both windows in ONE call; it stays two calls so that
-each window gets its own top-N page, rather than one page split unpredictably
-across both.
+`{action_type: count}` map cannot represent. `results`/`cost_per_result` — what
+Ads Manager's own "Results" column shows — use an `indicator` + nested `values`
+shape rather than `{action_type, value}`, so they would parse to nothing. And
+`time_ranges` would let `compare_periods` fetch both windows in ONE call; it
+stays two calls so that each window gets its own top-N page, rather than one
+page split unpredictably across both.
 
 **Still not exercised against a live ad account.** Names and parameter types are
 now verified; behaviour is not. The places to check first with a real token:
