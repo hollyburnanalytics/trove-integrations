@@ -39,6 +39,7 @@ function comparisonNotes(input: {
   limit: number;
   calendarYear: boolean;
   hasOneSided: boolean;
+  hasUnpaired: boolean;
   rateLimit: Parameters<typeof rateLimitNote>[0];
 }): string[] {
   return [
@@ -54,6 +55,11 @@ function comparisonNotes(input: {
     input.hasOneSided
       ? 'NEW = delivered only in the current window; STOPPED = delivered only in the baseline. ' +
         'Neither is a 100% change, and neither is included in a percentage.'
+      : undefined,
+    input.hasUnpaired
+      ? 'UNPAIRED = returned for one window only, where the other window was truncated — so it ' +
+        'may simply have ranked below the cutoff there rather than not delivered. Raise limit ' +
+        'or narrow the query to resolve those into NEW/STOPPED.'
       : undefined,
     rateLimitNote(input.rateLimit),
   ].filter((note): note is string => note !== undefined);
@@ -172,7 +178,11 @@ export const comparePeriods = tool({
       until: baseline.until,
     });
 
-    const rows = comparePairs(previous.rows, current.rows);
+    const truncation = {
+      baseline: previous.paging.hasMore,
+      current: current.paging.hasMore,
+    };
+    const rows = comparePairs(previous.rows, current.rows, truncation);
     const currentTotals = totalsOf(current.rows);
     const previousTotals = totalsOf(previous.rows);
     const totals = {
@@ -185,12 +195,13 @@ export const comparePeriods = tool({
       currency: currentTotals.currency ?? previousTotals.currency,
     };
 
-    const truncated = current.paging.hasMore || previous.paging.hasMore;
+    const truncated = truncation.baseline || truncation.current;
     const notes = comparisonNotes({
       truncated,
       limit: args.limit,
       calendarYear: args.compare_to === 'previous_year' && !args.baseline_since,
-      hasOneSided: rows.some((row) => row.presence !== 'both'),
+      hasOneSided: rows.some((row) => row.presence === 'new' || row.presence === 'stopped'),
+      hasUnpaired: rows.some((row) => row.presence === 'unpaired'),
       rateLimit: current.rateLimit ?? previous.rateLimit,
     });
 

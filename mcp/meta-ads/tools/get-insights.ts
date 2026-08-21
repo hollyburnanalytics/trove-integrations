@@ -86,7 +86,18 @@ export const getInsights = tool({
         "Report conversions on these windows instead of the ad set's own setting (e.g. " +
           '["1d_click","7d_click"]). Leave unset to match Ads Manager.',
       ),
-    campaign_ids: z.array(z.string()).optional().describe('Only these campaign ids.'),
+    action_report_time: z
+      .enum(['impression', 'conversion', 'mixed'])
+      .optional()
+      .describe(
+        "Which date a conversion is counted on: impression (Meta's default — the day the ad " +
+          'was seen), conversion (the day it happened, as most analytics tools count), or ' +
+          'mixed (clicks by impression time, conversions by conversion time).',
+      ),
+    campaign_ids: z
+      .array(z.string())
+      .optional()
+      .describe("Only these campaign ids. A single id is read from the campaign's own edge."),
     adset_ids: z.array(z.string()).optional().describe('Only these ad set ids.'),
     ad_ids: z.array(z.string()).optional().describe('Only these ad ids.'),
     sort_by: z
@@ -150,6 +161,7 @@ export const getInsights = tool({
       breakdowns,
       attributionWindows: args.attribution_windows,
       useUnifiedAttribution: true,
+      actionReportTime: args.action_report_time,
       campaignIds: args.campaign_ids,
       adsetIds: args.adset_ids,
       adIds: args.ad_ids,
@@ -173,6 +185,10 @@ export const getInsights = tool({
       args.attribution_windows?.length
         ? `Conversions are reported on ${args.attribution_windows.join(', ')}, which will differ ` +
           "from Ads Manager unless those match the ad set's own attribution setting."
+        : undefined,
+      args.action_report_time && args.action_report_time !== 'impression'
+        ? `Conversions are dated by ${args.action_report_time} time, not by impression time — ` +
+          'Ads Manager defaults to impression time, so totals will not line up with it.'
         : undefined,
       rateLimitNote(result.rateLimit),
     ].filter((note): note is string => note !== undefined);

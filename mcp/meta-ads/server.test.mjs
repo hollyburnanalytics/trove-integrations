@@ -1021,4 +1021,156 @@ describe('meta-ads MCP server', () => {
       expect(wrong.error).toContain('narrows a search for ads');
     });
   });
+  describe("checked against Meta's own generated SDK (v26.0)", () => {
+    it("reads one campaign from the campaign's own insights edge, with no filter", async () => {
+      let seen;
+      await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '6000000001', campaign_ids: ['23851'], level: 'adset' },
+        authed((url) => {
+          seen = { path: new URL(url).pathname, filtering: query(url).get('filtering') };
+          return { json: { data: [] } };
+        }),
+      );
+      // The campaign/adset/ad objects each expose the same 23-parameter
+      // insights edge, so the single-entity case never needs `filtering`.
+      expect(seen.path).toBe('/v26.0/23851/insights');
+      expect(seen.filtering).toBeNull();
+    });
+
+    it('falls back to the account edge when one edge cannot express the request', async () => {
+      let seen;
+      await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '6000000002', campaign_ids: ['1'], ad_ids: ['9', '10'] },
+        authed((url) => {
+          seen = { path: new URL(url).pathname, filtering: query(url).get('filtering') };
+          return { json: { data: [] } };
+        }),
+      );
+      expect(seen.path).toBe('/v26.0/act_6000000002/insights');
+      expect(JSON.parse(seen.filtering)).toEqual([
+        { field: 'ad.id', operator: 'IN', value: ['9', '10'] },
+        { field: 'campaign.id', operator: 'IN', value: ['1'] },
+      ]);
+    });
+
+    it('asks for the SDK-confirmed metrics that are not in `actions`', async () => {
+      let fields;
+      await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '6000000003', metrics: ['core', 'conversions', 'video'] },
+        authed((url) => {
+          fields = query(url).get('fields').split(',');
+          return { json: { data: [] } };
+        }),
+      );
+      // cost per 1,000 PEOPLE, next to cpm's cost per 1,000 impressions.
+      expect(fields).toContain('cpp');
+      // Custom conversions are not a subset of the standard action types.
+      expect(fields).toContain('conversions');
+      expect(fields).toContain('cost_per_conversion');
+      expect(fields).toContain('video_avg_time_watched_actions');
+    });
+
+    it('passes action_report_time through and warns it will not match Ads Manager', async () => {
+      let asked;
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '6000000004', action_report_time: 'conversion' },
+        authed((url) => {
+          asked = query(url);
+          return { json: { data: [campaignRow()] } };
+        }),
+      );
+      expect(asked.get('action_report_time')).toBe('conversion');
+      expect(result.result.text).toContain('not by impression time');
+    });
+
+    it('accepts data_maximum, which is not the same window as maximum', async () => {
+      let asked;
+      await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '6000000005', date_preset: 'data_maximum' },
+        authed((url) => {
+          asked = query(url);
+          return { json: { data: [] } };
+        }),
+      );
+      expect(asked.get('date_preset')).toBe('data_maximum');
+    });
+
+    it('totals a repeated action type instead of keeping the last slice', async () => {
+      const result = await callTool(
+        server,
+        'get_insights',
+        { ad_account_id: '6000000006' },
+        authed({
+          json: {
+            data: [
+              campaignRow({
+                actions: [
+                  { action_type: 'omni_purchase', value: '40' },
+                  { action_type: 'omni_purchase', value: '21' },
+                ],
+              }),
+            ],
+          },
+        }),
+      );
+      // Last-one-wins would report 21 of 61 purchases as the whole.
+      expect(result.result.structured.rows[0].actions.omni_purchase).toBe(61);
+    });
+
+    it('will not call a campaign NEW when the window it is missing from was truncated', async () => {
+      const current = JSON.stringify({ since: '2026-08-01', until: '2026-08-07' });
+      const baseline = JSON.stringify({ since: '2026-07-25', until: '2026-07-31' });
+      const result = await callTool(
+        server,
+        'compare_periods',
+        { ad_account_id: '6000000007', since: '2026-08-01', until: '2026-08-07', limit: 1 },
+        authed((url) => {
+          const range = query(url).get('time_range');
+          if (range === current) {
+            return { json: { data: [campaignRow({ campaign_id: 'x', campaign_name: 'Riser' })] } };
+          }
+          return {
+            json: {
+              // The baseline page is full and Meta says there is more, so a
+              // campaign absent from it may just have ranked below the cutoff.
+              data: [campaignRow({ campaign_id: 'y', campaign_name: 'Other' })],
+              [range === baseline ? 'paging' : 'unused']: {
+                cursors: { after: 'C' },
+                next: 'https://graph.facebook.com/next',
+              },
+            },
+          };
+        }),
+      );
+      const riser = result.result.structured.rows.find((row) => row.name === 'Riser');
+      expect(riser.presence).toBe('unpaired');
+      expect(result.result.text).toContain('[UNPAIRED]');
+      expect(result.result.text).toContain('below the cutoff');
+    });
+
+    it('still calls it NEW when the baseline window was complete', async () => {
+      const current = JSON.stringify({ since: '2026-08-01', until: '2026-08-07' });
+      const result = await callTool(
+        server,
+        'compare_periods',
+        { ad_account_id: '6000000008', since: '2026-08-01', until: '2026-08-07' },
+        authed((url) =>
+          query(url).get('time_range') === current
+            ? { json: { data: [campaignRow({ campaign_id: 'x', campaign_name: 'Riser' })] } }
+            : { json: { data: [] } },
+        ),
+      );
+      expect(result.result.structured.rows[0].presence).toBe('new');
+    });
+  });
 });

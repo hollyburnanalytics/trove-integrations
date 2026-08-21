@@ -45,6 +45,7 @@ export interface InsightsQuery {
   breakdowns: readonly string[];
   attributionWindows?: readonly string[];
   useUnifiedAttribution: boolean;
+  actionReportTime?: string;
   campaignIds?: readonly string[];
   adsetIds?: readonly string[];
   adIds?: readonly string[];
@@ -111,16 +112,40 @@ function validateWindow(query: InsightsQuery, now: Date): number | undefined {
   return Math.round((to - from) / DAY_MS) + 1;
 }
 
-/** Meta's `filtering` entries for the entity ids a caller narrowed to. */
-function filters(query: InsightsQuery): { field: string; operator: string; value: string[] }[] {
-  const pairs: [string, readonly string[] | undefined][] = [
-    ['campaign.id', query.campaignIds],
-    ['adset.id', query.adsetIds],
-    ['ad.id', query.adIds],
+/** A `filtering` clause, as Graph takes them. */
+interface Filter {
+  field: string;
+  operator: string;
+  value: string[];
+}
+
+/**
+ * Where to ask, and what to filter by, for the ids a caller narrowed to.
+ *
+ * One id, one kind → its OWN insights edge (`/{campaign_id}/insights`), which
+ * is documented on the campaign, ad set and ad objects alike and takes the same
+ * 23 parameters as the account edge. That is the common case — "how did this
+ * campaign do" — and routing it through a documented parent edge rather than a
+ * `filtering` clause on `campaign.id` keeps the most-used path on the
+ * best-attested ground.
+ *
+ * Anything else — several ids, or two kinds at once — still goes to the account
+ * edge with `filtering`, which is the only way to express it.
+ */
+function narrowing(query: InsightsQuery): { path: string; filters: Filter[] } {
+  const lists: [readonly string[] | undefined, string][] = [
+    [query.adIds, 'ad.id'],
+    [query.adsetIds, 'adset.id'],
+    [query.campaignIds, 'campaign.id'],
   ];
-  return pairs
-    .filter(([, ids]) => ids && ids.length > 0)
-    .map(([field, ids]) => ({ field, operator: 'IN', value: [...(ids ?? [])] }));
+  const present = lists.filter(([ids]) => ids !== undefined && ids.length > 0);
+  const only = present.length === 1 ? present[0] : undefined;
+  const single = only?.[0]?.length === 1 ? only[0]?.[0] : undefined;
+  if (single !== undefined) return { path: `/${single}/insights`, filters: [] };
+  return {
+    path: `/${query.accountId}/insights`,
+    filters: present.map(([ids, field]) => ({ field, operator: 'IN', value: [...(ids ?? [])] })),
+  };
 }
 
 /**
@@ -152,8 +177,13 @@ export function insightsParams(query: InsightsQuery, now: Date): URLSearchParams
     // disagree with Ads Manager for the same campaign, same dates.
     params.set('use_unified_attribution_setting', 'true');
   }
-  const filtering = filters(query);
-  if (filtering.length > 0) params.set('filtering', JSON.stringify(filtering));
+  const { filters } = narrowing(query);
+  if (filters.length > 0) params.set('filtering', JSON.stringify(filters));
+  // Meta dates a conversion by the IMPRESSION that earned it by default, so a
+  // purchase today can land on last week's row. Analytics tools usually count
+  // it on the conversion date instead, and that difference is the usual reason
+  // two dashboards disagree — so the choice is exposed rather than assumed.
+  if (query.actionReportTime) params.set('action_report_time', query.actionReportTime);
   if (query.sortBy) {
     params.set(
       'sort',
@@ -230,7 +260,7 @@ export async function fetchInsights(
   query: InsightsQuery,
 ): Promise<InsightsResult> {
   const params = insightsParams(query, ctx.now());
-  const { body, rateLimit } = await graphGet(ctx, `/${query.accountId}/insights`, params);
+  const { body, rateLimit } = await graphGet(ctx, narrowing(query).path, params);
   const raw = Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [];
   const rows = raw.map((row) => mapRow(row, query.level, query.breakdowns));
   const sortedLocally = enforceSort(rows, query);

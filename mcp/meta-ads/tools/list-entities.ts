@@ -1,7 +1,14 @@
 import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { accountCurrency } from '../account.ts';
 import { graphGet, readPaging, resolveAccountId } from '../client.ts';
-import { fromMinorUnits, money } from '../fields.ts';
+import {
+  ENTITY_FIELDS,
+  ENTITY_LEVELS,
+  ENTITY_STATUSES,
+  type EntityLevel,
+  fromMinorUnits,
+  money,
+} from '../fields.ts';
 import { rateLimitNote } from '../notes.ts';
 
 /**
@@ -14,41 +21,6 @@ import { rateLimitNote } from '../notes.ts';
  * there — and those are exactly the entities somebody asking "why did spend
  * drop" needs to see.
  */
-
-/** The object types this tool lists, and the edge each one lives on. */
-const ENTITY_LEVELS = ['campaign', 'adset', 'ad'] as const;
-type EntityLevel = (typeof ENTITY_LEVELS)[number];
-
-/**
- * Delivery statuses worth filtering on.
- *
- * `effective_status` rather than `status`, because they differ in the case that
- * matters: an ACTIVE ad inside a paused campaign has `status: ACTIVE` and
- * `effective_status: CAMPAIGN_PAUSED`, and only the second one explains why it
- * is not spending.
- */
-const STATUSES = [
-  'ACTIVE',
-  'PAUSED',
-  'DELETED',
-  'ARCHIVED',
-  'CAMPAIGN_PAUSED',
-  'ADSET_PAUSED',
-  'IN_PROCESS',
-  'WITH_ISSUES',
-  'PENDING_REVIEW',
-  'DISAPPROVED',
-] as const;
-
-const FIELDS: Record<EntityLevel, string> = {
-  campaign:
-    'id,name,status,effective_status,objective,buying_type,bid_strategy,daily_budget,' +
-    'lifetime_budget,budget_remaining,start_time,stop_time,updated_time',
-  adset:
-    'id,name,status,effective_status,campaign_id,optimization_goal,billing_event,bid_amount,' +
-    'bid_strategy,daily_budget,lifetime_budget,budget_remaining,start_time,end_time,updated_time',
-  ad: 'id,name,status,effective_status,adset_id,campaign_id,created_time,updated_time',
-};
 
 /**
  * Choose the narrowest edge that answers the question.
@@ -159,7 +131,7 @@ export const listEntities = tool({
       .describe("List only this campaign's ad sets or ads (uses the campaign edge directly)."),
     adset_id: z.string().optional().describe("List only this ad set's ads."),
     effective_status: z
-      .array(z.enum(STATUSES))
+      .array(z.enum(ENTITY_STATUSES))
       .optional()
       .describe(
         "Keep only these delivery statuses. Omit for Meta's default (everything not deleted).",
@@ -202,7 +174,7 @@ export const listEntities = tool({
     const accountId = resolveAccountId(ctx, args.ad_account_id);
     const path = edgeFor(args.level, accountId, args.campaign_id, args.adset_id);
     const params = new URLSearchParams({
-      fields: FIELDS[args.level],
+      fields: ENTITY_FIELDS[args.level],
       limit: String(args.limit),
     });
     if (args.effective_status?.length) {

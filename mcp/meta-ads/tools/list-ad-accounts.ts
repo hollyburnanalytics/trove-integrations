@@ -1,7 +1,7 @@
 import { tool, z } from '@ontrove/extend/toolkit';
 import { accountStatus } from '../account.ts';
 import { graphGet, readPaging } from '../client.ts';
-import { fromMinorUnits, money } from '../fields.ts';
+import { ACCOUNT_FIELDS, fromMinorUnits, money } from '../fields.ts';
 import { rateLimitNote } from '../notes.ts';
 
 /**
@@ -45,7 +45,7 @@ export const listAdAccounts = tool({
   }),
   async handler(args, ctx) {
     const params = new URLSearchParams({
-      fields: 'account_id,name,currency,timezone_name,account_status,amount_spent',
+      fields: ACCOUNT_FIELDS,
       limit: String(args.limit),
     });
     if (args.after) params.set('after', args.after);

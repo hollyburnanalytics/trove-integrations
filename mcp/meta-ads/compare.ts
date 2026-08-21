@@ -94,7 +94,7 @@ export function delta(before: number | undefined, after: number | undefined): De
 export const comparisonShape = z.object({
   id: z.string().optional(),
   name: z.string().optional(),
-  presence: z.enum(['both', 'new', 'stopped']),
+  presence: z.enum(['both', 'new', 'stopped', 'unpaired']),
   currency: z.string().optional(),
   spend: deltaShape,
   impressions: deltaShape,
@@ -113,10 +113,39 @@ function keyOf(row: InsightRow): string {
   return row.id ?? row.name ?? 'account';
 }
 
+/**
+ * Whether a one-sided entity really is new or stopped.
+ *
+ * Only if the window it is missing from was COMPLETE. Each window is fetched
+ * top-spend-first, so when a page was truncated an entity absent from it may
+ * simply have ranked below the cutoff — calling that "NEW" is a fabricated
+ * story about a campaign that has been running for months. `unpaired` is the
+ * honest label for "cannot tell from what was returned".
+ */
+function presenceOf(
+  hasBefore: boolean,
+  hasAfter: boolean,
+  truncated: Truncation,
+): Comparison['presence'] {
+  if (hasBefore && hasAfter) return 'both';
+  if (hasAfter) return truncated.baseline ? 'unpaired' : 'new';
+  return truncated.current ? 'unpaired' : 'stopped';
+}
+
+/** Which of the two windows came back as a partial page. */
+export interface Truncation {
+  baseline: boolean;
+  current: boolean;
+}
+
 /** Build the before/after record for one entity. */
-function compareOne(before: InsightRow | undefined, after: InsightRow | undefined): Comparison {
+function compareOne(
+  before: InsightRow | undefined,
+  after: InsightRow | undefined,
+  truncated: Truncation,
+): Comparison {
   const current = after ?? before;
-  const presence: Comparison['presence'] = before && after ? 'both' : after ? 'new' : 'stopped';
+  const presence = presenceOf(before !== undefined, after !== undefined, truncated);
   const beforeBuys = before ? purchases(before) : {};
   const afterBuys = after ? purchases(after) : {};
   const metric = (key: string): Delta => delta(before?.metrics[key], after?.metrics[key]);
@@ -146,12 +175,13 @@ function compareOne(before: InsightRow | undefined, after: InsightRow | undefine
 export function comparePairs(
   baseline: readonly InsightRow[],
   current: readonly InsightRow[],
+  truncated: Truncation,
 ): Comparison[] {
   const before = new Map(baseline.map((row) => [keyOf(row), row]));
   const after = new Map(current.map((row) => [keyOf(row), row]));
   const keys = new Set([...before.keys(), ...after.keys()]);
   return [...keys]
-    .map((key) => compareOne(before.get(key), after.get(key)))
+    .map((key) => compareOne(before.get(key), after.get(key), truncated))
     .sort((a, b) => Math.abs(b.spend.change ?? 0) - Math.abs(a.spend.change ?? 0));
 }
 

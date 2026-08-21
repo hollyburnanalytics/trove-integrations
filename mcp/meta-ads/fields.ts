@@ -12,7 +12,20 @@ import { ToolError } from '@ontrove/extend/toolkit';
  */
 
 /** Metrics every level gets, whatever else was asked for. */
-const CORE = ['spend', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm', 'reach', 'frequency'] as const;
+const CORE = [
+  'spend',
+  'impressions',
+  'clicks',
+  'ctr',
+  'cpc',
+  'cpm',
+  // Cost per 1,000 PEOPLE reached, next to cpm's cost per 1,000 impressions.
+  // The gap between the two is frequency, which is the whole story in an
+  // audience the campaign has saturated.
+  'cpp',
+  'reach',
+  'frequency',
+] as const;
 
 const ENGAGEMENT = [
   'inline_link_clicks',
@@ -30,6 +43,12 @@ const CONVERSIONS = [
   'cost_per_action_type',
   'purchase_roas',
   'website_purchase_roas',
+  // `conversions` is NOT a subset of `actions`: it counts the account's
+  // configured custom conversions, which an account can define over events
+  // that never appear as a standard action type.
+  'conversions',
+  'conversion_values',
+  'cost_per_conversion',
 ] as const;
 
 const VIDEO = [
@@ -39,6 +58,7 @@ const VIDEO = [
   'video_p75_watched_actions',
   'video_p100_watched_actions',
   'video_thruplay_watched_actions',
+  'video_avg_time_watched_actions',
 ] as const;
 
 /**
@@ -124,6 +144,58 @@ export function fieldsFor(
   return [...new Set([...IDENTITY[level], 'date_start', 'date_stop', ...chosen, ...extra])];
 }
 
+/** The object types `list_entities` lists. */
+export const ENTITY_LEVELS = ['campaign', 'adset', 'ad'] as const;
+export type EntityLevel = (typeof ENTITY_LEVELS)[number];
+
+/**
+ * Delivery statuses worth filtering on.
+ *
+ * `effective_status` rather than `status`, because they differ in the case that
+ * matters: an ACTIVE ad inside a paused campaign has `status: ACTIVE` and
+ * `effective_status: CAMPAIGN_PAUSED`, and only the second one explains why it
+ * is not spending.
+ */
+export const ENTITY_STATUSES = [
+  'ACTIVE',
+  'PAUSED',
+  'DELETED',
+  'ARCHIVED',
+  'CAMPAIGN_PAUSED',
+  'ADSET_PAUSED',
+  'IN_PROCESS',
+  'WITH_ISSUES',
+  'PENDING_REVIEW',
+  'DISAPPROVED',
+  // Both of these are reasons an ad is not spending today, which is the
+  // question this filter exists to answer.
+  'PENDING_BILLING_INFO',
+  'PREAPPROVED',
+] as const;
+
+/**
+ * What to read about each object type.
+ *
+ * Deliberately shallow — no `targeting`, no `creative{…}` expansion. Those are
+ * large nested objects that would dominate a listing whose job is to say what
+ * exists, what state it is in, and what it may spend.
+ */
+export const ENTITY_FIELDS: Record<EntityLevel, string> = {
+  campaign:
+    'id,name,status,effective_status,objective,buying_type,bid_strategy,daily_budget,' +
+    'lifetime_budget,budget_remaining,start_time,stop_time,updated_time',
+  adset:
+    'id,name,status,effective_status,campaign_id,optimization_goal,billing_event,bid_amount,' +
+    'bid_strategy,daily_budget,lifetime_budget,budget_remaining,start_time,end_time,updated_time',
+  ad: 'id,name,status,effective_status,adset_id,campaign_id,created_time,updated_time',
+};
+
+/**
+ * What to read about an ad account: enough to pick one and to explain an empty
+ * report (a non-ACTIVE status is the usual reason) without a second call.
+ */
+export const ACCOUNT_FIELDS = 'account_id,name,currency,timezone_name,account_status,amount_spent';
+
 /** Meta's named windows, verbatim — the cheapest ranges to query. */
 export const DATE_PRESETS = [
   'today',
@@ -144,7 +216,10 @@ export const DATE_PRESETS = [
   'last_28d',
   'last_30d',
   'last_90d',
+  // `maximum` is as far back as the API serves (37 months); `data_maximum` is
+  // as far back as THIS account has data. They differ for a young account.
   'maximum',
+  'data_maximum',
 ] as const;
 
 /**

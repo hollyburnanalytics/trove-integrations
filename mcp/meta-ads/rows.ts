@@ -27,14 +27,23 @@ interface ActionEntry {
   value?: unknown;
 }
 
-/** Flatten an action list into `{action_type: value}`. */
+/**
+ * Flatten an action list into `{action_type: value}`.
+ *
+ * Repeats are ADDED rather than overwritten. With the default
+ * `action_breakdowns` an action type appears once, so this never fires today —
+ * but the moment a list is broken down by anything else (device, destination),
+ * the same action type appears once per slice, and last-one-wins would report
+ * one slice as the whole. A total is the one answer that stays true under
+ * either shape.
+ */
 function actionMap(raw: unknown): Record<string, number> | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: Record<string, number> = {};
   for (const entry of raw as ActionEntry[]) {
     const type = typeof entry?.action_type === 'string' ? entry.action_type : undefined;
     const value = num(entry?.value);
-    if (type !== undefined && value !== undefined) out[type] = value;
+    if (type !== undefined && value !== undefined) out[type] = (out[type] ?? 0) + value;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }

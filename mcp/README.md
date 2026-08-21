@@ -920,13 +920,42 @@ is reported too — Meta puts it only in the `x-fb-ads-insights-throttle` and
 `x-business-use-case-usage` headers, so the toolkit taps `ctx.fetch` to read
 them and warns at 75% rather than at the call that fails.
 
-**Not yet exercised against a live ad account.** Everything above is built from
-Meta's own reference (parameters, error codes, the 37-month and per-call data
-limits) and covered by 48 tests against recorded response shapes — but unlike
-`seats-aero` or `fred`, no claim here rests on a measurement of the real API.
-The places to check first with a real token: whether `sort` is honoured at each
-level, whether `summary` is accepted alongside every field set, and whether
-`filtering` on `campaign.id`/`adset.id`/`ad.id` narrows as expected.
+**Audited against Meta's own generated SDK, not against memory.** The Marketing
+API publishes no OpenAPI document, but `facebook-python-business-sdk` is
+generated from the same internal schema and pinned to a Graph version — so every
+field, breakdown, date preset, attribution window and delivery status it accepts
+is a string literal in those classes. `bun run audit:meta`
+(`scripts/audit-meta-fields.mjs`) diffs what this toolkit declares against what
+the SDK says exists and fails on anything that is not there. That closes the
+toolkit's one un-typecheckable gap: a field name is just a string in a query
+parameter, `tsc` is happy with `spendz`, every test passes because the fixtures
+are ours, and the mistake surfaces only as an error 100 that fails the WHOLE
+request. Against SDK v26.0 all 14 declared sets are clean — 47 insights fields
+at ad level, 20 date presets, 11 breakdowns, 12 effective statuses, and the
+campaign/ad set/ad/account field lists. The same audit confirmed the parameter
+surface (`summary` is `list<string>`, `filtering` is `list<Object>`,
+`time_range` is a `map`, `sort` is `list<string>`) and that `effective_status`
+is accepted on the parent edges this toolkit uses.
+
+Three capabilities are deliberately **not** exposed, and the audit is what makes
+that a decision rather than an oversight. `action_breakdowns` re-shapes `actions`
+from a list into a matrix (one entry per action type × slice) that a flat
+`{action_type: count}` map cannot represent — `actionMap` now totals repeats
+rather than keeping the last, so the shape cannot silently mislead if it ever
+arrives. `results`/`cost_per_result` — what Ads Manager's own "Results" column
+shows — use an `indicator` + nested `values` shape rather than
+`{action_type, value}`, so they would parse to nothing. And `time_ranges` would
+let `compare_periods` fetch both windows in ONE call; it stays two calls so that
+each window gets its own top-N page, rather than one page split unpredictably
+across both.
+
+**Still not exercised against a live ad account.** Names and parameter types are
+now verified; behaviour is not. The places to check first with a real token:
+whether `sort` is honoured at each level (the toolkit already checks the
+returned order rather than trusting it), whether `summary` is accepted alongside
+every field set, and whether `filtering` on `campaign.id`/`adset.id`/`ad.id`
+narrows as expected — the single-id case now avoids that question entirely by
+reading from the entity's own insights edge.
 
 ‡ `hathitrust` — covers the **public Bibliographic API** only: given an ISBN/OCLC/LCCN/HathiTrust id it reports holdings + per-copy access rights (Full view = readable public domain, vs Limited = search-only). Its distinctive value over Open Library / Google Books is that **rights signal** — "can I actually read this, or only search it?" — plus a deep-link to the reader for full-view scans. It's an *exact-identifier* lookup against HathiTrust's catalog records, not a fuzzy search: an `htid` is the most reliable key and ISBN works well for modern books, but an arbitrary edition's OCLC can miss even when the work is held. HathiTrust gates corpus-wide *full-text search* (it 403s automated clients and requires partner credentials), so that surface is intentionally not exposed. For full-text search *inside* a book, use `gutenberg`.
 

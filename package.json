@@ -31,6 +31,7 @@
     "validate": "bun scripts/validate-registry.mjs",
     "validate:schemas": "bun scripts/orphan-fields.mjs",
     "audit:dates": "bun scripts/audit-dates.mjs",
+    "audit:meta": "bun scripts/audit-meta-fields.mjs",
     "source": "bun bin/run-source.mjs"
   },
   "dependencies": {
