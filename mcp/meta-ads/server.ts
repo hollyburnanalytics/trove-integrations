@@ -62,7 +62,8 @@ export default defineToolkit({
     'with status, objective and budget; and period-over-period comparisons ranked by what ' +
     'moved. Requires a META_ACCESS_TOKEN secret — a user or system-user token with the ' +
     'ads_read permission (plus META_APP_SECRET only if the app requires appsecret_proof). ' +
-    `Read-only; pinned to Graph API ${GRAPH_VERSION}.`,
+    `Read-only; pinned to Graph API ${GRAPH_VERSION}. An independent client for the Meta ` +
+    'Marketing API — not affiliated with, sponsored by, or endorsed by Meta.',
   icon: '📊',
   version: '1.0.0',
   secrets: ['META_ACCESS_TOKEN', 'META_APP_SECRET'],

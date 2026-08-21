@@ -1,7 +1,7 @@
 {
   "id": "meta-ads",
   "name": "Meta Ads Performance",
-  "description": "Read Meta (Facebook/Instagram) ad performance from the official Marketing API: spend, impressions, clicks, CTR, CPC, CPM, reach and attributed conversions (purchases, leads, ROAS) at account, campaign, ad set or ad level; daily/weekly/monthly time series; breakdowns by age, gender, country, placement and device; campaign/ad set/ad listings with status, objective and budget; and period-over-period comparisons ranked by what moved. Requires a META_ACCESS_TOKEN secret — a user or system-user token with the ads_read permission (plus META_APP_SECRET only if the app requires appsecret_proof). Read-only; pinned to Graph API v26.0.",
+  "description": "Read Meta (Facebook/Instagram) ad performance from the official Marketing API: spend, impressions, clicks, CTR, CPC, CPM, reach and attributed conversions (purchases, leads, ROAS) at account, campaign, ad set or ad level; daily/weekly/monthly time series; breakdowns by age, gender, country, placement and device; campaign/ad set/ad listings with status, objective and budget; and period-over-period comparisons ranked by what moved. Requires a META_ACCESS_TOKEN secret — a user or system-user token with the ads_read permission (plus META_APP_SECRET only if the app requires appsecret_proof). Read-only; pinned to Graph API v26.0. An independent client for the Meta Marketing API — not affiliated with, sponsored by, or endorsed by Meta.",
   "icon": "📊",
   "version": "1.0.0",
   "secrets": [

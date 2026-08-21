@@ -966,6 +966,53 @@ its currency; a query narrowed to one entity no longer demands an ad account it
 would never use; and a `previous_year` baseline clamps 29 February instead of
 rolling it into March.
 
+**Terms posture — read this before listing it anywhere.** Meta's terms constrain
+who may call this API and on whose behalf, and they bind the owner of the *Meta
+app* the token belongs to. This toolkit deliberately has **no Trove-operated
+Meta app and no OAuth flow**: each user brings a `META_ACCESS_TOKEN` minted from
+their **own** app or Business Manager system user, against ad accounts they
+already hold a role on. That is Meta's supported "own use" path, and it keeps
+App Review, Advanced Access to `ads_read`, and Business Verification as
+obligations of the account owner rather than of Trove
+([Marketing API authorization](https://developers.facebook.com/docs/marketing-api/overview/authorization)).
+The practical cost is the default **Limited/Development access tier**, which
+Meta describes as heavily rate-limited per ad account — which is why the
+rate-limit telemetry above exists.
+
+Two things follow, and neither is optional:
+
+- **Trove is the user's service provider for this data, and has to act like
+  one.** Meta's [Platform Terms](https://developers.facebook.com/terms/) tell a
+  developer to "protect and not transfer, share, or solicit" access tokens
+  except to service providers operating their app. A user pasting their token
+  into Trove is doing exactly that, which puts Trove inside the service-provider
+  carve-out and inherits its duties: process the data only for that user's
+  purposes, delete Platform Data when it is no longer needed or when the user
+  asks, and never sell or license it. The in-isolate response cache (5-minute
+  TTL, per-caller salted) and the vault-held token are the technical side of
+  that; the written commitment is a product/legal artefact, not a code one.
+- **The moment Trove operates a single Meta app that users OAuth into, the
+  posture changes completely.** That is the "Tech Provider" model, and it
+  requires Advanced Access to `ads_read` via App Review, Business Verification,
+  and a Data Protection Assessment — plus, per the current docs, a usage record
+  (500+ Marketing API calls in 15 days, <15% error rate) before the access tier
+  can be raised. Do not ship that variant on the strength of this one.
+
+**Naming.** Meta's
+[logo and trademark rules for apps](https://developers.facebook.com/docs/app-review/resources/logos/)
+forbid a third-party product name that includes their marks or combines them
+with generic terms; accurately stating that a product *integrates with* the
+platform is permitted. The directory id `meta-ads` is an interoperability
+identifier in the sense NOTICE.md describes, the same as `ebay` or `x`; the
+user-facing name and description avoid presenting a Meta brand as the product,
+and state plainly that this is an independent client, not affiliated with or
+endorsed by Meta.
+
+**None of the above is legal advice, and it is not a clearance.** It is a
+reading of the published terms as of the date of this commit, recorded so the
+open questions are visible. A public marketplace listing should have counsel
+look at the service-provider commitment and the naming before it goes live.
+
 Three capabilities are deliberately **not** exposed, and the audit is what makes
 that a decision rather than an oversight. `action_breakdowns` re-shapes `actions`
 from a list into a matrix (one entry per action type × slice) that a flat
