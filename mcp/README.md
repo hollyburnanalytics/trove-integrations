@@ -71,6 +71,7 @@ in their manifest `egress`.
 |---|---|---|---|
 | `jonas-premier` | `list_companies`, `search_jobs`, `get_job_transactions`, `get_job_estimate`, `search_vendors`, `get_ap_invoices`, `get_ap_payments`, `get_gl_accounts`, `get_subcontracts`, `get_subcontract_change_orders` | api.jonas-premier.com (Premier Construction Software External API) | **`JONAS_USERNAME` + `JONAS_PASSWORD`** ¶|
 | `toggl` | `check_auth`, `list_workspaces`, `get_time_entries` | api.track.toggl.com (Toggl Track API v9) | **`TOGGL_API_TOKEN`** ⏱|
+| `meta-ads` | `list_ad_accounts`, `list_entities`, `get_insights`, `compare_periods` | graph.facebook.com (Meta Marketing API v26.0) | **`META_ACCESS_TOKEN`** (+ optional `META_APP_SECRET`) 📊|
 
 ### Social
 | Toolkit | Tools | Upstream | Auth |
@@ -867,6 +868,169 @@ for a region or cabin it does not serve answers with an empty 200 — the cabin
 case is refused client-side from the program table, and an empty result now names
 the filters that silently produce one instead of just saying "no matches".
 
+📊 `meta-ads` — **ad performance out of the official Meta Marketing API**
+(Facebook + Instagram), pinned to Graph `v26.0`. Four tools: `list_ad_accounts`
+(also the "does my token work" check), `list_entities` (campaigns/ad sets/ads
+with status, objective, budget and schedule), `get_insights` (the workhorse) and
+`compare_periods` (two windows, joined and ranked by what moved). Auth is one
+long-lived `META_ACCESS_TOKEN` with the **`ads_read`** permission — a user or
+system-user token — attached as a Bearer header rather than an `access_token`
+query parameter, so it never lands in a URL that gets logged or cached;
+`META_APP_SECRET` is optional and needed only by apps that switched on "Require
+app secret", where it becomes the `appsecret_proof` every call must carry.
+
+Four properties of this API shaped the design, and each is a way to be
+**confidently wrong** rather than to fail:
+
+- **Absence is not zero.** Insights rows exist only for entities that DELIVERED
+  in the window, so a paused campaign is missing rather than reported at zero.
+  An empty answer therefore means "nothing ran", not "nothing exists" — every
+  empty result says so in prose, and `list_entities` is the tool that can see
+  what insights cannot.
+- **Every number arrives as a string, and money carries no currency.** `spend`
+  is `"1204.55"`; a daily budget is `"5000"` in the account currency's *minimum
+  unit*. Metrics are coerced, budgets converted (with the raw minor units kept
+  alongside, and the six whole-unit currencies — JPY, KRW, VND, CLP, ISK, TWD —
+  handled rather than divided by 100), and the currency CODE printed next to
+  every amount: a Canadian advertiser reading a bare `$` is wrong by a third.
+- **The page is not the result set.** Graph pages everything, and its
+  `cursors.after` is present on the last page too — so `paging.next` is the only
+  honest "there is more" signal. It drives an explicit `TRUNCATED:` line, and
+  `include_totals` asks Meta for spend across ALL matching rows so a truncated
+  answer can say what share of the account it holds. `sort` is a documented
+  parameter but nothing in the response says whether it was applied, so the
+  returned order is CHECKED rather than trusted; when it does not match the
+  request the page is sorted here and the caller is told the ordering covers the
+  page only.
+- **Rates cannot be averaged.** Totals recompute CTR/CPC/CPM from summed
+  spend/clicks/impressions — the mean of per-row CTR weights a 12-impression
+  campaign like a 12-million one — and `reach` is deliberately never totalled,
+  because it counts de-duplicated people and summing it double-counts everyone
+  reached twice.
+
+Two more decisions are worth naming. **Attribution defaults to the ad set's own
+setting** (`use_unified_attribution_setting`), because the first question anyone
+asks of a number is why it disagrees with Ads Manager; passing explicit
+`attribution_windows` overrides it and says so in the result. And **errors are
+sorted by remedy**: Graph answers an expired token, a missing Business Manager
+role, a rate limit, a too-large query and a mistyped field all with HTTP 400 and
+a code, so `errors.ts` maps those codes back to four different instructions
+instead of sending everyone to check their credentials. Rate-limit consumption
+is reported too — Meta puts it only in the `x-fb-ads-insights-throttle` and
+`x-business-use-case-usage` headers, so the toolkit taps `ctx.fetch` to read
+them and warns at 75% rather than at the call that fails.
+
+**Audited against Meta's own generated SDK, not against memory.** The Marketing
+API publishes no OpenAPI document, but `facebook-python-business-sdk` is
+generated from the same internal schema and pinned to a Graph version — so every
+field, breakdown, date preset, attribution window and delivery status it accepts
+is a string literal in those classes. `bun run audit:meta`
+(`scripts/audit-meta-fields.mjs`) diffs what this toolkit declares against what
+the SDK says exists and fails on anything that is not there. That closes the
+toolkit's one un-typecheckable gap: a field name is just a string in a query
+parameter, `tsc` is happy with `spendz`, every test passes because the fixtures
+are ours, and the mistake surfaces only as an error 100 that fails the WHOLE
+request. Against SDK v26.0 all 14 declared sets are clean — 47 insights fields
+at ad level, 20 date presets, 11 breakdowns, 12 effective statuses, and the
+campaign/ad set/ad/account field lists. The same audit confirmed the parameter
+surface (`summary` is `list<string>`, `filtering` is `list<Object>`,
+`time_range` is a `map`, `sort` is `list<string>`) and that `effective_status`
+is accepted on the parent edges this toolkit uses.
+
+The audit's second use is reading the SDK's `_field_types`, which is where a
+review of this work found the sharpest bug: Meta types **costs and averages as
+the same `list<AdsActionStats>` shape as counts**. `cost_per_conversion` and
+`video_avg_time_watched_actions` are wire-identical to
+`video_p25_watched_actions`, so the obvious mapping totals them — and the sum of
+a cost per purchase and a cost per lead is the cost of nothing. Counts are now
+totalled; costs, averages, ratios and rates become a per-type map (`rates`, or a
+named one like `costPerConversion`), with the scalar kept only where a single
+type makes it real. The same rule stops two ROAS ratios being added into a
+return nobody earned. A second pass found the same defect one field further out —
+`outbound_clicks_ctr`, in the DEFAULT metric set, is a list of per-action-type
+percentages — so the rule was inverted: only an explicit allowlist of count
+fields is summed, everything else (including anything a caller adds through
+`extra_fields`) becomes a map, and `audit:meta` fails if a name on that
+allowlist stops being list-typed upstream. Its `--verbose` output prints every
+list-typed field the toolkit requests and how it combines it.
+
+The other findings across the two reviews: `effective_status` is a **different
+enum per level** (6 values for a campaign, 7 for an ad set, 12 for an ad —
+review statuses are ad-only), so it is validated per level and audited per level
+rather than as a union; campaign/ad set/ad ids have to be numeric before they
+are interpolated into a URL path, since `/{id}/insights` with a non-id would
+point an authenticated call somewhere the caller never named; an entity id is
+not scoped to the account resolved for it, so both `get_insights` and
+`list_entities` now report the account the DATA came from and price budgets in
+its currency; a query narrowed to one entity no longer demands an ad account it
+would never use; and a `previous_year` baseline clamps 29 February instead of
+rolling it into March.
+
+**Terms posture — read this before listing it anywhere.** Meta's terms constrain
+who may call this API and on whose behalf, and they bind the owner of the *Meta
+app* the token belongs to. This toolkit deliberately has **no Trove-operated
+Meta app and no OAuth flow**: each user brings a `META_ACCESS_TOKEN` minted from
+their **own** app or Business Manager system user, against ad accounts they
+already hold a role on. That is Meta's supported "own use" path, and it keeps
+App Review, Advanced Access to `ads_read`, and Business Verification as
+obligations of the account owner rather than of Trove
+([Marketing API authorization](https://developers.facebook.com/docs/marketing-api/overview/authorization)).
+The practical cost is the default **Limited/Development access tier**, which
+Meta describes as heavily rate-limited per ad account — which is why the
+rate-limit telemetry above exists.
+
+Two things follow, and neither is optional:
+
+- **Trove is the user's service provider for this data, and has to act like
+  one.** Meta's [Platform Terms](https://developers.facebook.com/terms/) tell a
+  developer to "protect and not transfer, share, or solicit" access tokens
+  except to service providers operating their app. A user pasting their token
+  into Trove is doing exactly that, which puts Trove inside the service-provider
+  carve-out and inherits its duties: process the data only for that user's
+  purposes, delete Platform Data when it is no longer needed or when the user
+  asks, and never sell or license it. The in-isolate response cache (5-minute
+  TTL, per-caller salted) and the vault-held token are the technical side of
+  that; the written commitment is a product/legal artefact, not a code one.
+- **The moment Trove operates a single Meta app that users OAuth into, the
+  posture changes completely.** That is the "Tech Provider" model, and it
+  requires Advanced Access to `ads_read` via App Review, Business Verification,
+  and a Data Protection Assessment — plus, per the current docs, a usage record
+  (500+ Marketing API calls in 15 days, <15% error rate) before the access tier
+  can be raised. Do not ship that variant on the strength of this one.
+
+**Naming.** Meta's
+[logo and trademark rules for apps](https://developers.facebook.com/docs/app-review/resources/logos/)
+forbid a third-party product name that includes their marks or combines them
+with generic terms; accurately stating that a product *integrates with* the
+platform is permitted. The directory id `meta-ads` is an interoperability
+identifier in the sense NOTICE.md describes, the same as `ebay` or `x`; the
+user-facing name and description avoid presenting a Meta brand as the product,
+and state plainly that this is an independent client, not affiliated with or
+endorsed by Meta.
+
+**None of the above is legal advice, and it is not a clearance.** It is a
+reading of the published terms as of the date of this commit, recorded so the
+open questions are visible. A public marketplace listing should have counsel
+look at the service-provider commitment and the naming before it goes live.
+
+Three capabilities are deliberately **not** exposed, and the audit is what makes
+that a decision rather than an oversight. `action_breakdowns` re-shapes `actions`
+from a list into a matrix (one entry per action type × slice) that a flat
+`{action_type: count}` map cannot represent. `results`/`cost_per_result` — what
+Ads Manager's own "Results" column shows — use an `indicator` + nested `values`
+shape rather than `{action_type, value}`, so they would parse to nothing. And
+`time_ranges` would let `compare_periods` fetch both windows in ONE call; it
+stays two calls so that each window gets its own top-N page, rather than one
+page split unpredictably across both.
+
+**Still not exercised against a live ad account.** Names and parameter types are
+now verified; behaviour is not. The places to check first with a real token:
+whether `sort` is honoured at each level (the toolkit already checks the
+returned order rather than trusting it), whether `summary` is accepted alongside
+every field set, and whether `filtering` on `campaign.id`/`adset.id`/`ad.id`
+narrows as expected — the single-id case now avoids that question entirely by
+reading from the entity's own insights edge.
+
 ‡ `hathitrust` — covers the **public Bibliographic API** only: given an ISBN/OCLC/LCCN/HathiTrust id it reports holdings + per-copy access rights (Full view = readable public domain, vs Limited = search-only). Its distinctive value over Open Library / Google Books is that **rights signal** — "can I actually read this, or only search it?" — plus a deep-link to the reader for full-view scans. It's an *exact-identifier* lookup against HathiTrust's catalog records, not a fuzzy search: an `htid` is the most reliable key and ISBN works well for modern books, but an arbitrary edition's OCLC can miss even when the work is held. HathiTrust gates corpus-wide *full-text search* (it 403s automated clients and requires partner credentials), so that surface is intentionally not exposed. For full-text search *inside* a book, use `gutenberg`.
 
 § `gutenberg` — beyond discovery, the high-value tool is `search_inside`: legal full-text search within any public-domain book, good for **locating/verifying a quotation** (exact wording + citation offset), **detecting misquotes** (e.g. "Elementary, my dear Watson" returns zero matches in the Sherlock canon), and **term-frequency** checks (e.g. "Napoleon" × 588 in *War and Peace*). `get_excerpt` then pages through the text from any offset. Book text is fetched from the fast University of Waterloo PG mirror (gutenberg.org's own origin serves a 1 MB book in ~10 s — past the gateway wall-clock; the mirror returns *War and Peace*'s 3.4 MB in ~1 s), with gutenberg.org as fallback. Matching is case-insensitive substring (not regex/semantic), and non-English title searches need exact accents.
@@ -893,7 +1057,7 @@ trove secret set <slug> <NAME> <value>          # for servers that declare secre
 trove toolkit ls                                    # list your deployed servers
 ```
 
-Servers declaring secrets (`mapbox`, `fred`, `ebay`, `x`, `jonas-premier`, `seats-aero`) return a clear "not set" /
+Servers declaring secrets (`mapbox`, `fred`, `ebay`, `x`, `jonas-premier`, `seats-aero`, `meta-ads`) return a clear "not set" /
 "not declared" error until their secret is set (a secret is registered to a
 server the first time you `trove secret set` it). Auth'd APIs redeem the key at
 call time from the encrypted vault via `ctx.secret(...)` — it is never bundled or

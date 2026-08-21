@@ -52,6 +52,7 @@ bun run typecheck     # Typecheck both halves (toolkits + sources)
 bun run check         # the whole gate: lint + lint:sonar + lint:baseline + coverage + typecheck + validate
 bun run validate      # Validate registry.json consistency
 bun run audit:dates   # Live publish-date coverage per source (hits real upstreams)
+bun run audit:meta    # Check meta-ads' field/enum names against Meta's generated SDK
 ```
 
 ### Toolchain matrix

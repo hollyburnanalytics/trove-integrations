@@ -16,6 +16,16 @@ These are functional API identifiers reproduced for interoperability — a clien
 cannot call the API without sending the exact values it defines — not creative
 content. Taddy is not affiliated with this project.
 
+`mcp/meta-ads/` calls the Meta Marketing API and names its fields, breakdowns,
+enum values and error codes as that API defines them; `scripts/audit-meta-fields.mjs`
+reads those same identifiers from Meta's publicly published
+`facebook-python-business-sdk` **at runtime, over the network**, to check the
+toolkit against them. No Meta code is vendored, copied into, or redistributed
+with this repository. Meta, Facebook and Instagram are trademarks of Meta
+Platforms, Inc.; this project is an independent client, not affiliated with,
+sponsored by, or endorsed by Meta. See `mcp/README.md` for the toolkit's terms
+posture and the obligations that come with it.
+
 ## Third-party software
 
 The sources ship a single third-party runtime package:
