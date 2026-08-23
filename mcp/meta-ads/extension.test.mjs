@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { callTool } from '../lib/test-harness.mjs';
-import server from './server.ts';
+import server from './extension.ts';
 
 const TOKEN = 'EAAtest_token';
 // Named for what it is to the test — an HMAC key — so the secret-scanner rule
