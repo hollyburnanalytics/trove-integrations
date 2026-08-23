@@ -7,7 +7,9 @@ import {
   setFetch,
   syncOf,
 } from '../lib/test-fixtures.ts';
+import type { ConfigValue, Cursor, SourceContext } from '../lib/types.js';
 import extension from './extension.ts';
+import type { Filing } from './filing-document.ts';
 import { filterFilings } from './filing-document.ts';
 
 const sync = syncOf(extension);
@@ -18,32 +20,33 @@ const sync = syncOf(extension);
  * `{ ok, json }` object no longer models what comes back.
  */
 /**
- * @param {unknown} payload - What the endpoint returns.
- * @returns {Promise<Response>} The response.
+ * @param payload - What the endpoint returns.
+ * @returns The response.
  */
-function jsonResponse(payload) {
+function jsonResponse(payload: unknown): Promise<Response> {
   return Promise.resolve(Response.json(payload));
 }
 
 /**
  * A real text `Response`.
  *
- * @param {string} body - The body.
- * @param {number} [status] - The status code.
- * @returns {Promise<Response>} The response.
+ * @param body - The body.
+ * @param status - The status code.
+ * @returns The response.
  */
-function textResponse(body, status = 200) {
+function textResponse(body: string, status: number = 200): Promise<Response> {
   return Promise.resolve(new Response(body, { status }));
 }
 
 /**
  * A context for this source.
  *
- * @param {import('../lib/types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @param {Record<string, import('../lib/types.d.ts').ConfigValue>} [config] - Source config.
- * @returns {import('../lib/types.d.ts').SourceContext} The context.
+ * @param cursor - The previous run's cursor.
+ * @param config - Source config.
+ * @returns The context.
  */
-const makeContext = (cursor, config = {}) => makeSourceContext({ config, cursor });
+const makeContext = (cursor?: Cursor, config: Record<string, ConfigValue> = {}): SourceContext =>
+  makeSourceContext({ config, cursor });
 
 // Mock SEC ticker map response
 const TICKER_MAP_RESPONSE = {
@@ -139,8 +142,7 @@ describe('sec-filings source', () => {
     mockFetchForSync();
 
     // Set cursor to 2025-01-01 — should skip the 2024-03-01 10-K
-    /** @type {import('../lib/types.d.ts').Cursor} */
-    const cursor = { type: 'date', value: '2025-01-01T00:00:00.000Z' };
+    const cursor: Cursor = { type: 'date', value: '2025-01-01T00:00:00.000Z' };
     const result = await sync(makeContext(cursor, { tickers: ['TEST'] }));
 
     expect(result.documents).toHaveLength(2);
@@ -315,12 +317,12 @@ describe('sec-filings source', () => {
  * One filing, with the fields `filterFilings` reads and the rest left blank —
  * `fetchFilings` zips every column, so a real filing always carries them.
  *
- * @param {string} accessionNumber - Its accession number.
- * @param {string} filingDate - The day it was filed.
- * @param {string} form - Its form type.
- * @returns {import('./filing-document.ts').Filing} The filing.
+ * @param accessionNumber - Its accession number.
+ * @param filingDate - The day it was filed.
+ * @param form - Its form type.
+ * @returns The filing.
  */
-const filing = (accessionNumber, filingDate, form) => ({
+const filing = (accessionNumber: string, filingDate: string, form: string): Filing => ({
   accessionNumber,
   filingDate,
   form,

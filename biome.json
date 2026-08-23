@@ -92,7 +92,7 @@
       }
     },
     {
-      "includes": ["**/test/**/*.mjs", "**/*.test.mjs"],
+      "includes": ["**/test/**/*.mjs", "**/test/**/*.ts", "**/*.test.mjs", "**/*.test.ts"],
       "linter": {
         "rules": {
           "suspicious": {

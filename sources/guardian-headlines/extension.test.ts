@@ -21,10 +21,10 @@ const makeContext = (config = {}) => makeSourceContext({ config });
 /**
  * Answer every request with `xml`.
  *
- * @param {string} xml - The feed body.
- * @returns {void} Nothing; it installs the mock.
+ * @param xml - The feed body.
+ * @returns Nothing; it installs the mock.
  */
-function respondWith(xml) {
+function respondWith(xml: string): void {
   setFetch(() => Promise.resolve(okResponse(xml)));
 }
 

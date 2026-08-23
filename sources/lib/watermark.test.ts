@@ -24,6 +24,7 @@ import {
 } from '@ontrove/extend/source';
 import { describe, expect, it } from 'vitest';
 import { dateCursorValue } from './test-fixtures.ts';
+import type { Cursor } from './types.js';
 
 describe('date cursor', () => {
   it('reads the typed shape', () => {
@@ -75,8 +76,7 @@ describe('idSet cursor', () => {
 });
 
 describe('advanceDateCursor', () => {
-  /** @type {import('./types.d.ts').Cursor} */
-  const previous = { type: 'date', value: '2026-01-01T00:00:00.000Z' };
+  const previous: Cursor = { type: 'date', value: '2026-01-01T00:00:00.000Z' };
 
   it('advances to the max date when every sub-source succeeded', () => {
     expect(

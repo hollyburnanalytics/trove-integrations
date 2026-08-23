@@ -14,16 +14,17 @@ import {
   xmlText,
 } from './feeds.ts';
 import { at, fetchMock, makeSourceContext, setFetch } from './test-fixtures.ts';
+import type { Cursor, Document, SourceContext } from './types.js';
 
 // --- Shared test helpers ---
 
 /**
  * Answer every request with `xml`.
  *
- * @param {string} xml - The feed body.
- * @returns {void} Nothing; it installs the resolved value.
+ * @param xml - The feed body.
+ * @returns Nothing; it installs the resolved value.
  */
-function mockFetch(xml) {
+function mockFetch(xml: string): void {
   const encoded = new TextEncoder().encode(xml);
   fetchMock().mockResolvedValue({
     ok: true,
@@ -46,10 +47,12 @@ function mockFetch(xml) {
 /**
  * A context, optionally resuming from `cursor`.
  *
- * @param {import('./types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @returns {import('./types.d.ts').SourceContext} The context.
+ * @param cursor - The previous run's cursor.
+ * @param overrides - Any other context field to replace.
+ * @returns The context.
  */
-const makeContext = (cursor, overrides = {}) => makeSourceContext({ cursor, ...overrides });
+const makeContext = (cursor?: Cursor, overrides: Partial<SourceContext> = {}): SourceContext =>
+  makeSourceContext({ cursor, ...overrides });
 
 // --- stableId ---
 
@@ -490,9 +493,9 @@ describe('syncRSS', () => {
       idPrefix: 'test',
       defaultAuthor: 'Author',
     });
-
-    /** @type {Record<string, import('./types.d.ts').Document | undefined>} */
-    const byTitle = Object.fromEntries(result.documents.map((d) => [d.title, d]));
+    const byTitle: Record<string, Document | undefined> = Object.fromEntries(
+      result.documents.map((d) => [d.title, d]),
+    );
     expect(byTitle.Dated?.date).toBe('2024-01-15T00:00:00.000Z');
     expect(byTitle.Undated?.date).toBeUndefined();
     expect(byTitle['Junk date']?.date).toBeUndefined();
@@ -616,9 +619,7 @@ describe('syncRSS', () => {
       <item><title>No Date</title><link>https://example.com/1</link><guid>1</guid></item>
     </channel></rss>`;
     mockFetch(xml);
-
-    /** @type {import('./types.d.ts').Cursor} */
-    const cursor = { type: 'date', value: '2024-01-01T00:00:00.000Z' };
+    const cursor: Cursor = { type: 'date', value: '2024-01-01T00:00:00.000Z' };
     const result = await syncRSS(makeContext(cursor), {
       feedUrl: 'https://example.com/feed',
       idPrefix: 'test',
@@ -786,10 +787,10 @@ describe('htmlToText', () => {
 /**
  * A response streaming `text` once.
  *
- * @param {string} text - The body.
- * @returns {unknown} The response, as far as `fetchPage` reads it.
+ * @param text - The body.
+ * @returns The response, as far as `fetchPage` reads it.
  */
-function streamBody(text) {
+function streamBody(text: string): unknown {
   const encoded = new TextEncoder().encode(text);
   return {
     ok: true,
@@ -813,10 +814,10 @@ const FAIL_500 = Symbol('fail-500');
 /**
  * Answer by URL fragment: the first key the URL contains wins.
  *
- * @param {Record<string, string | symbol>} map - Fragment → body, or {@link FAIL_500}.
- * @returns {void} Nothing; it installs the implementation.
+ * @param map - Fragment → body, or {@link FAIL_500}.
+ * @returns Nothing; it installs the implementation.
  */
-function mockFetchByUrl(map) {
+function mockFetchByUrl(map: Record<string, string | symbol>): void {
   fetchMock().mockImplementation((url) => {
     for (const [fragment, body] of Object.entries(map)) {
       if (String(url).includes(fragment)) {

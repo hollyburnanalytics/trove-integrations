@@ -6,6 +6,7 @@ import { htmlToText } from '../lib/html-markdown.ts';
 afterAll(() => vi.restoreAllMocks());
 
 import { at, makeSourceContext, okResponse, setFetch, syncOf } from '../lib/test-fixtures.ts';
+import type { Cursor, SourceContext } from '../lib/types.js';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -31,11 +32,10 @@ function installFetch() {
 // `vi.mock` is hoisted above the imports, so a module-scope binding would not
 // exist yet when this runs.
 vi.mock('../lib/feeds.ts', async (importOriginal) => {
-  const real = /** @type {typeof import('../lib/feeds.ts')} */ (await importOriginal());
+  const real = (await importOriginal()) as typeof import('../lib/feeds.ts');
   return {
     ...real,
-    /** @type {(context: import('../lib/types.d.ts').SourceContext) => boolean} */
-    hasDeadlinePassed: vi.fn((context) => real.hasDeadlinePassed(context)),
+    hasDeadlinePassed: vi.fn((context: SourceContext) => real.hasDeadlinePassed(context)),
     // The REAL implementation, not a stand-in.
     //
     // This was a tag-stripper — `parse(html).textContent` — and it broke the
@@ -53,14 +53,12 @@ vi.mock('../lib/feeds.ts', async (importOriginal) => {
     // Faithful to the real safeDate: undefined for missing AND invalid dates.
     // (`new Date(invalid).toISOString()` throws — and module mocks can leak
     // across test files, so an unfaithful mock here breaks other suites.)
-    /** @type {(value: string | undefined) => string | undefined} */
-    safeDate: (value) => {
+    safeDate: (value: string | undefined): string | undefined => {
       if (!value) return;
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
     },
-    /** @type {(prefix: string, input: string) => string} */
-    stableId: (prefix, input) => `${prefix}-${input}`,
+    stableId: (prefix: string, input: string) => `${prefix}-${input}`,
   };
 });
 
@@ -132,11 +130,11 @@ const SECTIONS = {
 /**
  * Route `fetchPage` over the fixture payloads.
  *
- * @param {{ release?: unknown, catalog?: unknown, tree?: unknown }} map - Payload
+ * @param map - Payload
  *   overrides; anything omitted falls back to the module-level fixture.
- * @returns {void} Nothing; it installs the implementation.
+ * @returns Nothing; it installs the implementation.
  */
-function route(map) {
+function route(map: { release?: unknown; catalog?: unknown; tree?: unknown }): void {
   fetchPage.mockImplementation(async (url) => {
     if (url.includes('/rex/release.json')) return JSON.stringify(map.release ?? RELEASE);
     if (url.includes('type=books.Book')) return JSON.stringify(map.catalog ?? CATALOG);
@@ -152,10 +150,22 @@ function route(map) {
 /**
  * A context for this source.
  *
- * @param {Partial<import('../lib/types.d.ts').SourceContext>} [overrides] - Fields to replace.
- * @returns {import('../lib/types.d.ts').SourceContext} The context.
+ * @param overrides - Fields to replace.
+ * @returns The context.
  */
-const context = (overrides = {}) => makeSourceContext(overrides);
+const context = (overrides: Partial<SourceContext> = {}): SourceContext =>
+  makeSourceContext(overrides);
+
+/**
+ * openstax's resume state: which books are finished, and where a book that ran
+ * out of time should pick up. Neither shape the shared `Cursor` declares.
+ */
+type OpenstaxCheckpoint = {
+  /** The keys of the books already fully synced. */
+  done: string[];
+  /** The book left mid-sync, and the leaf section to resume at. */
+  partial?: { key: string; next: number };
+};
 
 /**
  * The bespoke checkpoint this source keeps, read back off the cursor it returned.
@@ -164,12 +174,11 @@ const context = (overrides = {}) => makeSourceContext(overrides);
  * shared `Cursor` declares — deliberately, and documented at the source's own
  * boundary. The assertions have to reach the same way the source does.
  *
- * @param {import('../lib/types.d.ts').Cursor | undefined} cursor - What `sync` returned.
- * @returns {{ done: string[], partial?: { key: string, next: number } }} The checkpoint.
+ * @param cursor - What `sync` returned.
+ * @returns The checkpoint.
  */
-function checkpoint(cursor) {
-  const value = /** @type {{ value?: { done: string[],
-    partial?: { key: string, next: number } } } | undefined} */ (cursor)?.value;
+function checkpoint(cursor: Cursor | undefined): OpenstaxCheckpoint {
+  const value = (cursor as { value?: OpenstaxCheckpoint } | undefined)?.value;
   if (!value) throw new Error(`expected an openstax checkpoint, got ${JSON.stringify(cursor)}`);
   return value;
 }
@@ -177,14 +186,12 @@ function checkpoint(cursor) {
 /**
  * A context resuming from an openstax checkpoint.
  *
- * @param {{ done: string[], partial?: { key: string, next: number } }} value - The checkpoint.
- * @returns {import('../lib/types.d.ts').SourceContext} The context.
+ * @param value - The checkpoint.
+ * @returns The context.
  */
-function resuming(value) {
+function resuming(value: OpenstaxCheckpoint): SourceContext {
   return context({
-    cursor: /** @type {import('../lib/types.d.ts').Cursor} */ (
-      /** @type {unknown} */ ({ type: 'idSet', value })
-    ),
+    cursor: { type: 'idSet', value } as unknown as Cursor,
   });
 }
 

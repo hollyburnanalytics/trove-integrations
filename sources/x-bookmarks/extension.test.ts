@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { at, idSetCursor, makeSourceContext, setFetch, syncOf } from '../lib/test-fixtures.ts';
+import type { Cursor, SourceContext } from '../lib/types.js';
 import extension from './extension.ts';
 
 const sync = syncOf(extension);
@@ -10,12 +11,8 @@ const sync = syncOf(extension);
  * the mock answers each of those three endpoints.
  */
 
-/**
- * The credentials this source needs, as the harness would supply them.
- *
- * @type {Record<string, string>}
- */
-const SECRETS = {
+/** The credentials this source needs, as the harness would supply them. */
+const SECRETS: Record<string, string> = {
   X_OAUTH_CLIENT_ID: 'client-id-123',
   X_OAUTH_REFRESH_TOKEN: 'refresh-token-abc',
 };
@@ -23,11 +20,11 @@ const SECRETS = {
 /**
  * A context carrying the two credentials this source requires.
  *
- * @param {import('../lib/types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @param {Record<string, string>} [secrets] - What `ctx.secret()` resolves from.
- * @returns {import('../lib/types.d.ts').SourceContext} The context.
+ * @param cursor - The previous run's cursor.
+ * @param secrets - What `ctx.secret()` resolves from.
+ * @returns The context.
  */
-const makeContext = (cursor, secrets = SECRETS) =>
+const makeContext = (cursor?: Cursor, secrets: Record<string, string> = SECRETS): SourceContext =>
   makeSourceContext({
     secrets,
     cursor,
@@ -49,22 +46,33 @@ const USERS = {
   ],
 };
 
+/** One bookmarked post, as the API returns it. */
+type Tweet = {
+  id: string;
+  text: string;
+  author_id: string;
+  created_at: string;
+  public_metrics: Record<string, number>;
+  entities: { hashtags: Array<{ tag: string }> } | undefined;
+};
+
+/** One page of the bookmarks endpoint's response. */
+type Page = {
+  data?: Tweet[];
+  includes?: typeof USERS;
+  meta?: { result_count?: number; next_token?: string };
+};
+
 /**
  * One bookmarked post, as the API returns it.
  *
- * @typedef {ReturnType<typeof tweet>} Tweet
- * @typedef {{ data?: Tweet[], includes?: typeof USERS, meta?: { result_count?: number,
- *   next_token?: string } }} Page
- *
- * @param {string} id - The post's id.
- * @param {string} text - Its body.
- * @param {string} authorId - Whose it is, joined against `includes.users`.
- * @param {string[]} [hashtags] - Its hashtag entities.
- * @returns {{ id: string, text: string, author_id: string, created_at: string,
- *   public_metrics: Record<string, number>,
- *   entities: { hashtags: Array<{ tag: string }> } | undefined }} The post.
+ * @param id - The post's id.
+ * @param text - Its body.
+ * @param authorId - Whose it is, joined against `includes.users`.
+ * @param hashtags - Its hashtag entities.
+ * @returns The post.
  */
-function tweet(id, text, authorId, hashtags = []) {
+function tweet(id: string, text: string, authorId: string, hashtags: string[] = []): Tweet {
   return {
     id,
     text,
@@ -78,31 +86,35 @@ function tweet(id, text, authorId, hashtags = []) {
 /**
  * A JSON response, as far as this source reads one.
  *
- * @param {unknown} body - What `.json()` resolves to.
- * @param {number} [status] - The status code; `ok` follows from it, as it does
+ * @param body - What `.json()` resolves to.
+ * @param status - The status code; `ok` follows from it, as it does
  *   on a real Response — there is no such thing as a 404 that succeeded.
- * @returns {Promise<Response>} The response.
+ * @returns The response.
  */
-function jsonResponse(body, status = 200) {
-  return Promise.resolve(
-    /** @type {Response} */ (
-      /** @type {unknown} */ ({ ok: status < 400, status, json: () => Promise.resolve(body) })
-    ),
-  );
+function jsonResponse(body: unknown, status: number = 200): Promise<Response> {
+  return Promise.resolve({
+    ok: status < 400,
+    status,
+    json: () => Promise.resolve(body),
+  } as unknown as Response);
 }
+
+/** What the installed fetch mock should answer with. */
+type FetchMockOptions = {
+  /** The grant's status code; whether it succeeded follows from it. */
+  tokenStatus?: number;
+  /** One body per bookmarks request, in order. */
+  pages?: Page[];
+};
 
 /**
  * Install a fetch mock answering token / users-me / bookmarks (paged).
  *
- * @param {object} [options] - What the mock should answer with.
- * @param {number} [options.tokenStatus] - The grant's status code; whether it
- *   succeeded follows from it.
- * @param {Page[]} [options.pages] - One body per bookmarks request, in order.
- * @returns {string[]} Every URL requested, in call order.
+ * @param options - What the mock should answer with.
+ * @returns Every URL requested, in call order.
  */
-function installFetch({ tokenStatus = 200, pages = [] } = {}) {
-  /** @type {string[]} */
-  const calls = [];
+function installFetch({ tokenStatus = 200, pages = [] }: FetchMockOptions = {}): string[] {
+  const calls: string[] = [];
   let pageIndex = 0;
   setFetch((url) => {
     calls.push(url);
@@ -168,12 +180,10 @@ describe('x-bookmarks source', () => {
   it('still resumes from a LEGACY `value` cursor', async () => {
     // Not a `Cursor` — that is the point of this test. The legacy shape is
     // asserted as the source will really meet it on a Mac being upgraded.
-    const cursor = /** @type {import('../lib/types.d.ts').Cursor} */ (
-      /** @type {unknown} */ ({
-        type: 'idSet',
-        value: ['1900000000000000100', '1900000000000000101'],
-      })
-    );
+    const cursor = {
+      type: 'idSet',
+      value: ['1900000000000000100', '1900000000000000101'],
+    } as unknown as Cursor;
     installFetch({
       pages: [
         {
@@ -210,8 +220,7 @@ describe('x-bookmarks source', () => {
     // The shape the platform can actually parse. `parseWatermark` requires
     // `values`, so the old cursor read as null in the cloud — this source would
     // have re-fetched every bookmark on every run the moment it left the Mac.
-    /** @type {import('../lib/types.d.ts').Cursor} */
-    const cursor = {
+    const cursor: Cursor = {
       type: 'idSet',
       values: ['1900000000000000100', '1900000000000000101'],
       max: 1000,

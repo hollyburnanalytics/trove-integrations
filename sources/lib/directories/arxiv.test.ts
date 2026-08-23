@@ -5,10 +5,10 @@ import { parseCategories, query, specToCategory } from './arxiv.ts';
 /**
  * A ListSets response containing the given `[spec, name]` pairs.
  *
- * @param {...[string, string]} pairs - One `[setSpec, setName]` per `<set>`.
- * @returns {string} The OAI-PMH document.
+ * @param pairs - One `[setSpec, setName]` per `<set>`.
+ * @returns The OAI-PMH document.
  */
-function listSets(...pairs) {
+function listSets(...pairs: [string, string][]): string {
   const sets = pairs
     .map(
       ([spec, name]) => `<set>\n  <setSpec>${spec}</setSpec>\n  <setName>${name}</setName>\n</set>`,
@@ -20,12 +20,15 @@ function listSets(...pairs) {
 /**
  * A directory context whose fetch answers with `body` as text.
  *
- * @param {string} body - The response body.
- * @param {number} [status] - The status code; `ok` follows from it, as it does
+ * @param body - The response body.
+ * @param status - The status code; `ok` follows from it, as it does
  *   on a real Response — there is no such thing as a 404 that succeeded.
- * @returns {ReturnType<typeof makeDirectoryContext>} The context.
+ * @returns The context.
  */
-function contextReturning(body, status = 200) {
+function contextReturning(
+  body: string,
+  status: number = 200,
+): ReturnType<typeof makeDirectoryContext> {
   return makeDirectoryContext({ ok: status < 400, status, text: async () => body });
 }
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { at, makeSourceContext, okResponse, setFetch, syncOf } from '../lib/test-fixtures.ts';
+import type { ConfigValue, Cursor, Document, SourceContext } from '../lib/types.js';
 import extension, { PAGE_SIZE } from './extension.ts';
 
 const sync = syncOf(extension);
@@ -23,30 +24,31 @@ const fetchPage = vi.fn();
 /**
  * Route the source's fetches through the `fetchPage` spy.
  *
- * @returns {void} Nothing; it installs the mock.
+ * @returns Nothing; it installs the mock.
  */
-function installFetch() {
+function installFetch(): void {
   setFetch(async (url) => okResponse(await fetchPage(String(url))));
 }
 
 /**
  * A context for this source.
  *
- * @param {Record<string, import('../lib/types.d.ts').ConfigValue>} [config] - Source config.
- * @param {import('../lib/types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @returns {import('../lib/types.d.ts').SourceContext} The context.
+ * @param config - Source config.
+ * @param cursor - The previous run's cursor.
+ * @returns The context.
  */
-const makeContext = (config = {}, cursor) => makeSourceContext({ config, cursor });
+const makeContext = (config: Record<string, ConfigValue> = {}, cursor?: Cursor): SourceContext =>
+  makeSourceContext({ config, cursor });
 
 /**
  * One Atom `<entry>`.
  *
- * @param {string} id - The arXiv id.
- * @param {string} publishedIso - Its `<published>` instant.
- * @param {string} [title] - Its `<title>`.
- * @returns {string} The element.
+ * @param id - The arXiv id.
+ * @param publishedIso - Its `<published>` instant.
+ * @param title - Its `<title>`.
+ * @returns The element.
  */
-function entryXml(id, publishedIso, title = `Paper ${id}`) {
+function entryXml(id: string, publishedIso: string, title: string = `Paper ${id}`): string {
   return `<entry>
     <id>http://arxiv.org/abs/${id}</id>
     <title>${title}</title>
@@ -59,10 +61,10 @@ function entryXml(id, publishedIso, title = `Paper ${id}`) {
 /**
  * An Atom feed wrapping `entries`.
  *
- * @param {string[]} entries - The rendered `<entry>` elements.
- * @returns {string} The document.
+ * @param entries - The rendered `<entry>` elements.
+ * @returns The document.
  */
-function feedOf(entries) {
+function feedOf(entries: string[]): string {
   return `<feed>${entries.join('\n')}</feed>`;
 }
 
@@ -256,9 +258,7 @@ describe('arxiv-papers source', () => {
         ? Promise.reject(new Error('arXiv down'))
         : Promise.resolve(feedOf([entryXml('2401.00002v1', '2024-01-15T00:00:00Z')])),
     );
-
-    /** @type {import('../lib/types.d.ts').Cursor} */
-    const cursor = { type: 'date', value: '2024-01-01T00:00:00.000Z' };
+    const cursor: Cursor = { type: 'date', value: '2024-01-01T00:00:00.000Z' };
     const result = await sync(makeContext({ queries: ['cat:cs.AI', 'cat:cs.LG'] }, cursor));
 
     expect(result.documents).toHaveLength(1);
@@ -280,10 +280,10 @@ describe('arxiv-papers source', () => {
 /**
  * Sync one Atom entry and return the document it produced.
  *
- * @param {string} xml - The `<entry>` element.
- * @returns {Promise<import('../lib/types.d.ts').Document>} The document.
+ * @param xml - The `<entry>` element.
+ * @returns The document.
  */
-async function firstDocument(xml) {
+async function firstDocument(xml: string): Promise<Document> {
   setFetch(async () => new Response(`<feed>${xml}</feed>`));
   const result = await sync(makeContext({ queries: ['cat:cs.AI'] }));
   return at(result.documents);

@@ -5,21 +5,21 @@ import { lookup, query } from './podcasts.ts';
 /**
  * A directory context whose fetch returns a canned response.
  *
- * @param {Response} response - What every request resolves to.
- * @returns {ReturnType<typeof makeDirectoryContext>} The context.
+ * @param response - What every request resolves to.
+ * @returns The context.
  */
-function contextReturning(response) {
+function contextReturning(response: Response): ReturnType<typeof makeDirectoryContext> {
   return makeDirectoryContext(response);
 }
 
 /**
  * A JSON Response with the given status.
  *
- * @param {unknown} body - The payload.
- * @param {number} [status] - The status code.
- * @returns {Response} The response.
+ * @param body - The payload.
+ * @param status - The status code.
+ * @returns The response.
  */
-function json(body, status = 200) {
+function json(body: unknown, status: number = 200): Response {
   return Response.json(body, { status });
 }
 
