@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { callTool, withSecret } from '../lib/test-harness.mjs';
-import server from './server.ts';
+import server from './extension.ts';
 
 /**
  * Transport-level error mapping (`xGet` → `mapXHttpError`/`parseXError` in

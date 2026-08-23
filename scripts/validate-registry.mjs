@@ -4,7 +4,7 @@
  * Validates registry.json against the filesystem and manifest files.
  *
  * Checks:
- *   1. has_code matches whether index.mjs exists
+ *   1. has_code matches whether an entry module exists
  *   2. status: implemented ↔ has_code: true consistency
  *   3. schedule values are from the allowed set
  *   4. path field matches actual directory
@@ -19,6 +19,15 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/extend/source';
+
+/**
+ * The filenames a source's entry module may carry.
+ *
+ * A list, not the literal `index.mjs` this was: `has_code` and the
+ * "implemented but no code" warning both hang off it, and keying on one name
+ * turned every ported source into a false alarm the moment the port started.
+ */
+const ENTRY_FILENAMES = ['extension.ts', 'index.ts', 'index.mjs'];
 
 /** Directory provider modules that exist on disk, resolved once. */
 const DIRECTORY_PROVIDER_DIR = new URL('../sources/lib/directories/', import.meta.url);
@@ -78,7 +87,7 @@ function discoverSources() {
     if (!existsSync(manifestPath)) continue;
 
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    const hasCode = existsSync(join(directory, 'index.mjs'));
+    const hasCode = ENTRY_FILENAMES.some((n) => existsSync(join(directory, n)));
 
     sources.push({ manifest, hasCode, path: `sources/${name}`, directory });
   }
@@ -133,7 +142,7 @@ for (const [id, regEntry] of registryById) {
 
   if (regEntry.has_code !== fsEntry.hasCode) {
     warn(
-      `${id}: has_code is ${regEntry.has_code} in registry but index.mjs ${fsEntry.hasCode ? 'exists' : 'does not exist'}`,
+      `${id}: has_code is ${regEntry.has_code} in registry but an entry module ${fsEntry.hasCode ? 'exists' : 'does not exist'}`,
     );
     if (fix) regEntry.has_code = fsEntry.hasCode;
   }
@@ -149,7 +158,7 @@ for (const [id, regEntry] of registryById) {
     if (fix) regEntry.status = 'implemented';
   }
   if (!fsEntry.hasCode && regEntry.status === 'implemented') {
-    warn(`${id}: status is "implemented" but no index.mjs exists`);
+    warn(`${id}: status is "implemented" but no ${ENTRY_FILENAMES.join('/')} exists`);
     if (fix) regEntry.status = 'stub';
   }
 }

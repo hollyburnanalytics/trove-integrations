@@ -20,6 +20,26 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(here, '..');
 const sourcesDirectory = path.join(repoRoot, 'sources');
 
+/**
+ * A source's entry module, by the names the convention has used.
+ *
+ * Keyed on a LIST rather than the literal `index.mjs` it was, because
+ * `implemented` gates the per-source assertions below: a source whose entry
+ * this cannot find is not reported as broken, it is silently skipped, and the
+ * suite stays green while checking less. The port to `extension.ts` took 32
+ * assertions out of this file that way before the test COUNT gave it away.
+ *
+ * @param {string} directory - The source directory.
+ * @returns {string | null} Absolute path to the entry, or `null` when absent.
+ */
+function entryPath(directory) {
+  for (const name of ['extension.ts', 'index.ts', 'index.mjs']) {
+    const candidate = path.join(directory, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 /** Discover every source directory: sources/{id}/manifest.json. */
 function discoverSources() {
   const sources = [];
@@ -31,11 +51,11 @@ function discoverSources() {
     const directory = path.join(sourcesDirectory, id);
     const manifestPath = path.join(directory, 'manifest.json');
     if (!existsSync(manifestPath)) continue;
-    const indexPath = path.join(directory, 'index.mjs');
+    const indexPath = entryPath(directory);
     sources.push({
       id,
       indexPath,
-      implemented: existsSync(indexPath),
+      implemented: indexPath !== null,
       manifest: JSON.parse(readFileSync(manifestPath, 'utf8')),
     });
   }
@@ -82,9 +102,13 @@ describe('source contract', () => {
       expect(registryIds.has(id)).toBe(true);
     });
 
-    if (implemented) {
+    if (implemented && indexPath !== null) {
+      // Both halves of the same fact, because `implemented` is derived from
+      // `indexPath` but TypeScript cannot see that across the destructure.
+      const entry = indexPath;
+
       it('default-exports a source declaration with an async sync(ctx)', async () => {
-        const module = await import(indexPath);
+        const module = await import(entry);
         // The default export is what `defineSource` returned, so importing the
         // module has already run the eager manifest validation. Reaching here
         // at all is half the assertion.
@@ -92,7 +116,7 @@ describe('source contract', () => {
       });
 
       it('manifest.json matches the declaration it is generated from', async () => {
-        const module = await import(indexPath);
+        const module = await import(entry);
         // The committed manifest is an artifact of the code (`toSourceManifest`),
         // and the readers that need it — Trove's catalog build, the Mac app —
         // cannot execute the source to derive it. Nothing else notices when the

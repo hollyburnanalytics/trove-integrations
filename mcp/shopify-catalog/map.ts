@@ -1,7 +1,7 @@
 /**
  * UCP product mapping for the Shopify Global Catalog toolkit: raw catalog
  * products (see the probes in the PR) to the compact tool-facing summaries.
- * Split from server.ts purely for file-size hygiene.
+ * Split from extension.ts purely for file-size hygiene.
  */
 
 /** ISO 4217 currencies with no minor unit (exponent 0). */

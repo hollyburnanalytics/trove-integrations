@@ -3,7 +3,7 @@
 The **Toolkit** half of the repo (see [`../docs/taxonomy.md`](../docs/taxonomy.md)).
 Every toolkit runs as a full MCP server on Trove's cloud; each subdirectory is
 one — a `manifest.json`
-(identity, egress allowlist, declared secrets) plus a `server.ts` built on the
+(identity, egress allowlist, declared secrets) plus a `extension.ts` built on the
 `@ontrove/extend/toolkit` SDK (`defineToolkit`, Zod input/output schemas, `ToolError`, the
 `ctx` capability object). They run as sandboxed servers behind the single Trove
 `/mcp` endpoint, with deny-by-default egress and per-tenant secret redemption via
@@ -12,7 +12,7 @@ one — a `manifest.json`
 > **SDK & toolchain note.** These servers are built on the `@ontrove/extend/toolkit` SDK
 > (`defineToolkit`, Zod schemas, `ToolError`, the `ctx` capability object) and
 > deployed with the `trove` CLI. `@ontrove/extend/toolkit` is published to npm; this repo
-> pins it as a dev dependency and **typechecks every `server.ts` against the
+> pins it as a dev dependency and **typechecks every `extension.ts` against the
 > published API in CI** (`bun run typecheck`), so the examples stay honest.
 
 Most tools are **read-only** (`readOnlyHint: true`); `resend` is the first

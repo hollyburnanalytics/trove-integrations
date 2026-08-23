@@ -3,7 +3,7 @@ import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Transport and shared shapes for the Cal.com v2 API — everything the tool
- * handlers in `server.ts` need to talk to api.cal.com, kept here so each handler
+ * handlers in `extension.ts` need to talk to api.cal.com, kept here so each handler
  * stays about its own tool.
  */
 

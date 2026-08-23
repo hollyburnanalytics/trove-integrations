@@ -3,8 +3,8 @@ import { ToolError } from '@ontrove/extend/toolkit';
 
 /**
  * Transport for the Shopify Global Catalog toolkit: the UCP JSON-RPC envelope,
- * the shipped agent profile, and id resolution. Split from server.ts for the
- * file-size ratchet; see server.ts for the toolkit overview.
+ * the shipped agent profile, and id resolution. Split from extension.ts for the
+ * file-size ratchet; see extension.ts for the toolkit overview.
  */
 
 /** Shopify's UCP catalog MCP endpoint. */

@@ -4,7 +4,7 @@ import { createEgressClient } from '../lib/egress.ts';
 /**
  * Shared Semantic Scholar plumbing: the resilient egress client, the Graph API
  * JSON fetch helper, and the paper wire/output shapes used by every tool in
- * `server.ts`.
+ * `extension.ts`.
  */
 
 const BASE_URL = 'https://api.semanticscholar.org/graph/v1';

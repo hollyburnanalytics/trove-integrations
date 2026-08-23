@@ -1,14 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { callTool } from '../lib/test-harness.mjs';
-import server from './server.ts';
+import server from './extension.ts';
 
 /**
  * Regression tests over **verbatim captured ECCC responses** (`fixtures/`).
  *
  * Every case here corresponds to a defect found by probing the live API — each
  * one a confidently wrong answer under an HTTP 200, which the hand-written
- * fixtures in `server.test.mjs` could not catch because they encoded the same
+ * fixtures in `extension.test.mjs` could not catch because they encoded the same
  * mistaken belief the code did.
  */
 
