@@ -1,6 +1,7 @@
 import { defineSource, stringList } from '@ontrove/extend/source';
 import { syncFeeds } from '../lib/feed-sync.ts';
 import { decodeHtmlEntities, safeDate, stableId } from '../lib/feeds.ts';
+import type { Document, FeedEnclosure, FeedItem } from '../lib/types.js';
 
 /**
  * Podcasts source: episodes of any show the user subscribes to by feed URL,
@@ -69,9 +70,7 @@ const AUDIO_EXTENSIONS = new Set(['mp3', 'm4a', 'm4b', 'aac', 'ogg', 'oga', 'opu
  *   is audio Trove can transcribe. A predicate rather than a boolean so the
  *   caller keeps the narrowing instead of re-checking the field it just proved.
  */
-function isAudioEnclosure(
-  enclosure: import('../lib/types.js').FeedEnclosure | undefined,
-): enclosure is import('../lib/types.js').FeedEnclosure {
+function isAudioEnclosure(enclosure: FeedEnclosure | undefined): enclosure is FeedEnclosure {
   if (!enclosure?.url) return false;
   if (enclosure.type) return enclosure.type.startsWith('audio/');
   try {
@@ -92,9 +91,7 @@ function isAudioEnclosure(
  * @returns The audio
  *   document, or nothing when the item carries no audio.
  */
-export function episodeDocument(
-  item: import('../lib/types.js').FeedItem,
-): import('../lib/types.js').Document | undefined {
+export function episodeDocument(item: FeedItem): Document | undefined {
   if (!isAudioEnclosure(item.enclosure)) return;
   return {
     id: stableId('podcast', item.guid || item.link),

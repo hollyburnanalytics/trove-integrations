@@ -1,6 +1,7 @@
 import { defineSource, stringList } from '@ontrove/extend/source';
 import { parse } from 'node-html-parser';
 import { fetchPage, hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.ts';
+import type { Cursor, Document, SourceContext } from '../lib/types.js';
 
 /**
  * OpenStax — free, peer-reviewed, openly licensed college textbooks.
@@ -147,11 +148,10 @@ function cleanContent(html: string | undefined): string {
  * @param archiveBase - The active archive's base URL.
  * @param book - The book to sync, and the version to read.
  * @param startIndex - Which leaf section to resume at.
- * @returns {Promise<{ sections: import('../lib/types.js').Document[],
- *   next: number | undefined }>} The sections collected, and where to resume.
+ * @returns The sections collected, and where to resume.
  */
 async function syncBook(
-  context: import('../lib/types.js').SourceContext,
+  context: SourceContext,
   archiveBase: string,
   book: VersionedBook,
   startIndex: number,
@@ -160,7 +160,7 @@ async function syncBook(
   const tree: BookTree = await fetchJson(`${archiveBase}/contents/${cnxId}@${version}.json`);
   const license = licenseCode(tree.license?.url);
   const pages = flattenPages(tree.tree);
-  const sections: import('../lib/types.js').Document[] = [];
+  const sections: Document[] = [];
   for (const [offset, page] of pages.slice(startIndex).entries()) {
     if (hasDeadlinePassed(context)) return { sections, next: startIndex + offset };
     const document = await buildSection(context, archiveBase, book, page, license);
@@ -184,12 +184,12 @@ async function syncBook(
  *   document, or nothing for a stub or a failed fetch.
  */
 async function buildSection(
-  context: import('../lib/types.js').SourceContext,
+  context: SourceContext,
   archiveBase: string,
   book: VersionedBook,
   page: TreeNode,
   license: string | undefined,
-): Promise<import('../lib/types.js').Document | undefined> {
+): Promise<Document | undefined> {
   const { cnxId, version } = book;
   const uuid = page.id.replace(/@.*/, '');
   let section: Section;
@@ -268,7 +268,7 @@ export default defineSource({
     }
     const done = new Set(stored?.done);
     const resume = stored?.partial; // { key, next } — a book left mid-sync
-    const documents: import('../lib/types.js').Document[] = [];
+    const documents: Document[] = [];
     let skipped = 0;
     let partial: PartialBook | undefined;
     for (const book of catalog) {
@@ -294,7 +294,7 @@ export default defineSource({
       documents,
       // Cast for the same reason as the read above: the checkpoint is this
       // source's own shape, not one of the two the shared `Cursor` declares.
-      cursor: { type: 'idSet', value } as unknown as import('../lib/types.js').Cursor,
+      cursor: { type: 'idSet', value } as unknown as Cursor,
       stats: { fetched: documents.length, skipped },
     };
   },

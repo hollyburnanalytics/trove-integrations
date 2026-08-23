@@ -1,5 +1,6 @@
 import { defineSource } from '@ontrove/extend/source';
 import { hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.ts';
+import type { Document, SourceContext } from '../lib/types.js';
 
 /**
  * X (Twitter) Bookmarks — your saved posts, synced into Trove.
@@ -103,9 +104,7 @@ function readSeenIds(cursor: unknown): string[] {
  * @param context - The harness context.
  * @returns The access token, valid for this run only.
  */
-async function refreshAccessToken(
-  context: import('../lib/types.js').SourceContext,
-): Promise<string> {
+async function refreshAccessToken(context: SourceContext): Promise<string> {
   const clientId = await context.requireSecret('X_OAUTH_CLIENT_ID');
   const refreshToken = await context.requireSecret('X_OAUTH_REFRESH_TOKEN');
 
@@ -247,10 +246,7 @@ function buildTitle(text: string, handle?: string): string {
  * @param usersById - The page's author expansions.
  * @returns The document.
  */
-function mapBookmark(
-  tweet: XTweet,
-  usersById: Map<string, XUser>,
-): import('../lib/types.js').Document {
+function mapBookmark(tweet: XTweet, usersById: Map<string, XUser>): Document {
   const author = usersById.get(tweet.author_id ?? '');
   const handle = author?.username;
   const text = htmlToText(tweet.text ?? '');
@@ -280,16 +276,15 @@ function mapBookmark(
  * @param accessToken - The user-context token.
  * @param userId - Whose bookmarks to read.
  * @param seenIds - Ids already ingested on a previous run.
- * @returns {Promise<{ documents: import('../lib/types.js').Document[],
- *   newIdsNewestFirst: string[], skipped: number }>} What this round collected.
+ * @returns What this round collected.
  */
 async function collectNewBookmarks(
-  context: import('../lib/types.js').SourceContext,
+  context: SourceContext,
   accessToken: string,
   userId: string,
   seenIds: Set<string>,
 ) {
-  const documents: import('../lib/types.js').Document[] = [];
+  const documents: Document[] = [];
   const newIdsNewestFirst: string[] = [];
   let skipped = 0;
   let paginationToken: string | undefined;
