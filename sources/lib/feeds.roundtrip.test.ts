@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stableId, syncRSS } from './feeds.ts';
 import { at, fetchMock, makeSourceContext, setFetch } from './test-fixtures.ts';
+import type { Cursor, SourceContext, SourceSyncResult } from './types.js';
 
 // Multi-run / cursor round-trip tests.
 //
@@ -18,10 +19,10 @@ import { at, fetchMock, makeSourceContext, setFetch } from './test-fixtures.ts';
 /**
  * A response streaming `content` once.
  *
- * @param {string} content - The body.
- * @returns {unknown} The response, as far as `fetchPage` reads it.
+ * @param content - The body.
+ * @returns The response, as far as `fetchPage` reads it.
  */
-function streamBody(content) {
+function streamBody(content: string): unknown {
   const encoded = new TextEncoder().encode(content);
   return {
     ok: true,
@@ -43,18 +44,17 @@ function streamBody(content) {
 
 /**
  * Sorted document ids for a sync result — used to compare runs order-independently.
- *
- * @type {(result: import('./types.d.ts').SourceSyncResult) => string[]}
  */
-const documentIds = (result) => result.documents.map((d) => d.id).toSorted();
+const documentIds: (result: SourceSyncResult) => string[] = (result) =>
+  result.documents.map((d) => d.id).toSorted();
 
 /**
  * Route fetch by URL. Values are response bodies (strings) or `{ fail: true }`.
  *
- * @param {Record<string, string | { fail: true }>} map - URL → body or failure.
- * @returns {void} Nothing; it installs the implementation.
+ * @param map - URL → body or failure.
+ * @returns Nothing; it installs the implementation.
  */
-function respond(map) {
+function respond(map: Record<string, string | { fail: true }>): void {
   fetchMock().mockImplementation((url) => {
     const entry = map[String(url)];
     if (entry === undefined) return Promise.resolve({ ok: false, status: 404 });
@@ -66,10 +66,10 @@ function respond(map) {
 /**
  * A context, optionally resuming from `cursor`.
  *
- * @param {import('./types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @returns {import('./types.d.ts').SourceContext} The context.
+ * @param cursor - The previous run's cursor.
+ * @returns The context.
  */
-const makeContext = (cursor) => makeSourceContext({ cursor });
+const makeContext = (cursor?: Cursor): SourceContext => makeSourceContext({ cursor });
 
 beforeEach(() => {
   setFetch();
@@ -87,10 +87,10 @@ const RSS_OPTS = { feedUrl: FEED_URL, idPrefix: 'blog', defaultAuthor: 'Author' 
 /**
  * Build an RSS feed.
  *
- * @param {Array<{ title: string, guid: string, date?: string }>} items - Its items.
- * @returns {string} The document.
+ * @param items - Its items.
+ * @returns The document.
  */
-function rssFeed(items) {
+function rssFeed(items: Array<{ title: string; guid: string; date?: string }>): string {
   const body = items
     .map(
       (item) =>

@@ -11,6 +11,7 @@
 
 import { defineSource, stringList } from '@ontrove/extend/source';
 import { feedItemDocument, syncFeeds } from '../lib/feed-sync.ts';
+import type { Document, FeedItem } from '../lib/types.js';
 
 const BASE_URL = 'https://www.theguardian.com';
 const DEFAULT_SECTIONS = ['uk', 'world', 'technology', 'business'];
@@ -24,7 +25,7 @@ const BOILERPLATE = 'Continue reading...';
  * @param item - The parsed feed item.
  * @returns The document.
  */
-function toDocument(item: import('../lib/types.js').FeedItem): import('../lib/types.js').Document {
+function toDocument(item: FeedItem): Document {
   const document = feedItemDocument('guardian', item, {
     defaultAuthor: 'The Guardian',
     tags: item.categories,

@@ -15,6 +15,7 @@
  * genuinely diverged.
  */
 
+import type { ManifestValidationOptions } from '@ontrove/extend/source';
 import { VALID_SCHEDULES, validateSourceManifest } from '@ontrove/extend/source';
 import { describe, expect, it } from 'vitest';
 
@@ -49,11 +50,14 @@ const STUB = { implemented: false };
 /**
  * The errors from validating `overrides` applied to {@link validManifest}.
  *
- * @param {Record<string, unknown>} [overrides] - Fields to replace or add.
- * @param {import('@ontrove/extend/source').ManifestValidationOptions} [options] - Passed through.
- * @returns {string[]} Every error found.
+ * @param overrides - Fields to replace or add.
+ * @param options - Passed through.
+ * @returns Every error found.
  */
-function errorsFor(overrides = {}, options = IMPLEMENTED) {
+function errorsFor(
+  overrides: Record<string, unknown> = {},
+  options: ManifestValidationOptions = IMPLEMENTED,
+): string[] {
   return validateSourceManifest({ ...validManifest, ...overrides }, options).errors;
 }
 
@@ -61,10 +65,10 @@ function errorsFor(overrides = {}, options = IMPLEMENTED) {
  * {@link validManifest} with one declaration removed, for the cases about a
  * manifest that never said something rather than one that said it wrongly.
  *
- * @param {string} field - The declaration to drop.
- * @returns {Record<string, unknown>} The incomplete manifest.
+ * @param field - The declaration to drop.
+ * @returns The incomplete manifest.
  */
-function without(field) {
+function without(field: string): Record<string, unknown> {
   return Object.fromEntries(Object.entries(validManifest).filter(([key]) => key !== field));
 }
 
@@ -75,11 +79,11 @@ function without(field) {
  * also breaks cloud eligibility — so a test about one field counts that field's
  * errors rather than the whole list.
  *
- * @param {string[]} errors - The full error list.
- * @param {string} field - The manifest field, e.g. `kind`.
- * @returns {string[]} The errors naming it.
+ * @param errors - The full error list.
+ * @param field - The manifest field, e.g. `kind`.
+ * @returns The errors naming it.
  */
-function about(errors, field) {
+function about(errors: string[], field: string): string[] {
   return errors.filter((error) => error.startsWith(`manifest.${field} `));
 }
 
@@ -339,10 +343,8 @@ describe('formatting', () => {
  * Stands in for the on-disk provider lookup: only `podcasts` has a module.
  * `scripts/validate-registry.mjs` injects the real one, which checks
  * `sources/lib/directories/`.
- *
- * @type {import('@ontrove/extend/source').ManifestValidationOptions}
  */
-const withKnownProviders = {
+const withKnownProviders: ManifestValidationOptions = {
   implemented: true,
   directoryProviderExists: (name) => name === 'podcasts',
 };
@@ -350,10 +352,10 @@ const withKnownProviders = {
 /**
  * A manifest whose one `url[]` field declares the given directory descriptor.
  *
- * @param {unknown} directory - The `directory` block under test.
- * @returns {Record<string, unknown>} The override for {@link errorsFor}.
+ * @param directory - The `directory` block under test.
+ * @returns The override for {@link errorsFor}.
  */
-function withDirectory(directory) {
+function withDirectory(directory: unknown): Record<string, unknown> {
   return { config: { feeds: { label: 'Podcast feed URLs', type: 'url[]', directory } } };
 }
 

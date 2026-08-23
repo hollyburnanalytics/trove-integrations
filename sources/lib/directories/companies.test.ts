@@ -14,12 +14,15 @@ const REGISTRY = {
 /**
  * A directory context whose fetch returns a canned JSON payload.
  *
- * @param {unknown} payload - What `.json()` resolves to.
- * @param {number} [status] - The status code; `ok` follows from it, as it does
+ * @param payload - What `.json()` resolves to.
+ * @param status - The status code; `ok` follows from it, as it does
  *   on a real Response — there is no such thing as a 404 that succeeded.
- * @returns {ReturnType<typeof makeDirectoryContext>} The context.
+ * @returns The context.
  */
-function contextReturning(payload, status = 200) {
+function contextReturning(
+  payload: unknown,
+  status: number = 200,
+): ReturnType<typeof makeDirectoryContext> {
   return makeDirectoryContext({ ok: status < 400, status, json: async () => payload });
 }
 

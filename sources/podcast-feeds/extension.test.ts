@@ -10,6 +10,7 @@ import {
   setFetch,
   syncOf,
 } from '../lib/test-fixtures.ts';
+import type { ConfigValue, Cursor, SourceContext, SourceSyncResult } from '../lib/types.js';
 import extension, { episodeDocument } from './extension.ts';
 
 const sync = syncOf(extension);
@@ -29,33 +30,45 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * A context for this source.
  *
- * @param {Record<string, import('../lib/types.d.ts').ConfigValue>} [config] - Source config.
- * @param {import('../lib/types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @returns {import('../lib/types.d.ts').SourceContext} The context.
+ * @param config - Source config.
+ * @param cursor - The previous run's cursor.
+ * @returns The context.
  */
-const makeContext = (config = {}, cursor) => makeSourceContext({ config, cursor });
+const makeContext = (config: Record<string, ConfigValue> = {}, cursor?: Cursor): SourceContext =>
+  makeSourceContext({ config, cursor });
 
 /**
  * A podcast feed document wrapping `items`.
- *
- * @type {(items: string[], channelTitle?: string) => string}
  */
-const feed = (items, channelTitle = 'The Test Show') =>
+const feed: (items: string[], channelTitle?: string) => string = (
+  items,
+  channelTitle = 'The Test Show',
+) =>
   `<?xml version="1.0"?><rss version="2.0"><channel><title>${channelTitle}</title>${items.join('')}</channel></rss>`;
 
 const NOW_RFC = new Date().toUTCString();
 
+/** What one episode `<item>` carries; every field overridable. */
+type EpisodeFields = {
+  /** Its `<title>`. */
+  title?: string;
+  /** Its `<guid>`; `''` omits the element. */
+  guid?: string;
+  /** Its `<link>`; `''` omits the element. */
+  link?: string;
+  /** Its `<pubDate>`; `''` omits the element. */
+  date?: string;
+  /** Its `<enclosure>` element, verbatim. */
+  encl?: string;
+  /** Raw markup appended inside the item. */
+  extra?: string;
+};
+
 /**
  * One well-formed episode; every field overridable.
  *
- * @param {object} [fields] - What the item carries.
- * @param {string} [fields.title] - Its `<title>`.
- * @param {string} [fields.guid] - Its `<guid>`; `''` omits the element.
- * @param {string} [fields.link] - Its `<link>`; `''` omits the element.
- * @param {string} [fields.date] - Its `<pubDate>`; `''` omits the element.
- * @param {string} [fields.encl] - Its `<enclosure>` element, verbatim.
- * @param {string} [fields.extra] - Raw markup appended inside the item.
- * @returns {string} The `<item>` element.
+ * @param fields - What the item carries.
+ * @returns The `<item>` element.
  */
 function episode({
   title = 'Episode 12: Something',
@@ -64,24 +77,34 @@ function episode({
   date = NOW_RFC,
   encl = '<enclosure url="https://cdn.test/12.mp3" length="42000000" type="audio/mpeg"/>',
   extra = '',
-} = {}) {
+}: EpisodeFields = {}): string {
   const linkTag = link ? `<link>${link}</link>` : '';
   const guidTag = guid ? `<guid>${guid}</guid>` : '';
   const dateTag = date ? `<pubDate>${date}</pubDate>` : '';
   return `<item><title>${title}</title>${linkTag}${guidTag}${dateTag}${extra}${encl}</item>`;
 }
 
+/** How to run the source for one round. */
+type RunOptions = {
+  /** Source config. */
+  config?: Record<string, ConfigValue>;
+  /** The previous run's cursor. */
+  cursor?: Cursor;
+  /** A context to reuse. */
+  context?: SourceContext;
+};
+
 /**
  * Run the source against one feed body.
  *
- * @param {string} xml - What the mocked fetch answers with.
- * @param {object} [options] - How to run it.
- * @param {Record<string, import('../lib/types.d.ts').ConfigValue>} [options.config] - Source config.
- * @param {import('../lib/types.d.ts').Cursor} [options.cursor] - The previous run's cursor.
- * @param {import('../lib/types.d.ts').SourceContext} [options.context] - A context to reuse.
- * @returns {Promise<import('../lib/types.d.ts').SourceSyncResult>} The round's result.
+ * @param xml - What the mocked fetch answers with.
+ * @param options - How to run it.
+ * @returns The round's result.
  */
-async function run(xml, { config = { feeds: ['https://a.test/rss'] }, cursor, context } = {}) {
+async function run(
+  xml: string,
+  { config = { feeds: ['https://a.test/rss'] }, cursor, context }: RunOptions = {},
+): Promise<SourceSyncResult> {
   setFetch(() => Promise.resolve(ok(xml)));
   const base = context ?? makeContext(config, cursor);
   const result = await sync({ ...base, cursor: cursor ?? base.cursor });
@@ -254,8 +277,8 @@ describe('podcast-feeds against adversarial feeds', () => {
     const context = makeContext({ feeds: ['https://a.test/rss'] });
     setFetch(() => Promise.resolve(ok(xml)));
 
-    const seen = new Set();
-    let cursor;
+    const seen = new Set<string>();
+    let cursor: Cursor | undefined;
     for (let index = 0; index < 5; index++) {
       const result = await sync({ ...context, cursor });
       for (const document of result.documents) seen.add(document.title);

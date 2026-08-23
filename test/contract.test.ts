@@ -29,10 +29,10 @@ const sourcesDirectory = path.join(repoRoot, 'sources');
  * suite stays green while checking less. The port to `extension.ts` took 32
  * assertions out of this file that way before the test COUNT gave it away.
  *
- * @param {string} directory - The source directory.
- * @returns {string | null} Absolute path to the entry, or `null` when absent.
+ * @param directory - The source directory.
+ * @returns Absolute path to the entry, or `null` when absent.
  */
-function entryPath(directory) {
+function entryPath(directory: string): string | null {
   for (const name of ['extension.ts', 'index.ts', 'index.mjs']) {
     const candidate = path.join(directory, name);
     if (existsSync(candidate)) return candidate;
@@ -63,8 +63,9 @@ function discoverSources() {
 }
 
 const sources = discoverSources();
-/** @type {{ sources: Array<{ id: string }> }} */
-const registry = JSON.parse(readFileSync(path.join(repoRoot, 'registry.json'), 'utf8'));
+const registry: { sources: Array<{ id: string }> } = JSON.parse(
+  readFileSync(path.join(repoRoot, 'registry.json'), 'utf8'),
+);
 const registryIds = new Set(registry.sources.map((entry) => entry.id));
 
 describe('source contract', () => {

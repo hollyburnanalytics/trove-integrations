@@ -22,7 +22,10 @@
     "sources/**/*.mjs",
     "sources/**/*.d.ts",
     "scripts/**/*.mjs",
+    "scripts/**/*.ts",
     "bin/**/*.mjs",
-    "test/**/*.mjs"
+    "bin/**/*.ts",
+    "test/**/*.mjs",
+    "test/**/*.ts"
   ]
 }

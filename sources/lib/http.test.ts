@@ -33,10 +33,10 @@ import { fetchMock, setFetch } from './test-fixtures.ts';
 /**
  * A Response whose body streams `chunks` without a Content-Length header.
  *
- * @param {Uint8Array[]} chunks - The body, one enqueue per chunk.
- * @returns {Response} The response.
+ * @param chunks - The body, one enqueue per chunk.
+ * @returns The response.
  */
-function streamingResponse(chunks) {
+function streamingResponse(chunks: Uint8Array[]): Response {
   const stream = new ReadableStream({
     start(controller) {
       for (const chunk of chunks) controller.enqueue(chunk);
@@ -47,8 +47,7 @@ function streamingResponse(chunks) {
 }
 
 describe('http helpers', () => {
-  /** @type {typeof fetch} */
-  let realFetch;
+  let realFetch: typeof fetch;
   beforeEach(() => {
     realFetch = globalThis.fetch;
   });
@@ -128,11 +127,11 @@ describe('http helpers', () => {
 /**
  * A redirect response — what `redirect: 'manual'` surfaces to the caller.
  *
- * @param {number} status - The redirect status.
- * @param {string} [location] - Where it points; omitted for a headerless redirect.
- * @returns {Response} The response.
+ * @param status - The redirect status.
+ * @param location - Where it points; omitted for a headerless redirect.
+ * @returns The response.
  */
-function redirect(status, location) {
+function redirect(status: number, location?: string): Response {
   return new Response(undefined, { status, headers: location ? { location } : {} });
 }
 
@@ -142,8 +141,7 @@ function redirect(status, location) {
  * subscriptions rot; treat a 302 as a move and healthy ones get rewritten.
  */
 describe('redirects', () => {
-  /** @type {typeof fetch} */
-  let realFetch;
+  let realFetch: typeof fetch;
   beforeEach(() => {
     realFetch = globalThis.fetch;
   });
@@ -218,8 +216,7 @@ describe('redirects', () => {
   it('stops counting at the first non-permanent hop', async () => {
     // 301 → 302: the resource permanently moved ONCE. Following further is
     // fine, but the new home is the 302's origin, not past it.
-    /** @type {Record<string, Response>} */
-    const chain = {
+    const chain: Record<string, Response> = {
       'https://a.test/f': redirect(301, 'https://b.test/f'),
       'https://b.test/f': redirect(302, 'https://c.test/f'),
     };
@@ -229,8 +226,7 @@ describe('redirects', () => {
   });
 
   it('follows a chain of permanent hops to its end', async () => {
-    /** @type {Record<string, Response>} */
-    const chain = {
+    const chain: Record<string, Response> = {
       'https://a.test/f': redirect(301, 'https://b.test/f'),
       'https://b.test/f': redirect(308, 'https://c.test/f'),
     };
@@ -252,8 +248,7 @@ describe('redirects', () => {
   });
 
   it('resolves a relative Location against the current URL', async () => {
-    /** @type {string[]} */
-    const seen = [];
+    const seen: string[] = [];
     setFetch((url) => {
       seen.push(String(url));
       return Promise.resolve(

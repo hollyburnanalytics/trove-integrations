@@ -8,6 +8,7 @@
  */
 
 import { dayToLocalNoonIso, stableId } from '../lib/feeds.ts';
+import type { Document, SourceContext } from '../lib/types.js';
 
 /** EDGAR stamps `filingDate` as a calendar day in the filer's local zone. */
 export const FILING_TYPES = new Set([
@@ -82,12 +83,12 @@ function buildDocumentUrl(
  * @returns The document, when there is one.
  */
 export function processFiling(
-  context: import('../lib/types.js').SourceContext,
+  context: SourceContext,
   filing: Filing,
   cik: number | string,
   companyName: string,
   upperTicker: string,
-): import('../lib/types.js').Document | undefined {
+): Document | undefined {
   if (!filing.primaryDocument?.endsWith('.htm')) {
     context.log.warn(`No HTML primary document for ${filing.form} ${filing.accessionNumber}`);
     return;

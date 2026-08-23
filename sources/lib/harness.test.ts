@@ -16,10 +16,10 @@ import {
 /**
  * Absolute path to a fixture source directory.
  *
- * @param {string} name - The fixture's directory name.
- * @returns {string} Its absolute path.
+ * @param name - The fixture's directory name.
+ * @returns Its absolute path.
  */
-function fixture(name) {
+function fixture(name: string): string {
   return path.resolve(import.meta.dirname, '../../test/fixtures/sources', name);
 }
 

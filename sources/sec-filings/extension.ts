@@ -26,6 +26,7 @@ import {
   stringList,
 } from '@ontrove/extend/source';
 import { fetchPage } from '../lib/feeds.ts';
+import type { Document, SourceContext } from '../lib/types.js';
 import { FILING_TYPES, type Filing, filterFilings, processFiling } from './filing-document.ts';
 
 /**
@@ -62,7 +63,7 @@ type RecentFilings = {
 };
 type Submissions = { name?: string; filings?: { recent?: RecentFilings } };
 type SyncState = {
-  documents: import('../lib/types.js').Document[];
+  documents: Document[];
   rawDates: number[];
   updatedTickerMap: Record<string, TickerEntry>;
   skipped: number;
@@ -151,7 +152,7 @@ export async function fetchFilings(
  * @returns The entry, or nothing for an unknown ticker.
  */
 async function resolveTicker(
-  context: import('../lib/types.js').SourceContext,
+  context: SourceContext,
   upperTicker: string,
   cachedTickers: Record<string, TickerEntry>,
   tickerMapReference: { map: Record<string, TickerEntry> | undefined },
@@ -183,7 +184,7 @@ async function resolveTicker(
  * @returns Resolves when this ticker is done.
  */
 async function syncTicker(
-  context: import('../lib/types.js').SourceContext,
+  context: SourceContext,
   upperTicker: string,
   lastDate: Date | undefined,
   cachedTickers: Record<string, TickerEntry>,

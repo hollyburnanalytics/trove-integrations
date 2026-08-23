@@ -20,6 +20,7 @@
 
 import { defineSource, fetchPage, idSetCursor, readIdSet } from '@ontrove/extend/source';
 import { dayToLocalNoonIso } from '../lib/text.ts';
+import type { Document } from '../lib/types.js';
 
 const SEARCH_URL = 'https://app.dnv.org/dnv_search/api/v1/councilsearch/search?pageSize=5000';
 const DOCUMENT_URL = 'https://app.dnv.org/OpenDocument/Default.aspx?docNum=';
@@ -130,7 +131,7 @@ function meetingLabel(meeting: Meeting): string {
  * @param item - One meeting document to emit.
  * @returns The document.
  */
-function toDocument({ meeting, document }: WorkItem): import('../lib/types.js').Document {
+function toDocument({ meeting, document }: WorkItem): Document {
   const title = `${document.docType} — ${meetingLabel(meeting)}, ${meeting.date}`;
   const header = [title, meeting.bylaw ? `Bylaw: ${meeting.bylaw}` : ''].filter(Boolean).join('\n');
   return {

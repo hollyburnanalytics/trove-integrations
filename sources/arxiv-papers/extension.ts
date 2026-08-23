@@ -5,6 +5,7 @@ import {
   stringList,
 } from '@ontrove/extend/source';
 import { decodeHtmlEntities, fetchPage, hasDeadlinePassed, safeDate } from '../lib/feeds.ts';
+import type { Document, SourceContext } from '../lib/types.js';
 
 /** Results per arXiv API page. */
 export const PAGE_SIZE = 100;
@@ -27,12 +28,12 @@ const getTagValue: (xml: string, tag: string) => string = (xml, tag) => {
 type PaperEntry = {
   documentId: string;
   publishedMs: number;
-  doc: import('../lib/types.js').Document;
+  doc: Document;
 };
 type Accumulators = {
   lastDate: Date | undefined;
   seenIds: Set<string>;
-  documents: import('../lib/types.js').Document[];
+  documents: Document[];
   publishedTimes: number[];
 };
 
@@ -135,7 +136,7 @@ function collectEntries(
  * @returns Resolves when this query is done or bounded out.
  */
 async function syncQuery(
-  context: import('../lib/types.js').SourceContext,
+  context: SourceContext,
   query: string,
   accumulators: Accumulators,
 ): Promise<void> {
@@ -208,7 +209,7 @@ export default defineSource({
     const lastDate = readDateCursor(context.cursor);
 
     context.log.info(`Searching arXiv for ${queries.length} queries...`);
-    const documents: import('../lib/types.js').Document[] = [];
+    const documents: Document[] = [];
     const publishedTimes: number[] = [];
     // A paper can match several queries (e.g. cs.AI and cs.LG); emit it once.
     const seenIds: Set<string> = new Set();

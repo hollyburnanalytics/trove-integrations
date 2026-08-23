@@ -10,30 +10,48 @@ import {
   okResponse as ok,
   setFetch,
 } from './test-fixtures.ts';
+import type { ConfigValue, Cursor, Document, Feed, FeedItem, SourceContext } from './types.js';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
 /**
  * A context, optionally resuming from `cursor`.
  *
- * @param {import('./types.d.ts').Cursor} [cursor] - The previous run's cursor.
- * @param {Record<string, import('./types.d.ts').ConfigValue>} [config] - Source config.
- * @returns {import('./types.d.ts').SourceContext} The context.
+ * @param cursor - The previous run's cursor.
+ * @param config - Source config.
+ * @param overrides - Any other context field to replace.
+ * @returns The context.
  */
-const makeContext = (cursor, config = {}, overrides = {}) =>
-  makeSourceContext({ config, cursor, ...overrides });
+const makeContext = (
+  cursor?: Cursor,
+  config: Record<string, ConfigValue> = {},
+  overrides: Partial<SourceContext> = {},
+): SourceContext => makeSourceContext({ config, cursor, ...overrides });
+
+/** What one RSS `<item>` carries. */
+type RssItemFields = {
+  /** Its `<title>`. */
+  title: string;
+  /** Its `<link>`. */
+  link: string;
+  /** Its `<description>`. */
+  description?: string;
+  /** Its `<pubDate>`. */
+  date?: string;
+};
 
 /**
  * One RSS `<item>`.
  *
- * @param {object} fields - What the item carries.
- * @param {string} fields.title - Its `<title>`.
- * @param {string} fields.link - Its `<link>`.
- * @param {string} [fields.description] - Its `<description>`.
- * @param {string} [fields.date] - Its `<pubDate>`.
- * @returns {string} The element.
+ * @param fields - What the item carries.
+ * @returns The element.
  */
-function rssItem({ title, link, description = 'Body', date = 'Mon, 15 Jan 2024 10:00:00 GMT' }) {
+function rssItem({
+  title,
+  link,
+  description = 'Body',
+  date = 'Mon, 15 Jan 2024 10:00:00 GMT',
+}: RssItemFields): string {
   return `<item><title>${title}</title><link>${link}</link>
     <description>${description}</description><pubDate>${date}</pubDate></item>`;
 }
@@ -41,34 +59,33 @@ function rssItem({ title, link, description = 'Body', date = 'Mon, 15 Jan 2024 1
 /**
  * An RSS document wrapping `items`.
  *
- * @param {...string} items - The rendered `<item>` elements.
- * @returns {string} The document.
+ * @param items - The rendered `<item>` elements.
+ * @returns The document.
  */
-function rss(...items) {
+function rss(...items: string[]): string {
   return `<rss><channel>${items.join('')}</channel></rss>`;
 }
 
 /**
  * The plain `toDocument` most of these tests use.
  *
- * @param {string} [idPrefix] - The stable-id namespace.
- * @param {string} [author] - The default author.
- * @returns {(item: import('./types.d.ts').FeedItem) => import('./types.d.ts').Document}
- *   A mapper.
+ * @param idPrefix - The stable-id namespace.
+ * @param author - The default author.
+ * @returns A mapper.
  */
 const STD =
   (idPrefix = 'x', author = 'Default') =>
-  (item) =>
+  (item: FeedItem): Document =>
     feedItemDocument(idPrefix, item, { defaultAuthor: author });
 
 /**
  * An item with its own guid but the show's shared homepage as `<link>`.
  *
- * @param {string} title - Its `<title>`.
- * @param {string} guid - Its `<guid>`.
- * @returns {string} The element.
+ * @param title - Its `<title>`.
+ * @param guid - Its `<guid>`.
+ * @returns The element.
  */
-function sharedLinkItem(title, guid) {
+function sharedLinkItem(title: string, guid: string): string {
   return `<item><title>${title}</title><link>https://show.test</link>
     <guid isPermaLink="false">${guid}</guid>
     <pubDate>Mon, 15 Jan 2024 10:00:00 GMT</pubDate></item>`;
@@ -77,35 +94,33 @@ function sharedLinkItem(title, guid) {
 /**
  * A response whose declared Content-Length blows the cap.
  *
- * @param {number} bytes - The length to declare.
- * @returns {Response} The response, as far as `fetchPage` reads it.
+ * @param bytes - The length to declare.
+ * @returns The response, as far as `fetchPage` reads it.
  */
-function huge(bytes) {
-  return /** @type {Response} */ (
-    /** @type {unknown} */ ({
-      ok: true,
-      headers: new Headers({ 'content-length': String(bytes) }),
-      body: undefined,
-    })
-  );
+function huge(bytes: number): Response {
+  return {
+    ok: true,
+    headers: new Headers({ 'content-length': String(bytes) }),
+    body: undefined,
+  } as unknown as Response;
 }
 
 /**
  * `count` feed descriptors, whose URLs end in their index.
  *
- * @param {number} count - How many.
- * @returns {import('./types.d.ts').Feed[]} The descriptors.
+ * @param count - How many.
+ * @returns The descriptors.
  */
-function feedsFor(count) {
+function feedsFor(count: number): Feed[] {
   return Array.from({ length: count }, (_, index) => ({ url: `https://s.test/${index}` }));
 }
 
 /**
  * Respond to `/<i>` with a single item titled "Ep <i>".
  *
- * @returns {void} Nothing; it installs the implementation.
+ * @returns Nothing; it installs the implementation.
  */
-function respondPerFeed() {
+function respondPerFeed(): void {
   fetchMock().mockImplementation((url) => {
     const index = String(url).split('/').pop();
     return Promise.resolve(
@@ -256,8 +271,7 @@ describe('syncFeeds', () => {
     fetchMock()
       .mockResolvedValueOnce(ok(rss(rssItem({ title: 'Ok', link: 'https://s.test/ok' }))))
       .mockRejectedValueOnce(new Error('boom'));
-    /** @type {import('./types.d.ts').Cursor} */
-    const previous = { type: 'date', value: '2020-01-01T00:00:00.000Z' };
+    const previous: Cursor = { type: 'date', value: '2020-01-01T00:00:00.000Z' };
     const context = makeContext(previous);
     const result = await syncFeeds(context, {
       feeds: [
@@ -445,10 +459,10 @@ describe('syncFeeds maxDocuments and firstRunLookbackMs', () => {
 
   /** `count` items dated one day apart, newest first — the order real feeds use. */
   /**
-   * @param {number} count - How many items.
-   * @returns {string} The document.
+   * @param count - How many items.
+   * @returns The document.
    */
-  function feedOf(count) {
+  function feedOf(count: number): string {
     const items = Array.from({ length: count }, (_, index) =>
       rssItem({
         title: `E${index}`,
@@ -484,8 +498,8 @@ describe('syncFeeds maxDocuments and firstRunLookbackMs', () => {
 
   it('drains the backlog across runs without losing an item', async () => {
     fetchMock().mockResolvedValue(ok(feedOf(5)));
-    const seen = [];
-    let cursor;
+    const seen: string[] = [];
+    let cursor: Cursor | undefined;
     for (let run = 0; run < 3; run++) {
       const result = await syncFeeds(makeContext(cursor), {
         feeds: [{ url: 'https://s.test/1' }],
@@ -552,8 +566,10 @@ describe('syncFeeds maxDocuments and firstRunLookbackMs', () => {
         ),
       ),
     );
-    /** @type {import('./types.d.ts').Cursor} */
-    const cursor = { type: 'date', value: new Date(Date.now() - 200 * DAY_MS).toISOString() };
+    const cursor: Cursor = {
+      type: 'date',
+      value: new Date(Date.now() - 200 * DAY_MS).toISOString(),
+    };
     const result = await syncFeeds(makeContext(cursor), {
       feeds: [{ url: 'https://s.test/1' }],
       toDocument: STD('s'),
@@ -786,11 +802,11 @@ describe('syncFeeds concurrency and the soft deadline', () => {
 /**
  * A channel with a title, so the feed can say what it calls itself.
  *
- * @param {string} title - The channel's `<title>`.
- * @param {...string} items - The rendered `<item>` elements.
- * @returns {string} The document.
+ * @param title - The channel's `<title>`.
+ * @param items - The rendered `<item>` elements.
+ * @returns The document.
  */
-function titledRss(title, ...items) {
+function titledRss(title: string, ...items: string[]): string {
   return `<rss><channel><title>${title}</title>${items.join('')}</channel></rss>`;
 }
 
@@ -875,11 +891,11 @@ describe('syncFeeds reports what the feed calls itself (trove docs/39 D10)', () 
 /**
  * A channel advertising a permanent move, the way Apple's spec defines it.
  *
- * @param {string} newUrl - The `<itunes:new-feed-url>` value.
- * @param {...string} items - The rendered `<item>` elements.
- * @returns {string} The document.
+ * @param newUrl - The `<itunes:new-feed-url>` value.
+ * @param items - The rendered `<item>` elements.
+ * @returns The document.
  */
-function movedRss(newUrl, ...items) {
+function movedRss(newUrl: string, ...items: string[]): string {
   return `<rss><channel><title>A Show</title>
     <itunes:new-feed-url>${newUrl}</itunes:new-feed-url>${items.join('')}</channel></rss>`;
 }
@@ -961,11 +977,11 @@ describe('syncFeeds follows a feed that says it has moved', () => {
 /**
  * A redirect response, as `redirect: 'manual'` surfaces it.
  *
- * @param {number} status - The redirect status.
- * @param {string} location - Where it points.
- * @returns {Response} The response.
+ * @param status - The redirect status.
+ * @param location - Where it points.
+ * @returns The response.
  */
-function moved(status, location) {
+function moved(status: number, location: string): Response {
   return new Response(undefined, { status, headers: { location } });
 }
 

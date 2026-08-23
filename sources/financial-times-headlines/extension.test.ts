@@ -21,18 +21,18 @@ const makeContext = (config = {}) => makeSourceContext({ config });
 /**
  * Answer every request with `xml`.
  *
- * @param {string} xml - The feed body.
- * @returns {void} Nothing; it installs the mock.
+ * @param xml - The feed body.
+ * @returns Nothing; it installs the mock.
  */
-function respondWith(xml) {
+function respondWith(xml: string): void {
   setFetch(() => Promise.resolve(okResponse(xml)));
 }
 
 const STORY = rssFeedXml([
-  rssItemXml({ title: 'Story', link: 'https://bbc.test/1', description: 'x' }),
+  rssItemXml({ title: 'Story', link: 'https://ft.test/1', description: 'x' }),
 ]);
 
-describe('bbc-news source', () => {
+describe('financial-times source', () => {
   beforeEach(() => {
     setFetch();
   });
@@ -46,23 +46,16 @@ describe('bbc-news source', () => {
     expect(fetchedUrls(fetchMock())).toHaveLength(5);
   });
 
-  it('maps top_stories to the base feed URL', async () => {
-    respondWith(STORY);
-    await sync(makeContext({ sections: ['top_stories'] }));
-    expect(fetchedUrls(fetchMock())).toEqual(['https://feeds.bbci.co.uk/news/rss.xml']);
-  });
-
-  it('maps a named section to its feed URL', async () => {
+  it('builds the ?format=rss section URL', async () => {
     respondWith(STORY);
     await sync(makeContext({ sections: ['technology'] }));
-    expect(fetchedUrls(fetchMock())).toEqual(['https://feeds.bbci.co.uk/news/technology/rss.xml']);
+    expect(fetchedUrls(fetchMock())).toEqual(['https://www.ft.com/technology?format=rss']);
   });
 
-  it('tags documents with the section and defaults the author', async () => {
+  it('builds documents with the ft id prefix and default author', async () => {
     respondWith(STORY);
     const result = await sync(makeContext({ sections: ['world'] }));
-    expect(at(result.documents, 0).id).toMatch(/^bbc-/);
-    expect(at(result.documents, 0).author).toBe('BBC News');
-    expect(at(result.documents, 0).tags).toEqual(['world']);
+    expect(at(result.documents, 0).id).toMatch(/^ft-/);
+    expect(at(result.documents, 0).author).toBe('Financial Times');
   });
 });

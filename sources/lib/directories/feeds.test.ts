@@ -5,12 +5,15 @@ import { advertisedFeeds, query } from './feeds.ts';
 /**
  * A directory context whose fetch returns a canned response.
  *
- * @param {string} body - The response body.
- * @param {number} [status] - The status code; `ok` follows from it, as it does
+ * @param body - The response body.
+ * @param status - The status code; `ok` follows from it, as it does
  *   on a real Response — there is no such thing as a 404 that succeeded.
- * @returns {ReturnType<typeof makeDirectoryContext>} The context.
+ * @returns The context.
  */
-function contextReturning(body, status = 200) {
+function contextReturning(
+  body: string,
+  status: number = 200,
+): ReturnType<typeof makeDirectoryContext> {
   return makeDirectoryContext({ ok: status < 400, status, text: async () => body });
 }
 

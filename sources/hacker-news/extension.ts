@@ -1,5 +1,6 @@
 import { defineSource } from '@ontrove/extend/source';
 import { htmlToText, safeDate, undatedStats, warnIfUndated } from '../lib/feeds.ts';
+import type { Document } from '../lib/types.js';
 
 /**
  * One Algolia search hit, as the front-page query returns it.
@@ -47,7 +48,7 @@ export default defineSource({
     const data: { hits: Hit[] } = await response.json();
 
     context.progress(0, `Processing ${data.hits.length} stories...`);
-    const documents: import('../lib/types.js').Document[] = data.hits.map((hit) => ({
+    const documents: Document[] = data.hits.map((hit) => ({
       id: `hn-${hit.objectID}`,
       title: hit.title || 'Untitled',
       text: [
