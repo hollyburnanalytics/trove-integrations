@@ -1,15 +1,15 @@
 /**
  * Test fixtures shared across this catalog's source adapters.
  *
- * The twin of `sources/lib/test-fixtures.mjs` in trove-matt-helm, and named to
+ * The twin of `sources/lib/test-fixtures.ts` in trove-matt-helm, and named to
  * match it: the two catalogs meet the same platform, so their tests should be
  * wrong in the same ways or in neither, and a helper worth having in one is
  * worth copying into the other under the same name.
  *
  * Source tests drive the REAL `syncFeeds` with only `fetch` mocked, rather than
- * stubbing `lib/feed-sync.mjs`. That is not a style preference: Bun's
+ * stubbing `lib/feed-sync.ts`. That is not a style preference: Bun's
  * `mock.module` registry is keyed by specifier string and is process-global, so
- * one test file stubbing `'../lib/feed-sync.mjs'` silently replaces it for
+ * one test file stubbing `'../lib/feed-sync.ts'` silently replaces it for
  * every other test file that imports it under the same specifier — which is
  * every source. Tests written against a stub then pass without exercising any
  * of the dedupe, cursor, cap or deadline logic they appear to cover.
@@ -18,60 +18,91 @@
  * something better besides: that the URL a source builds is really requested.
  */
 
+import type { FetchLike } from '@ontrove/extend/source';
+import type { Mock } from 'vitest';
 import { vi } from 'vitest';
+import type {
+  Cursor,
+  DirectoryContext,
+  Document,
+  FeedEnclosure,
+  FeedItem,
+  SourceContext,
+  SourceSyncResult,
+} from './types.js';
+
+/** The `<item>` fields {@link rssItemXml} renders; every one has a usable default. */
+export interface RssItemFields {
+  /** Its `<title>`. */
+  title?: string;
+  /** Its `<link>`. */
+  link?: string;
+  /** Its `<guid>`; defaults to the link. */
+  guid?: string;
+  /** Its CDATA `<description>`. */
+  description?: string;
+  /** Its `<pubDate>`; `''` omits the element. */
+  date?: string;
+  /** One `<category>` each. */
+  categories?: string[];
+  /** Raw markup appended inside the item. */
+  extra?: string;
+}
+
+/** The channel-level fields {@link rssFeedXml} renders. */
+export interface RssChannelFields {
+  /** The channel's `<title>`. */
+  channelTitle?: string;
+}
 
 /**
  * A minimal `fetch` Response carrying `text`, shaped for `fetchPage`: it
  * declares a Content-Length and streams the body through a single reader chunk.
  *
- * @param {string} text - the response body
- * @param {{ contentLength?: number }} [options] - override the declared length,
+ * @param text - the response body
+ * @param options - override the declared length,
  *   to exercise the response-size cap without allocating a real payload
- * @returns {Response} the response, shaped for `fetchPage`
+ * @returns the response, shaped for `fetchPage`
  */
-export function okResponse(text, { contentLength } = {}) {
+export function okResponse(
+  text: string,
+  { contentLength }: { contentLength?: number } = {},
+): Response {
   const bytes = new TextEncoder().encode(text);
   // The sliver of `Response` `fetchPage` touches — `ok`, `headers`, and a body
   // that streams once. Building a real one would mean a real ReadableStream for
   // no gain; declaring the cast says which parts are honoured.
-  return /** @type {Response} */ (
-    /** @type {unknown} */ ({
-      ok: true,
-      headers: new Headers({ 'content-length': String(contentLength ?? bytes.length) }),
-      body: {
-        getReader() {
-          let isDone = false;
-          return {
-            read() {
-              if (isDone) return Promise.resolve({ done: true, value: undefined });
-              isDone = true;
-              return Promise.resolve({ done: false, value: bytes });
-            },
-            // A real reader's `cancel()` returns a promise, and the HTTP seam
-            // awaits it when it abandons an over-cap body. Returning undefined
-            // here made the fake fail on `.catch` instead.
-            cancel() {
-              return Promise.resolve();
-            },
-          };
-        },
+  return {
+    ok: true,
+    headers: new Headers({ 'content-length': String(contentLength ?? bytes.length) }),
+    body: {
+      getReader() {
+        let isDone = false;
+        return {
+          read() {
+            if (isDone) return Promise.resolve({ done: true, value: undefined });
+            isDone = true;
+            return Promise.resolve({ done: false, value: bytes });
+          },
+          // A real reader's `cancel()` returns a promise, and the HTTP seam
+          // awaits it when it abandons an over-cap body. Returning undefined
+          // here made the fake fail on `.catch` instead.
+          cancel() {
+            return Promise.resolve();
+          },
+        };
       },
-    })
-  );
+    },
+  } as unknown as Response;
 }
 
 /**
  * One RSS `<item>`; every field optional so a test can omit exactly one.
  *
- * @param {object} [fields] - What the item should carry.
- * @param {string} [fields.title] - Its `<title>`; `''` omits the element.
- * @param {string} [fields.link] - Its `<link>`; `''` omits the element.
- * @param {string} [fields.guid] - Its `<guid>`; defaults to the link.
- * @param {string} [fields.description] - Its CDATA `<description>`.
- * @param {string} [fields.date] - Its `<pubDate>`; `''` omits the element.
- * @param {string[]} [fields.categories] - One `<category>` each.
- * @param {string} [fields.extra] - Raw markup appended inside the item.
- * @returns {string} The `<item>` element.
+ * @param fields - What the item should carry.
+ * @param fields.title - Its `<title>`; `''` omits the element.
+ * @param fields.link - Its `<link>`; `''` omits the element.
+ * @returns The `<item>` element.
  */
 export function rssItemXml({
   title = 'Story',
@@ -81,7 +112,7 @@ export function rssItemXml({
   date = 'Mon, 15 Jan 2024 10:00:00 GMT',
   categories = [],
   extra = '',
-} = {}) {
+}: RssItemFields = {}): string {
   const itemGuid = guid || link;
   return [
     '<item>',
@@ -104,12 +135,11 @@ export function rssItemXml({
  * make those assertions test the fixture instead of the source. Pass one when
  * the channel title is the thing under test (podcast show attribution).
  *
- * @param {string[]} items - The `<item>` elements, already rendered.
- * @param {object} [options] - Channel-level fields.
- * @param {string} [options.channelTitle] - The channel's `<title>`.
- * @returns {string} The whole document.
+ * @param items - The `<item>` elements, already rendered.
+ * @param options - Channel-level fields.
+ * @returns The whole document.
  */
-export function rssFeedXml(items, { channelTitle = '' } = {}) {
+export function rssFeedXml(items: string[], { channelTitle = '' }: RssChannelFields = {}): string {
   const title = channelTitle ? `<title>${channelTitle}</title>` : '';
   return `<?xml version="1.0"?><rss version="2.0"><channel>${title}${items.join('')}</channel></rss>`;
 }
@@ -117,15 +147,15 @@ export function rssFeedXml(items, { channelTitle = '' } = {}) {
 /**
  * The URLs a mocked `fetch` was asked for, in call order.
  *
- * @param {import('vitest').Mock} fetchMock - The installed fetch mock.
- * @returns {string[]} Every requested URL.
+ * @param fetchMock - The installed fetch mock.
+ * @returns Every requested URL.
  */
-export function fetchedUrls(fetchMock) {
+export function fetchedUrls(fetchMock: Mock): string[] {
   return fetchMock.mock.calls.map((call) => String(call[0]));
 }
 
 /**
- * A real {@link import('./types.d.ts').SourceContext} with spies on its sinks.
+ * A real {@link SourceContext} with spies on its sinks.
  *
  * Twenty-four test files each built their own, and all twenty-four were the
  * same four fields — `log.info`, `log.warn`, `progress`, `config` — with no
@@ -137,38 +167,38 @@ export function fetchedUrls(fetchMock) {
  * dormant on purpose — a test that wants it passes `deadline` explicitly and
  * now actually gets it.
  *
- * @param {Partial<import('./types.d.ts').SourceContext> & { secrets?: Record<string, string> }} [overrides] -
+ * @param overrides -
  *   Fields to replace. `secrets` is a convenience: it is not part of the
  *   context, it is what `secret(name)` will resolve from.
- * @returns {import('./types.d.ts').SourceContext} A context a source can be run against.
+ * @returns A context a source can be run against.
  */
-export function makeSourceContext(overrides = {}) {
+export function makeSourceContext(
+  overrides: Partial<SourceContext> & { secrets?: Record<string, string> } = {},
+): SourceContext {
   const { secrets = {}, ...rest } = overrides;
   /**
-   * @param {string} name - The credential's name.
-   * @returns {Promise<string | undefined>} Its value, when set.
+   * @param name - The credential's name.
+   * @returns Its value, when set.
    */
-  const secret = (name) => Promise.resolve(secrets[name]);
+  const secret = (name: string): Promise<string | undefined> => Promise.resolve(secrets[name]);
   return {
     config: {},
     cursor: undefined,
     deadline: Date.now() + 30_000,
     secret,
     /**
-     * @param {string} name - The credential's name.
-     * @returns {Promise<string>} Its value.
+     * @param name - The credential's name.
+     * @returns Its value.
      * @throws {Error} When it is unset or empty.
      */
-    requireSecret: async (name) => {
+    requireSecret: async (name: string): Promise<string> => {
       const value = await secret(name);
       if (value === undefined || value === '') {
         throw new Error(`Secret "${name}" is not set for this source.`);
       }
       return value;
     },
-    fetch: /** @type {import('@ontrove/extend/source').FetchLike} */ (
-      (url, init) => globalThis.fetch(url, init)
-    ),
+    fetch: ((url, init) => globalThis.fetch(url, init)) as FetchLike,
     now: () => new Date(),
     // Callable AND carrying the three levels — `LogChannel` is a function with
     // methods on it, so a source writing a bare `ctx.log('…')` must work.
@@ -186,46 +216,45 @@ export function makeSourceContext(overrides = {}) {
  * does not have — and the assignment itself is an error too, since a bare mock
  * is not a `fetch`. One cast, in one place, instead of at every call site.
  *
- * @param {(url: string, init?: RequestInit) => unknown} [implementation] - What the
+ * @param implementation - What the
  *   mock should do. Typed as the sliver of `fetch` these tests call, so a stub
  *   reading the requested URL gets a string rather than an implicit `any`.
- * @returns {import('vitest').Mock} The installed mock.
+ * @returns The installed mock.
  */
-export function setFetch(implementation) {
+export function setFetch(implementation?: (url: string, init?: RequestInit) => unknown): Mock {
   const mock = implementation ? vi.fn(implementation) : vi.fn();
-  globalThis.fetch = /** @type {typeof fetch} */ (/** @type {unknown} */ (mock));
+  globalThis.fetch = mock as unknown as typeof fetch;
   return mock;
 }
 
 /**
  * The currently-installed fetch mock, for a test that set it earlier.
  *
- * @returns {import('vitest').Mock} The mock now standing in for `fetch`.
+ * @returns The mock now standing in for `fetch`.
  */
-export function fetchMock() {
-  return /** @type {import('vitest').Mock} */ (/** @type {unknown} */ (globalThis.fetch));
+export function fetchMock(): Mock {
+  return globalThis.fetch as unknown as Mock;
 }
 
 /**
- * A {@link import('./types.d.ts').DirectoryContext} whose `fetch` answers with
+ * A {@link DirectoryContext} whose `fetch` answers with
  * `response`, and whose sinks are spies.
  *
  * The `fetch` is handed back as a `Mock` as well as the context's, so a test can
  * assert on the URL a provider built — which is most of what there is to check
  * about a provider that does no parsing of its own.
  *
- * @param {unknown} response - What every request resolves to.
- * @returns {import('./types.d.ts').DirectoryContext & { fetch: import('vitest').Mock }}
+ * @param response - What every request resolves to.
+ * @returns
  *   The context.
  */
-export function makeDirectoryContext(response) {
-  /** @type {import('vitest').Mock} */
-  const fetch = vi.fn(async () => response);
+export function makeDirectoryContext(response: unknown): DirectoryContext & { fetch: Mock } {
+  const fetch: Mock = vi.fn(async () => response);
   return { fetch, log: Object.assign(vi.fn(), { info: vi.fn(), warn: vi.fn(), error: vi.fn() }) };
 }
 
 /**
- * A complete {@link import('./types.d.ts').FeedItem} from the few fields a test
+ * A complete {@link FeedItem} from the few fields a test
  * cares about.
  *
  * Every field on a parsed item is required — the parsers always set them, `''`
@@ -233,10 +262,10 @@ export function makeDirectoryContext(response) {
  * one, and handing it to `feedItemDocument` types as an error rather than as the
  * shorthand it is meant to be. This fills in the rest.
  *
- * @param {Partial<import('./types.d.ts').FeedItem>} [fields] - What the test sets.
- * @returns {import('./types.d.ts').FeedItem} A whole item.
+ * @param fields - What the test sets.
+ * @returns A whole item.
  */
-export function makeFeedItem(fields = {}) {
+export function makeFeedItem(fields: Partial<FeedItem> = {}): FeedItem {
   return {
     title: '',
     link: '',
@@ -254,14 +283,14 @@ export function makeFeedItem(fields = {}) {
 /**
  * An item's enclosure, or a failure naming the item that carried none.
  *
- * `enclosure` is optional on a {@link import('./types.d.ts').FeedItem} because
+ * `enclosure` is optional on a {@link FeedItem} because
  * most items have none. A test asserting on one has already said it expects the
  * parser to find it; this makes that expectation the thing that fails.
  *
- * @param {import('./types.d.ts').FeedItem} item - The parsed item.
- * @returns {import('./types.d.ts').FeedEnclosure} Its enclosure.
+ * @param item - The parsed item.
+ * @returns Its enclosure.
  */
-export function enclosureOf(item) {
+export function enclosureOf(item: FeedItem): FeedEnclosure {
   if (!item.enclosure) {
     throw new Error(`expected an enclosure on "${item.title || item.link || 'the item'}"`);
   }
@@ -276,10 +305,10 @@ export function enclosureOf(item) {
  * real thing when a source returns the wrong shape: a test that expected a date
  * cursor and got an idSet fails on that, not on a missing property.
  *
- * @param {import('./types.d.ts').Cursor | undefined} cursor - What `sync` returned.
- * @returns {string} The cursor's ISO value.
+ * @param cursor - What `sync` returned.
+ * @returns The cursor's ISO value.
  */
-export function dateCursorValue(cursor) {
+export function dateCursorValue(cursor: Cursor | undefined): string {
   if (cursor?.type !== 'date') {
     throw new Error(`expected a date cursor, got ${JSON.stringify(cursor)}`);
   }
@@ -292,10 +321,10 @@ export function dateCursorValue(cursor) {
  * Returns the whole arm rather than just its ids: the cap travels with the set,
  * and a reader that wants to say whether the set is full needs both.
  *
- * @param {import('./types.d.ts').Cursor | undefined} cursor - What `sync` returned.
- * @returns {Extract<import('./types.d.ts').Cursor, { type: 'idSet' }>} The cursor.
+ * @param cursor - What `sync` returned.
+ * @returns The cursor.
  */
-export function idSetCursor(cursor) {
+export function idSetCursor(cursor: Cursor | undefined): Extract<Cursor, { type: 'idSet' }> {
   if (cursor?.type !== 'idSet') {
     throw new Error(`expected an idSet cursor, got ${JSON.stringify(cursor)}`);
   }
@@ -310,11 +339,11 @@ export function idSetCursor(cursor) {
  * reaching for `.mock.calls` on one is reading a property the interface does
  * not have. This is that one cast, in one place.
  *
- * @param {(...args: never[]) => void} sink - `context.progress` or a `context.log` method.
- * @returns {import('vitest').Mock} The same function, as a mock.
+ * @param sink - `context.progress` or a `context.log` method.
+ * @returns The same function, as a mock.
  */
-export function asMock(sink) {
-  return /** @type {import('vitest').Mock} */ (/** @type {unknown} */ (sink));
+export function asMock(sink: (...args: never[]) => void): Mock {
+  return sink as unknown as Mock;
 }
 
 /**
@@ -326,13 +355,12 @@ export function asMock(sink) {
  * property of undefined", pointing at the assertion rather than at the empty
  * result that caused it. This says the real thing.
  *
- * @template T
- * @param {readonly T[]} items - The array to read. Readonly because a cursor's
+ * @param items - The array to read. Readonly because a cursor's
  *   `values` is, and reading an entry out of one never needed to mutate it.
- * @param {number} [index] - Which entry.
- * @returns {T} The entry, guaranteed present.
+ * @param index - Which entry.
+ * @returns The entry, guaranteed present.
  */
-export function at(items, index = 0) {
+export function at<T>(items: readonly T[], index: number = 0): T {
   const entry = items[index];
   if (entry === undefined) {
     throw new Error(`expected an entry at index ${index}, but the array has ${items.length}`);
@@ -349,12 +377,14 @@ export function at(items, index = 0) {
  * anything reads the result; doing the same here keeps a test looking at the
  * shape the platform actually handles, rather than narrowing 149 times.
  *
- * @param {{ sync: (ctx: import('./types.d.ts').SourceContext) => Promise<import('./types.d.ts').Document[] | import('./types.d.ts').SourceSyncResult> }} extension -
+ * @param extension -
  *   The source declaration, as its module default-exports it.
- * @returns {(ctx: import('./types.d.ts').SourceContext) => Promise<import('./types.d.ts').SourceSyncResult>}
+ * @returns
  *   A `sync` whose result is always the object form.
  */
-export function syncOf(extension) {
+export function syncOf(extension: {
+  sync: (ctx: SourceContext) => Promise<Document[] | SourceSyncResult>;
+}): (ctx: SourceContext) => Promise<SourceSyncResult> {
   return async (ctx) => {
     const raw = await extension.sync(ctx);
     return Array.isArray(raw) ? { documents: raw } : raw;

@@ -14,6 +14,7 @@
  *
  * @module
  */
+import type { DirectoryContext, DirectoryEntry, DirectoryQuery } from '../types.js';
 
 /** OAI-PMH endpoint. Redirects to oaipmh.arxiv.org; the seam's fetch follows it. */
 const SETS_URL = 'https://export.arxiv.org/oai2?verb=ListSets';
@@ -34,10 +35,10 @@ const SET_PATTERN = /<set>\s*<setSpec>(.*?)<\/setSpec>\s*<setName>(.*?)<\/setNam
  * archive (`cs`) is not — `cat:cs` matches nothing — so it is skipped rather
  * than offered as a query that would quietly return no papers.
  *
- * @param {string} spec - The OAI setSpec.
- * @returns {string | undefined} An arXiv category.
+ * @param spec - The OAI setSpec.
+ * @returns An arXiv category.
  */
-export function specToCategory(spec) {
+export function specToCategory(spec: string): string | undefined {
   const parts = spec.split(':').filter(Boolean);
   if (parts.length >= 3) return `${parts.at(-2)}.${parts.at(-1)}`;
   if (parts.length === 2 && parts[0] !== parts[1]) return parts[1];
@@ -46,12 +47,11 @@ export function specToCategory(spec) {
 /**
  * Every category arXiv currently publishes, in the order the archive lists them.
  *
- * @param {string} xml - An OAI `ListSets` response.
- * @returns {Array<{category: string, name: string}>} Every category, deduplicated.
+ * @param xml - An OAI `ListSets` response.
+ * @returns Every category, deduplicated.
  */
-export function parseCategories(xml) {
-  /** @type {Array<{category: string, name: string}>} */
-  const out = [];
+export function parseCategories(xml: string): Array<{ category: string; name: string }> {
+  const out: Array<{ category: string; name: string }> = [];
   const seen = new Set();
   // Both groups are required by the pattern, so a match always carries them;
   // the defaults are what lets the destructuring say so.
@@ -71,11 +71,14 @@ export function parseCategories(xml) {
  * a list, and a short enough one to browse. Matching is on both the code and
  * the subject name, because people arrive knowing one or the other.
  *
- * @param {import('../types.d.ts').DirectoryQuery} input
- * @param {import('../types.d.ts').DirectoryContext} context - The directory context (guarded fetch + log).
- * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Category entries.
+ * @param input
+ * @param context - The directory context (guarded fetch + log).
+ * @returns Category entries.
  */
-export async function query(input, context) {
+export async function query(
+  input: DirectoryQuery,
+  context: DirectoryContext,
+): Promise<DirectoryEntry[]> {
   const response = await context.fetch(SETS_URL);
   if (!response.ok) {
     throw new Error(`arXiv returned ${String(response.status)} for its subject list`);

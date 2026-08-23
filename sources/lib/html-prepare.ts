@@ -14,8 +14,8 @@
  * @module
  */
 
-import { stripControlCharacters } from './markdown-emit.mjs';
-import { decodeHtmlEntities } from './text.mjs';
+import { stripControlCharacters } from './markdown-emit.ts';
+import { decodeHtmlEntities } from './text.ts';
 
 /**
  * Unwrap `<![CDATA[…]]>` sections that arrived as literal text.
@@ -29,10 +29,10 @@ import { decodeHtmlEntities } from './text.mjs';
  * HTML. 179 of the 239 gate rejections in the audit corpus were this one shape,
  * and every one of them held a feed's cursor.
  *
- * @param {string} source - The fragment as it arrived.
- * @returns {string} The same fragment with the delimiters gone.
+ * @param source - The fragment as it arrived.
+ * @returns The same fragment with the delimiters gone.
  */
-export function unwrapCdata(source) {
+export function unwrapCdata(source: string): string {
   return source.includes('<![CDATA[')
     ? source.replaceAll('<![CDATA[', '').replaceAll(']]>', '')
     : source;
@@ -52,10 +52,10 @@ export function unwrapCdata(source) {
  * Bounded at three passes: the loop exists to reveal markup, and a body needing
  * a fourth decode is likelier to be prose about entities than more layers.
  *
- * @param {string} html - The fragment, possibly entity-encoded more than once.
- * @returns {string} The fragment with its markup revealed.
+ * @param html - The fragment, possibly entity-encoded more than once.
+ * @returns The fragment with its markup revealed.
  */
-export function decodeUntilMarkup(html) {
+export function decodeUntilMarkup(html: string): string {
   let value = html;
   for (let pass = 0; pass < 3 && !value.includes('<'); pass++) {
     if (!/&(lt|amp|#60|#x3c);/i.test(value)) break;
@@ -69,10 +69,10 @@ export function decodeUntilMarkup(html) {
 /**
  * Collapse an already-plain fragment's whitespace, keeping its line structure.
  *
- * @param {string} source - The fragment, which parsed as containing no markup.
- * @returns {string} Its text as Markdown.
+ * @param source - The fragment, which parsed as containing no markup.
+ * @returns Its text as Markdown.
  */
-export function plainTextToMarkdown(source) {
+export function plainTextToMarkdown(source: string): string {
   return (
     stripControlCharacters(decodeHtmlEntities(decodeHtmlEntities(source)))
       // Escape anything still tag-shaped. Reaching here means the fragment had no
@@ -90,10 +90,10 @@ export function plainTextToMarkdown(source) {
 /**
  * Tidy the assembled output: strip join artifacts and cap blank runs.
  *
- * @param {string} markdown - The assembled document.
- * @returns {string} The tidied document.
+ * @param markdown - The assembled document.
+ * @returns The tidied document.
  */
-export function tidy(markdown) {
+export function tidy(markdown: string): string {
   return markdown
     .split('\n')
     .map((line) => {

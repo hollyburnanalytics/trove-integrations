@@ -17,7 +17,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { buildContext } from '../sources/lib/harness.mjs';
+import { buildContext } from '../sources/lib/harness.ts';
 
 const ROOT = new URL('..', import.meta.url);
 

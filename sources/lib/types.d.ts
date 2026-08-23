@@ -1,14 +1,14 @@
 /**
  * The shapes every source adapter passes around.
  *
- * These are declarations, not code: the adapters are `.mjs` and stay that way,
- * and this file is what `checkJs` reads their JSDoc against. Before it existed
- * the recurring annotation was `@param {object} item`, which typechecks as
- * "some object" — so `item.titel` was as valid as `item.title`, and 360 of the
- * repo's first strict-mode errors were exactly that: real property accesses on
- * a type that declared no properties at all.
+ * These are declarations, not code. Before this file existed the recurring
+ * annotation was `@param {object} item`, which typechecks as "some object" —
+ * so `item.titel` was as valid as `item.title`, and 360 of the repo's first
+ * strict-mode errors were exactly that: real property accesses on a type that
+ * declared no properties at all.
  *
- * Referenced from JSDoc as `@param {import('./types.d.ts').FeedItem} item`.
+ * Imported as `import type { FeedItem } from './types.js';` — `.js`, not
+ * `.d.ts`, because that is the specifier a declaration file answers to.
  *
  * @module
  */

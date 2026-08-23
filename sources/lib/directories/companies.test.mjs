@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { makeDirectoryContext } from '../test-fixtures.mjs';
-import { matchRank, parseRegistry, query } from './companies.mjs';
+import { makeDirectoryContext } from '../test-fixtures.ts';
+import { matchRank, parseRegistry, query } from './companies.ts';
 
 /** EDGAR's registry shape: an object keyed by row number, not an array. */
 const REGISTRY = {

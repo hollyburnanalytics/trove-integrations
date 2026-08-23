@@ -16,7 +16,7 @@
  */
 
 import { defineSource, stringList } from '@ontrove/extend/source';
-import { feedItemDocument, syncFeeds } from '../lib/feed-sync.mjs';
+import { feedItemDocument, syncFeeds } from '../lib/feed-sync.ts';
 
 const BASE_URL = 'https://www.ft.com';
 const DEFAULT_SECTIONS = ['world', 'technology', 'markets', 'climate-capital', 'companies'];

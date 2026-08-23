@@ -9,7 +9,7 @@ import {
   rssItemXml,
   setFetch,
   syncOf,
-} from '../lib/test-fixtures.mjs';
+} from '../lib/test-fixtures.ts';
 import extension from './extension.ts';
 
 const sync = syncOf(extension);

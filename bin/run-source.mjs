@@ -3,7 +3,7 @@
  * Headless source runner — exercise a source adapter standalone.
  *
  * Runs a source through the same `context` contract as the production
- * runtime (via lib/harness.mjs), streaming its logs and progress to the
+ * runtime (via lib/harness.ts), streaming its logs and progress to the
  * terminal and printing the resulting documents/cursor/stats. This is the loop
  * for reproducing and debugging source failures locally.
  *
@@ -25,7 +25,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { runSource } from '../sources/lib/harness.mjs';
+import { runSource } from '../sources/lib/harness.ts';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 

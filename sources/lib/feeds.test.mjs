@@ -12,8 +12,8 @@ import {
   syncFeedArticles,
   syncRSS,
   xmlText,
-} from './feeds.mjs';
-import { at, fetchMock, makeSourceContext, setFetch } from './test-fixtures.mjs';
+} from './feeds.ts';
+import { at, fetchMock, makeSourceContext, setFetch } from './test-fixtures.ts';
 
 // --- Shared test helpers ---
 

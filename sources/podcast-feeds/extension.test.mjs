@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { validateResult } from '../lib/harness.mjs';
+import { validateResult } from '../lib/harness.ts';
 import {
   at,
   dateCursorValue,
@@ -9,7 +9,7 @@ import {
   okResponse as ok,
   setFetch,
   syncOf,
-} from '../lib/test-fixtures.mjs';
+} from '../lib/test-fixtures.ts';
 import extension, { episodeDocument } from './extension.ts';
 
 const sync = syncOf(extension);

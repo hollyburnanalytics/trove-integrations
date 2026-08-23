@@ -6,7 +6,7 @@ import {
   makeSourceContext,
   setFetch,
   syncOf,
-} from '../lib/test-fixtures.mjs';
+} from '../lib/test-fixtures.ts';
 import extension from './extension.ts';
 import { filterFilings } from './filing-document.ts';
 

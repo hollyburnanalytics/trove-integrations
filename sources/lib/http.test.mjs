@@ -28,7 +28,7 @@
 
 import { fetchBytes, fetchPage, fetchPageWithMeta, isTooLargeError } from '@ontrove/extend/source';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fetchMock, setFetch } from './test-fixtures.mjs';
+import { fetchMock, setFetch } from './test-fixtures.ts';
 
 /**
  * A Response whose body streams `chunks` without a Content-Length header.

@@ -17,6 +17,7 @@
  *
  * @module
  */
+import type { FeedItem } from './types.js';
 
 /**
  * What a feed calls itself, read off its items.
@@ -25,10 +26,10 @@
  * `feedTitle`), so this needs no second pass over the document. A feed carrying
  * no items yields nothing, which is the honest answer rather than a guess.
  *
- * @param {import('./types.d.ts').FeedItem[]} items - The feed's parsed items.
- * @returns {string | undefined} The trimmed title, or undefined.
+ * @param items - The feed's parsed items.
+ * @returns The trimmed title, or undefined.
  */
-export function feedSelfTitle(items) {
+export function feedSelfTitle(items: FeedItem[]): string | undefined {
   const title = items.find((item) => item.feedTitle)?.feedTitle;
   return title ? title.trim() : undefined;
 }
@@ -55,12 +56,16 @@ export function feedSelfTitle(items) {
  * and perfectly correct thing to publish, so it is filtered here rather than
  * reported as a no-op relocation that would churn every round.
  *
- * @param {import('./types.d.ts').FeedItem[]} items - The feed's parsed items.
- * @param {string} fetchedUrl - The address actually fetched.
- * @param {string} [redirectedTo] - Where a permanent redirect chain led.
- * @returns {string | undefined} The new address, or undefined.
+ * @param items - The feed's parsed items.
+ * @param fetchedUrl - The address actually fetched.
+ * @param redirectedTo - Where a permanent redirect chain led.
+ * @returns The new address, or undefined.
  */
-export function feedRelocation(items, fetchedUrl, redirectedTo) {
+export function feedRelocation(
+  items: FeedItem[],
+  fetchedUrl: string,
+  redirectedTo?: string,
+): string | undefined {
   const declared = items.find((item) => item.feedNewUrl)?.feedNewUrl;
   const next = (declared || redirectedTo || '').trim();
   return next && next !== fetchedUrl ? next : undefined;
@@ -69,10 +74,18 @@ export function feedRelocation(items, fetchedUrl, redirectedTo) {
 /**
  * The self-reported facts to attach to a sync result, or nothing.
  *
- * @param {{feedCount: number, titles: string[], relocations: string[]}} seen
- * @returns {{feedName?: string, feedUrl?: string}} Spreadable onto a SourceSyncResult.
+ * @param seen
+ * @returns Spreadable onto a SourceSyncResult.
  */
-export function selfReport({ feedCount, titles, relocations }) {
+export function selfReport({
+  feedCount,
+  titles,
+  relocations,
+}: {
+  feedCount: number;
+  titles: string[];
+  relocations: string[];
+}): { feedName?: string; feedUrl?: string } {
   if (feedCount !== 1) return {};
   return {
     ...(titles.length === 1 && titles[0] && { feedName: titles[0] }),

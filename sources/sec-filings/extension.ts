@@ -25,7 +25,7 @@ import {
   readDateCursor,
   stringList,
 } from '@ontrove/extend/source';
-import { fetchPage } from '../lib/feeds.mjs';
+import { fetchPage } from '../lib/feeds.ts';
 import { FILING_TYPES, type Filing, filterFilings, processFiling } from './filing-document.ts';
 
 /**

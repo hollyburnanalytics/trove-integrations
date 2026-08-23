@@ -19,7 +19,7 @@
  */
 
 import { defineSource, fetchPage, idSetCursor, readIdSet } from '@ontrove/extend/source';
-import { dayToLocalNoonIso } from '../lib/text.mjs';
+import { dayToLocalNoonIso } from '../lib/text.ts';
 
 const SEARCH_URL = 'https://app.dnv.org/dnv_search/api/v1/councilsearch/search?pageSize=5000';
 const DOCUMENT_URL = 'https://app.dnv.org/OpenDocument/Default.aspx?docNum=';

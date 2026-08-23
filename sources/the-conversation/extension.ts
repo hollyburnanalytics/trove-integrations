@@ -1,5 +1,5 @@
 import { defineSource } from '@ontrove/extend/source';
-import { syncRSS } from '../lib/feeds.mjs';
+import { syncRSS } from '../lib/feeds.ts';
 
 export default defineSource({
   id: 'the-conversation',

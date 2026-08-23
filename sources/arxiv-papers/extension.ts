@@ -4,7 +4,7 @@ import {
   readDateCursor,
   stringList,
 } from '@ontrove/extend/source';
-import { decodeHtmlEntities, fetchPage, hasDeadlinePassed, safeDate } from '../lib/feeds.mjs';
+import { decodeHtmlEntities, fetchPage, hasDeadlinePassed, safeDate } from '../lib/feeds.ts';
 
 /** Results per arXiv API page. */
 export const PAGE_SIZE = 100;

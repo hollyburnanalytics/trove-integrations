@@ -17,8 +17,49 @@
  * — in CI — instead of as an opaque runtime error.
  */
 
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { FetchLike } from '@ontrove/extend/source';
+import type {
+  ConfigValue,
+  Cursor,
+  Document,
+  LogChannel,
+  SourceContext,
+  SourceSyncResult,
+} from './types.js';
+
+/** What {@link buildContext} needs to assemble the context a source runs against. */
+export interface ContextInputs {
+  /**
+   * Source config. NOT `Record<string, string>`: a `url[]`/`text[]` field
+   * arrives as an array, which is what every fan-out source reads.
+   */
+  config?: Record<string, ConfigValue>;
+  /** Source credentials, surfaced to the adapter as `ctx.secret(name)`. */
+  credentials?: Record<string, string>;
+  /** Resume cursor from a prior run. */
+  cursor?: unknown;
+  /** Playwright browser context, or null. */
+  browser?: unknown;
+  /** Hard-timeout budget in ms. */
+  timeoutMs?: number;
+  /** Current epoch ms (injectable for tests). */
+  now?: number;
+  /** Log sink. */
+  onLog?: (level: 'info' | 'warn' | 'error', message: string) => void;
+  /** Progress sink. */
+  onProgress?: (documentsSoFar: number, message: string) => void;
+}
+
+/** {@link ContextInputs}, plus which source to run and which of its methods. */
+export interface RunInputs extends Omit<ContextInputs, 'now'> {
+  /** Path to the source directory. */
+  sourcePath: string;
+  /** Method to invoke (default 'sync'). */
+  method?: 'sync' | 'query';
+}
 
 /** Default hard-timeout budget when a caller does not supply one, in ms. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -37,8 +78,8 @@ export const SOFT_BUDGET_RATIO = 0.8;
  * runtime", raised with a specific reason.
  */
 export class InvalidSourceResponseError extends Error {
-  /** @param {string} message - Why the response is invalid. */
-  constructor(message) {
+  /** @param message - Why the response is invalid. */
+  constructor(message: string) {
     super(message);
     this.name = 'InvalidSourceResponseError';
   }
@@ -47,18 +88,8 @@ export class InvalidSourceResponseError extends Error {
 /**
  * Build the `context` object passed to a source's `sync()` / `query()`.
  *
- * @param {object} options - Context inputs.
- * @param {Record<string, import('./types.d.ts').ConfigValue>} [options.config] - Source
- *   config. NOT `Record<string, string>`: a `url[]`/`text[]` field arrives as an
- *   array, which is what every fan-out source reads.
- * @param {Record<string, string>} [options.credentials] - Source credentials, surfaced to the adapter as `ctx.secret(name)`.
- * @param {unknown} [options.cursor] - Resume cursor from a prior run.
- * @param {unknown} [options.browser] - Playwright browser context, or null.
- * @param {number} [options.timeoutMs] - Hard-timeout budget in ms.
- * @param {number} [options.now] - Current epoch ms (injectable for tests).
- * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [options.onLog] - Log sink.
- * @param {(documentsSoFar: number, message: string) => void} [options.onProgress] - Progress sink.
- * @returns {import('./types.d.ts').SourceContext} The source context.
+ * @param options - Context inputs.
+ * @returns The source context.
  */
 export function buildContext({
   config,
@@ -69,7 +100,7 @@ export function buildContext({
   now,
   onLog,
   onProgress,
-} = {}) {
+}: ContextInputs = {}): SourceContext {
   const budget = typeof timeoutMs === 'number' ? timeoutMs : DEFAULT_TIMEOUT_MS;
   const base = typeof now === 'number' ? now : Date.now();
   const softBudgetMs = Math.floor(budget * SOFT_BUDGET_RATIO);
@@ -80,25 +111,25 @@ export function buildContext({
    * The map goes in and only this comes out: a source cannot enumerate what it
    * was handed, so it cannot read a credential it never declared.
    *
-   * @param {string} name - The credential's name.
-   * @returns {Promise<string | undefined>} Its value, when set.
+   * @param name - The credential's name.
+   * @returns Its value, when set.
    */
-  const secret = (name) => Promise.resolve(secrets[name]);
+  const secret = (name: string): Promise<string | undefined> => Promise.resolve(secrets[name]);
 
   const context = {
     config: config || {},
-    cursor: /** @type {import('./types.d.ts').Cursor | undefined} */ (cursor ?? undefined),
+    cursor: (cursor ?? undefined) as Cursor | undefined,
     browser: browser ?? undefined,
     deadline: base + softBudgetMs,
     secret,
     /**
      * {@link secret}, for a credential the source cannot proceed without.
      *
-     * @param {string} name - The credential's name.
-     * @returns {Promise<string>} Its value.
+     * @param name - The credential's name.
+     * @returns Its value.
      * @throws {Error} When it is unset or empty.
      */
-    requireSecret: async (name) => {
+    requireSecret: async (name: string): Promise<string> => {
       const value = await secret(name);
       if (value === undefined || value === '') {
         throw new Error(`Secret "${name}" is not set for this source.`);
@@ -108,16 +139,15 @@ export function buildContext({
     // The seam's, so a source written against `ctx.fetch` behaves the same here
     // as it does in the cloud. The guard lives in the caller that supplies it;
     // locally there is nothing between the source and the network but this.
-    fetch: /** @type {import('@ontrove/extend/source').FetchLike} */ (
-      (url, init) => globalThis.fetch(url, init)
-    ),
+    fetch: ((url, init) => globalThis.fetch(url, init)) as FetchLike,
     now: () => new Date(base),
     log: makeLogChannel(onLog),
     /**
-     * @param {number} documentsSoFar - How many documents are done.
-     * @param {string} [message] - A line for a person watching.
+     * @param documentsSoFar - How many documents are done.
+     * @param message - A line for a person watching.
      */
-    progress: (documentsSoFar, message) => onProgress?.(documentsSoFar, String(message ?? '')),
+    progress: (documentsSoFar: number, message?: string) =>
+      onProgress?.(documentsSoFar, String(message ?? '')),
   };
   return context;
 }
@@ -130,33 +160,35 @@ export function buildContext({
  * Building only the three methods typechecks against nothing and fails at the
  * first bare call.
  *
- * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [onLog] - Sink.
- * @returns {import('./types.d.ts').LogChannel} The channel.
+ * @param onLog - Sink.
+ * @returns The channel.
  */
-function makeLogChannel(onLog) {
-  /** @param {...unknown} args - What to log. */
-  const log = (...args) => onLog?.('info', args.map(String).join(' '));
-  log.info = /** @param {...unknown} args - What to log. */ (...args) =>
-    onLog?.('info', args.map(String).join(' '));
-  log.warn = /** @param {...unknown} args - What to log. */ (...args) =>
-    onLog?.('warn', args.map(String).join(' '));
-  log.error = /** @param {...unknown} args - What to log. */ (...args) =>
-    onLog?.('error', args.map(String).join(' '));
+function makeLogChannel(
+  onLog?: (level: 'info' | 'warn' | 'error', message: string) => void,
+): LogChannel {
+  /** @param args - What to log. */
+  const log = (...args: unknown[]) => onLog?.('info', args.map(String).join(' '));
+  /** @param args - What to log. */
+  log.info = (...args: unknown[]) => onLog?.('info', args.map(String).join(' '));
+  /** @param args - What to log. */
+  log.warn = (...args: unknown[]) => onLog?.('warn', args.map(String).join(' '));
+  /** @param args - What to log. */
+  log.error = (...args: unknown[]) => onLog?.('error', args.map(String).join(' '));
   return log;
 }
 
 /**
  * Validate a single document against the per-document contract.
  *
- * @param {unknown} document - One entry of the `documents` array.
- * @param {number} index - Its position, for error messages.
+ * @param document - One entry of the `documents` array.
+ * @param index - Its position, for error messages.
  * @throws {InvalidSourceResponseError} If the document is malformed.
  */
-function validateDocument(document, index) {
+function validateDocument(document: unknown, index: number) {
   if (document === null || typeof document !== 'object') {
     throw new InvalidSourceResponseError(`document at index ${index} is not an object`);
   }
-  const record = /** @type {Record<string, unknown>} */ (document);
+  const record = document as Record<string, unknown>;
   for (const field of ['id', 'title']) {
     if (typeof record[field] !== 'string') {
       throw new InvalidSourceResponseError(
@@ -180,16 +212,16 @@ function validateDocument(document, index) {
 /**
  * Validate a source's return value against the result contract.
  *
- * @param {unknown} result - The value returned by `sync()` / `query()`.
+ * @param result - The value returned by `sync()` / `query()`.
  * @throws {InvalidSourceResponseError} If the shape is invalid.
  */
-export function validateResult(result) {
+export function validateResult(result: unknown) {
   if (result === null || typeof result !== 'object') {
     throw new InvalidSourceResponseError(
       `source returned ${result === null ? 'null' : typeof result}, expected an object`,
     );
   }
-  const { documents } = /** @type {{ documents?: unknown }} */ (result);
+  const { documents } = result as { documents?: unknown };
   if (!Array.isArray(documents)) {
     throw new InvalidSourceResponseError('source result is missing a `documents` array');
   }
@@ -199,14 +231,33 @@ export function validateResult(result) {
 }
 
 /**
- * Resolve a source directory to the absolute file URL of its `index.mjs`.
+ * The entry filenames a source directory may use, most-preferred first.
  *
- * @param {string} sourcePath - Absolute or cwd-relative path to the source directory.
- * @returns {string} A `file://` URL for the source entry module.
+ * The same list, in the same order, as the cloud bundler's and the Mac
+ * runner's. `extension.ts` is the convention; the other two are what came
+ * before. Keying on one literal filename is exactly how this harness stopped
+ * being able to run any real source and said so only when someone tried it:
+ * the fixtures still carried `index.mjs`, so the tests stayed green.
  */
-function sourceModuleUrl(sourcePath) {
+const ENTRY_FILENAMES = ['extension.ts', 'index.ts', 'index.mjs'];
+
+/**
+ * Resolve a source directory to the absolute file URL of its entry module.
+ *
+ * Throws rather than returning a default: a missing entry that resolves to a
+ * path anyway becomes an import error naming a file nobody wrote.
+ *
+ * @param sourcePath - Absolute or cwd-relative path to the source directory.
+ * @returns A `file://` URL for the source entry module.
+ * @throws {Error} When the directory holds none of {@link ENTRY_FILENAMES}.
+ */
+function sourceModuleUrl(sourcePath: string): string {
   const abs = path.isAbsolute(sourcePath) ? sourcePath : path.resolve(process.cwd(), sourcePath);
-  return pathToFileURL(path.join(abs, 'index.mjs')).href;
+  for (const name of ENTRY_FILENAMES) {
+    const candidate = path.join(abs, name);
+    if (existsSync(candidate)) return pathToFileURL(candidate).href;
+  }
+  throw new Error(`no ${ENTRY_FILENAMES.join(' or ')} in ${abs} — is this a source directory?`);
 }
 
 /**
@@ -216,19 +267,8 @@ function sourceModuleUrl(sourcePath) {
  * validate the shape, and normalize to `{ documents, cursor, stats }` with a
  * measured `duration_ms`.
  *
- * @param {object} options - Run inputs.
- * @param {string} options.sourcePath - Path to the source directory.
- * @param {'sync' | 'query'} [options.method] - Method to invoke (default 'sync').
- * @param {Record<string, import('./types.d.ts').ConfigValue>} [options.config] - Source
- *   config. NOT `Record<string, string>`: a `url[]`/`text[]` field arrives as an
- *   array, which is what every fan-out source reads.
- * @param {Record<string, string>} [options.credentials] - Source credentials, surfaced to the adapter as `ctx.secret(name)`.
- * @param {unknown} [options.cursor] - Resume cursor.
- * @param {unknown} [options.browser] - Playwright browser context, or null.
- * @param {number} [options.timeoutMs] - Hard-timeout budget in ms.
- * @param {(level: 'info' | 'warn' | 'error', message: string) => void} [options.onLog] - Log sink.
- * @param {(documentsSoFar: number, message: string) => void} [options.onProgress] - Progress sink.
- * @returns {Promise<import('./types.d.ts').SourceSyncResult & { stats: Record<string, unknown> }>} Normalized result.
+ * @param options - Run inputs.
+ * @returns Normalized result.
  * @throws {InvalidSourceResponseError} If the source lacks the method or returns an invalid shape.
  */
 export async function runSource({
@@ -241,8 +281,13 @@ export async function runSource({
   timeoutMs,
   onLog,
   onProgress,
-}) {
-  const source = await import(sourceModuleUrl(sourcePath));
+}: RunInputs): Promise<SourceSyncResult & { stats: Record<string, unknown> }> {
+  const module_ = await import(sourceModuleUrl(sourcePath));
+  // Either shape, and bound to its own declaration: `export default
+  // defineSource({ …, sync })` is the convention, and a bare
+  // `export async function sync` is what came before. The same unwrap the
+  // cloud bundler does, so a source that runs here runs there.
+  const source = module_.default ?? module_;
   const function_ = method === 'query' ? source.query : source.sync;
   if (typeof function_ !== 'function') {
     throw new InvalidSourceResponseError(`source does not export ${method}()`);
@@ -259,11 +304,11 @@ export async function runSource({
   });
 
   const startedAt = Date.now();
-  const result = await function_(context);
+  const result = await function_.call(source, context);
   const durationMs = Date.now() - startedAt;
 
   validateResult(result);
-  const documents = /** @type {import('./types.d.ts').Document[]} */ (result.documents);
+  const documents = result.documents as Document[];
   return {
     documents,
     cursor: result.cursor ?? undefined,

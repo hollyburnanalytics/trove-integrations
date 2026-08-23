@@ -10,7 +10,7 @@
  */
 
 import { defineSource, stringList } from '@ontrove/extend/source';
-import { feedItemDocument, syncFeeds } from '../lib/feed-sync.mjs';
+import { feedItemDocument, syncFeeds } from '../lib/feed-sync.ts';
 
 const FEED_BASE = 'https://rss.nytimes.com/services/xml/rss/nyt';
 const DEFAULT_SECTIONS = ['HomePage'];

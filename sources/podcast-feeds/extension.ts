@@ -1,6 +1,6 @@
 import { defineSource, stringList } from '@ontrove/extend/source';
-import { syncFeeds } from '../lib/feed-sync.mjs';
-import { decodeHtmlEntities, safeDate, stableId } from '../lib/feeds.mjs';
+import { syncFeeds } from '../lib/feed-sync.ts';
+import { decodeHtmlEntities, safeDate, stableId } from '../lib/feeds.ts';
 
 /**
  * Podcasts source: episodes of any show the user subscribes to by feed URL,

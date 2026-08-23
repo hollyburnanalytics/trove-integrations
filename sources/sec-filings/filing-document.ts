@@ -7,7 +7,7 @@
  * shaping half, which is also the half the tests drive directly.
  */
 
-import { dayToLocalNoonIso, stableId } from '../lib/feeds.mjs';
+import { dayToLocalNoonIso, stableId } from '../lib/feeds.ts';
 
 /** EDGAR stamps `filingDate` as a calendar day in the filer's local zone. */
 export const FILING_TYPES = new Set([
