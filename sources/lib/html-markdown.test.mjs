@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { htmlToText } from './html-markdown.mjs';
+import { htmlToText } from './html-markdown.ts';
 
 describe('htmlToText — list structure', () => {
   it('KEEPS ordered-list numbering, which 239 of 246 corpus lists lost', () => {

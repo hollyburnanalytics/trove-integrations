@@ -16,6 +16,7 @@
  *
  * @module
  */
+import type { DirectoryContext, DirectoryEntry, DirectoryQuery } from '../types.js';
 
 /** The auth strategy trove-api applies to this provider's requests. */
 export const auth = 'podcast-index';
@@ -28,10 +29,10 @@ const BASE = 'https://api.podcastindex.org/api/1.0';
  * Their API returns `0` for "never published", which is not a date — a show
  * with no episodes must read as unknown rather than as 1970.
  *
- * @param {unknown} seconds - The raw field.
- * @returns {string | undefined} ISO-8601, or undefined when absent/meaningless.
+ * @param seconds - The raw field.
+ * @returns ISO-8601, or undefined when absent/meaningless.
  */
-function isoFromUnix(seconds) {
+function isoFromUnix(seconds: unknown): string | undefined {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return;
   const ms = seconds * 1000;
   const date = new Date(ms);
@@ -45,10 +46,10 @@ function isoFromUnix(seconds) {
  * entry Trove cannot subscribe to has no business being offered, and one with
  * no name cannot be chosen between.
  *
- * @param {Record<string, unknown>} feed - A raw `feeds` entry.
- * @returns {import('../types.d.ts').DirectoryEntry | undefined} The entry, or undefined when unusable.
+ * @param feed - A raw `feeds` entry.
+ * @returns The entry, or undefined when unusable.
  */
-function toEntry(feed) {
+function toEntry(feed: Record<string, unknown>): DirectoryEntry | undefined {
   const value = typeof feed.url === 'string' ? feed.url.trim() : '';
   const title = typeof feed.title === 'string' ? feed.title.trim() : '';
   if (value === '' || title === '') return;
@@ -77,11 +78,11 @@ function toEntry(feed) {
  * to a person as "no such show", which is a different and misleading claim from
  * "the directory is unreachable".
  *
- * @param {import('../types.d.ts').DirectoryContext} context - The directory context (signing fetch + log).
- * @param {URL} url - The endpoint to call.
- * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Usable entries.
+ * @param context - The directory context (signing fetch + log).
+ * @param url - The endpoint to call.
+ * @returns Usable entries.
  */
-async function fetchEntries(context, url) {
+async function fetchEntries(context: DirectoryContext, url: URL): Promise<DirectoryEntry[]> {
   const response = await context.fetch(url.toString());
   if (!response.ok) {
     throw new Error(`Podcast Index returned ${String(response.status)} for ${url.pathname}`);
@@ -100,11 +101,14 @@ async function fetchEntries(context, url) {
 /**
  * Answer a directory query.
  *
- * @param {import('../types.d.ts').DirectoryQuery} input - The query; empty means featured.
- * @param {import('../types.d.ts').DirectoryContext} context - The directory context.
- * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Candidate shows.
+ * @param input - The query; empty means featured.
+ * @param context - The directory context.
+ * @returns Candidate shows.
  */
-export async function query(input, context) {
+export async function query(
+  input: DirectoryQuery,
+  context: DirectoryContext,
+): Promise<DirectoryEntry[]> {
   const term = typeof input.query === 'string' ? input.query.trim() : '';
   const max = String(input.limit);
 
@@ -138,11 +142,14 @@ export async function query(input, context) {
  * Only ever called for a feed that has already died, so it costs nothing on the
  * healthy path and puts no third party between Trove and a working feed.
  *
- * @param {string} url - The address that stopped answering.
- * @param {import('../types.d.ts').DirectoryContext} context - The directory context (signing fetch + log).
- * @returns {Promise<import('../types.d.ts').DirectoryEntry | undefined>} The show as the index knows it today.
+ * @param url - The address that stopped answering.
+ * @param context - The directory context (signing fetch + log).
+ * @returns The show as the index knows it today.
  */
-export async function lookup(url, context) {
+export async function lookup(
+  url: string,
+  context: DirectoryContext,
+): Promise<DirectoryEntry | undefined> {
   const endpoint = new URL(`${BASE}/podcasts/byfeedurl`);
   endpoint.searchParams.set('url', url);
 

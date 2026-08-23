@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { makeDirectoryContext } from '../test-fixtures.mjs';
-import { parseCategories, query, specToCategory } from './arxiv.mjs';
+import { makeDirectoryContext } from '../test-fixtures.ts';
+import { parseCategories, query, specToCategory } from './arxiv.ts';
 
 /**
  * A ListSets response containing the given `[spec, name]` pairs.

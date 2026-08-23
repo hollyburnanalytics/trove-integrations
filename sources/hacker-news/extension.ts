@@ -1,5 +1,5 @@
 import { defineSource } from '@ontrove/extend/source';
-import { htmlToText, safeDate, undatedStats, warnIfUndated } from '../lib/feeds.mjs';
+import { htmlToText, safeDate, undatedStats, warnIfUndated } from '../lib/feeds.ts';
 
 /**
  * One Algolia search hit, as the front-page query returns it.

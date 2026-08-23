@@ -1,5 +1,5 @@
 import { defineSource, stringList } from '@ontrove/extend/source';
-import { feedItemDocument, syncFeeds } from '../lib/feed-sync.mjs';
+import { feedItemDocument, syncFeeds } from '../lib/feed-sync.ts';
 
 export default defineSource({
   id: 'rss-feeds',

@@ -11,7 +11,7 @@
  */
 
 import { defineSource, stringList } from '@ontrove/extend/source';
-import { feedItemDocument, syncFeeds } from '../lib/feed-sync.mjs';
+import { feedItemDocument, syncFeeds } from '../lib/feed-sync.ts';
 
 const FEED_BASE = 'https://feeds.bbci.co.uk/news';
 const DEFAULT_SECTIONS = ['top_stories', 'world', 'uk', 'technology', 'business'];

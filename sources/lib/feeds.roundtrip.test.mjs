@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { stableId, syncRSS } from './feeds.mjs';
-import { at, fetchMock, makeSourceContext, setFetch } from './test-fixtures.mjs';
+import { stableId, syncRSS } from './feeds.ts';
+import { at, fetchMock, makeSourceContext, setFetch } from './test-fixtures.ts';
 
 // Multi-run / cursor round-trip tests.
 //

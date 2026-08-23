@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { makeDirectoryContext } from '../test-fixtures.mjs';
-import { lookup, query } from './podcasts.mjs';
+import { makeDirectoryContext } from '../test-fixtures.ts';
+import { lookup, query } from './podcasts.ts';
 
 /**
  * A directory context whose fetch returns a canned response.

@@ -15,7 +15,8 @@
  * @module
  */
 
-import { escapeText } from './markdown-emit.mjs';
+import { escapeText } from './markdown-emit.ts';
+import type { MarkdownSink } from './types.js';
 
 /**
  * A sink for rendered fragments that knows whether it is at the start of a line.
@@ -25,15 +26,13 @@ import { escapeText } from './markdown-emit.mjs';
  * mid-sentence is a `#` and must not be — and a plain `parts.push()` cannot tell
  * the difference without re-scanning everything already emitted.
  *
- * @param {string} [seed] - What to treat as already emitted, so the first
+ * @param seed - What to treat as already emitted, so the first
  *   fragment escapes as though it opened a line.
- * @returns {import('./types.d.ts').MarkdownSink} The sink.
+ * @returns The sink.
  */
-export function createSink(seed = '\n') {
-  /** @type {string[]} */
-  const parts = [];
-  /** @type {string | undefined} */
-  let last = seed;
+export function createSink(seed: string = '\n'): MarkdownSink {
+  const parts: string[] = [];
+  let last: string | undefined = seed;
   return {
     /**
      * Emit already-rendered Markdown verbatim.

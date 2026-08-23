@@ -23,7 +23,7 @@ import {
   readIdSet,
 } from '@ontrove/extend/source';
 import { describe, expect, it } from 'vitest';
-import { dateCursorValue } from './test-fixtures.mjs';
+import { dateCursorValue } from './test-fixtures.ts';
 
 describe('date cursor', () => {
   it('reads the typed shape', () => {

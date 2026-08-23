@@ -6,13 +6,13 @@ afterAll(() => vi.restoreAllMocks());
 // decodeHtmlEntities for every OTHER test file too — Bun's module mock registry is
 // process-global and keyed by specifier string.
 
-vi.mock('../lib/feeds.mjs', async (importOriginal) => ({
+vi.mock('../lib/feeds.ts', async (importOriginal) => ({
   ...(await importOriginal()),
   syncRSS: vi.fn(),
 }));
 
-import { syncRSS } from '../lib/feeds.mjs';
-import { makeSourceContext, syncOf } from '../lib/test-fixtures.mjs';
+import { syncRSS } from '../lib/feeds.ts';
+import { makeSourceContext, syncOf } from '../lib/test-fixtures.ts';
 import extension from './extension.ts';
 
 const sync = syncOf(extension);

@@ -1,6 +1,6 @@
 import { defineSource, stringList } from '@ontrove/extend/source';
 import { parse } from 'node-html-parser';
-import { fetchPage, hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
+import { fetchPage, hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.ts';
 
 /**
  * OpenStax — free, peer-reviewed, openly licensed college textbooks.

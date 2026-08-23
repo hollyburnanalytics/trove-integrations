@@ -27,8 +27,18 @@
  * @module
  */
 
+import type { HTMLElement } from 'node-html-parser';
 import { parse as parseHtmlDocument } from 'node-html-parser';
-import { decodeUntilMarkup, plainTextToMarkdown, tidy, unwrapCdata } from './html-prepare.mjs';
+import { decodeUntilMarkup, plainTextToMarkdown, tidy, unwrapCdata } from './html-prepare.ts';
+import {
+  DROP_TAGS,
+  EMPHASIS_MARKERS,
+  HEADING_MARKERS,
+  LINE_TAGS,
+  LIST_TAGS,
+  PARAGRAPH_TAGS,
+  TABLE_TAGS,
+} from './html-tags.ts';
 import {
   codeSpan,
   escapeLinkPart,
@@ -38,76 +48,10 @@ import {
   quoteLines,
   renderTable,
   stripControlCharacters,
-} from './markdown-emit.mjs';
-import { createSink } from './markdown-sink.mjs';
-import { decodeHtmlEntities } from './text.mjs';
-
-/** Elements whose content never belongs in the stored text. */
-const DROP_TAGS = new Set([
-  'script',
-  'style',
-  'noscript',
-  'template',
-  'iframe',
-  'svg',
-  'head',
-  'form',
-  'button',
-  'input',
-  'select',
-  'option',
-  'audio',
-  'video',
-  'source',
-]);
-
-/** Elements that end a paragraph: a blank line on both sides. */
-const PARAGRAPH_TAGS = new Set(['p', 'blockquote', 'figure', 'dl']);
-
-/** Heading tags to their ATX Markdown prefix. */
-/** @type {Record<string, string>} */
-const HEADING_MARKERS = {
-  h1: '#',
-  h2: '##',
-  h3: '###',
-  h4: '####',
-  h5: '#####',
-  h6: '######',
-};
-
-/**
- * Elements that end a line: their content stands on its own line.
- *
- * `li`, `tr`, `td` and `th` are here as a SAFETY NET, not as their normal path —
- * inside a list or table they are consumed by `renderList`/`tableMatrix`, which
- * render their children directly and never reach this table. They matter when
- * one appears ORPHANED, which feed fragments do constantly: a body that opens
- * mid-table, or an excerpt cut at `<li>`. Without an entry here they fall
- * through to inline handling and their text welds — `<td>Left</td><td>Right</td>`
- * becoming `LeftRight`, a string that never appeared in the source. Never
- * joining two separate runs of text outranks rendering any particular tag well.
- */
-const LINE_TAGS = new Set([
-  'div',
-  'section',
-  'article',
-  'header',
-  'footer',
-  'aside',
-  'main',
-  'nav',
-  'dt',
-  'dd',
-  'figcaption',
-  'li',
-  'tr',
-  'td',
-  'th',
-]);
-
-/** Inline emphasis tags and the Markdown marker each becomes. */
-/** @type {Record<string, string>} */
-const EMPHASIS_MARKERS = { em: '*', i: '*', strong: '**', b: '**' };
+} from './markdown-emit.ts';
+import { createSink } from './markdown-sink.ts';
+import { decodeHtmlEntities } from './text.ts';
+import type { MarkdownContext, MarkdownSink } from './types.js';
 
 /**
  * Render a fragment in isolation and return it as a string.
@@ -118,11 +62,15 @@ const EMPHASIS_MARKERS = { em: '*', i: '*', strong: '**', b: '**' };
  * item or a blockquote, wrong for a fragment spliced back INTO a line: the
  * space in `a<strong> </strong>b` is content, and swallowing it welds two words
  * into `ab`.
- * @param {import('node-html-parser').HTMLElement} node - The subtree to render.
- * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
- * @param {boolean} [isAtBlockStart] - Whether the output starts a block.
+ * @param node - The subtree to render.
+ * @param context - The walk state.
+ * @param isAtBlockStart - Whether the output starts a block.
  */
-function renderToString(node, context, isAtBlockStart = false) {
+function renderToString(
+  node: HTMLElement,
+  context: MarkdownContext,
+  isAtBlockStart: boolean = false,
+) {
   const sink = createSink(isAtBlockStart ? '\n' : 'x');
   renderChildren(node, sink, context);
   return sink.toString();
@@ -130,9 +78,9 @@ function renderToString(node, context, isAtBlockStart = false) {
 
 /** Trim leading and trailing newlines only, keeping inner and other whitespace. */
 /**
- * @param {string} value - A rendered fragment.
+ * @param value - A rendered fragment.
  */
-function trimNewlines(value) {
+function trimNewlines(value: string) {
   let start = 0;
   let end = value.length;
   while (start < end && value[start] === '\n') start++;
@@ -143,11 +91,11 @@ function trimNewlines(value) {
 /**
  * Render a childless element that maps to fixed output: `br`/`hr` breaks and
  * `img` alt text. Returns false when the tag is not one of them.
- * @param {string} tag - The element name, lowercased.
- * @param {import('node-html-parser').HTMLElement} node - The element.
- * @param {import('./types.d.ts').MarkdownSink} sink - Where the output goes.
+ * @param tag - The element name, lowercased.
+ * @param node - The element.
+ * @param sink - Where the output goes.
  */
-function renderVoidElement(tag, node, sink) {
+function renderVoidElement(tag: string, node: HTMLElement, sink: MarkdownSink) {
   switch (tag) {
     case 'br': {
       sink.raw('\n');
@@ -170,24 +118,24 @@ function renderVoidElement(tag, node, sink) {
 
 /** Render each child of `node` into `sink`. */
 /**
- * @param {import('node-html-parser').HTMLElement} node - The parent whose children to walk.
- * @param {import('./types.d.ts').MarkdownSink} sink - Where the output goes.
- * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
+ * @param node - The parent whose children to walk.
+ * @param sink - Where the output goes.
+ * @param context - The walk state.
  */
-function renderChildren(node, sink, context) {
+function renderChildren(node: HTMLElement, sink: MarkdownSink, context: MarkdownContext) {
   for (const child of node.childNodes) {
-    renderNode(/** @type {import('node-html-parser').HTMLElement} */ (child), sink, context);
+    renderNode(child as HTMLElement, sink, context);
   }
 }
 
 /**
  * One `<a>` as Markdown: a link, an autolink, or bare text.
  *
- * @param {import('node-html-parser').HTMLElement} node - The anchor element.
- * @param {import('./types.d.ts').MarkdownContext} context - The render context.
- * @returns {string} The rendered link.
+ * @param node - The anchor element.
+ * @param context - The render context.
+ * @returns The rendered link.
  */
-function renderLink(node, context) {
+function renderLink(node: HTMLElement, context: MarkdownContext): string {
   const href = stripControlCharacters((node.getAttribute('href') || '').trim());
   // Link text is flattened, the way established HTML-to-Markdown converters do.
   // A `<br>` inside an anchor otherwise emits a newline between `[` and `]`, and
@@ -213,12 +161,12 @@ function renderLink(node, context) {
  * numbering) and every nested list was flattened level with its parent (2,417
  * bodies). Neither loss is recoverable downstream — by the time the body is
  * stored, a numbered procedure is indistinguishable from an unordered one.
- * @param {string} tag - Either `ul` or `ol`.
- * @param {import('node-html-parser').HTMLElement} node - The list element.
- * @param {import('./types.d.ts').MarkdownSink} sink - Where the output goes.
- * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
+ * @param tag - Either `ul` or `ol`.
+ * @param node - The list element.
+ * @param sink - Where the output goes.
+ * @param context - The walk state.
  */
-function renderList(tag, node, sink, context) {
+function renderList(tag: string, node: HTMLElement, sink: MarkdownSink, context: MarkdownContext) {
   const isOrdered = tag === 'ol';
   const start = Number(node.getAttribute('start') ?? '1');
   const depth = context.listDepth ?? 0;
@@ -262,10 +210,10 @@ function renderList(tag, node, sink, context) {
  * `<ul>` for its `li` returns the items of inner lists. Both then get rendered
  * twice — once in the outer structure and once inside the cell or item that
  * contains them.
- * @param {import('node-html-parser').HTMLElement} node - Where to start looking.
- * @param {Set<string>} tags - The tag names to stop at.
+ * @param node - Where to start looking.
+ * @param tags - The tag names to stop at.
  */
-function nearestAncestor(node, tags) {
+function nearestAncestor(node: HTMLElement, tags: Set<string>) {
   for (let current = node.parentNode; current; current = current.parentNode) {
     const tag = current.rawTagName?.toLowerCase();
     if (tag && tags.has(tag)) return current;
@@ -273,15 +221,13 @@ function nearestAncestor(node, tags) {
 }
 
 /** Tag sets used to scope a descendant search to its own container. */
-const TABLE_TAGS = new Set(['table']);
-const LIST_TAGS = new Set(['ul', 'ol']);
 
 /** Collect a `<table>`'s own cells, in document order, as a matrix of text. */
 /**
- * @param {import('node-html-parser').HTMLElement} node - The `<table>` element.
- * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
+ * @param node - The `<table>` element.
+ * @param context - The walk state.
  */
-function tableMatrix(node, context) {
+function tableMatrix(node: HTMLElement, context: MarkdownContext) {
   return node
     .querySelectorAll('tr')
     .filter((row) => nearestAncestor(row, TABLE_TAGS) === node)
@@ -296,12 +242,17 @@ function tableMatrix(node, context) {
 /**
  * Render `<pre>`, `<code>`, headings, links, quotes, emphasis, lists, tables.
  *
- * @param {string} tag - The element name, lowercased.
- * @param {import('node-html-parser').HTMLElement} node - The element.
- * @param {import('./types.d.ts').MarkdownSink} sink - Where the output goes.
- * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
+ * @param tag - The element name, lowercased.
+ * @param node - The element.
+ * @param sink - Where the output goes.
+ * @param context - The walk state.
  */
-function renderWrappedElement(tag, node, sink, context) {
+function renderWrappedElement(
+  tag: string,
+  node: HTMLElement,
+  sink: MarkdownSink,
+  context: MarkdownContext,
+) {
   // `<pre>` keeps its children's whitespace verbatim inside a fence, so the
   // reader renders it as code rather than run-together prose. Children are still
   // parsed so feeds' highlighting spans get stripped.
@@ -358,12 +309,17 @@ function renderWrappedElement(tag, node, sink, context) {
 
 /** An ATX heading, or nothing when it has no text. */
 /**
- * @param {string} marker - The `#` run for this level.
- * @param {import('node-html-parser').HTMLElement} node - The heading element.
- * @param {import('./types.d.ts').MarkdownSink} sink - Where the output goes.
- * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
+ * @param marker - The `#` run for this level.
+ * @param node - The heading element.
+ * @param sink - Where the output goes.
+ * @param context - The walk state.
  */
-function renderHeading(marker, node, sink, context) {
+function renderHeading(
+  marker: string,
+  node: HTMLElement,
+  sink: MarkdownSink,
+  context: MarkdownContext,
+) {
   const body = flattenInline(renderToString(node, context));
   // An EMPTY heading is dropped, not emitted as a bare `##`.
   //
@@ -379,12 +335,17 @@ function renderHeading(marker, node, sink, context) {
  * Emphasis, last and least. Kept minimal — `*` and `**` only — because every
  * marker emitted into prose is another chance to trip the ingest gate, and the
  * payoff here is presentational rather than semantic.
- * @param {string} tag - The emphasis element name.
- * @param {import('node-html-parser').HTMLElement} node - The element.
- * @param {import('./types.d.ts').MarkdownSink} sink - Where the output goes.
- * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
+ * @param tag - The emphasis element name.
+ * @param node - The element.
+ * @param sink - Where the output goes.
+ * @param context - The walk state.
  */
-function renderEmphasis(tag, node, sink, context) {
+function renderEmphasis(
+  tag: string,
+  node: HTMLElement,
+  sink: MarkdownSink,
+  context: MarkdownContext,
+) {
   const marker = EMPHASIS_MARKERS[tag];
   if (!marker) return false;
   const body = renderToString(node, context);
@@ -401,17 +362,17 @@ function renderEmphasis(tag, node, sink, context) {
 
 /** A node's text with entities decoded and control characters stripped. */
 /**
- * @param {import('node-html-parser').HTMLElement} node - The element to read.
+ * @param node - The element to read.
  */
-function rawTextOf(node) {
+function rawTextOf(node: HTMLElement) {
   return stripControlCharacters(decodeHtmlEntities(decodeHtmlEntities(node.text)));
 }
 
 /** The blank-run or line boundary a block element contributes, if any. */
 /**
- * @param {string} tag - An element name.
+ * @param tag - An element name.
  */
-function blockBoundary(tag) {
+function blockBoundary(tag: string) {
   if (PARAGRAPH_TAGS.has(tag)) return '\n\n';
   if (LINE_TAGS.has(tag)) return '\n';
   return '';
@@ -424,11 +385,11 @@ function blockBoundary(tag) {
  * never reaches here as a container — `renderWrappedElement` takes its text
  * whole, which is what keeps its line breaks — so there is no verbatim mode to
  * carry through the walk.
- * @param {import('node-html-parser').HTMLElement} node - The node to render.
- * @param {import('./types.d.ts').MarkdownSink} sink - Where the output goes.
- * @param {import('./types.d.ts').MarkdownContext} context - The walk state.
+ * @param node - The node to render.
+ * @param sink - Where the output goes.
+ * @param context - The walk state.
  */
-function renderNode(node, sink, context) {
+function renderNode(node: HTMLElement, sink: MarkdownSink, context: MarkdownContext) {
   if (node.nodeType === 3) {
     const text = rawTextOf(node);
     sink.text(text.replaceAll(/\s+/g, ' '));
@@ -457,9 +418,9 @@ function renderNode(node, sink, context) {
  * The output is deliberately a SUBSET of Markdown — enough structure for the
  * reader, not a full HTML-to-Markdown translation. `README.md` in this directory
  * lists what is supported, what degrades, and how.
- * @param {string} html - The raw HTML body.
+ * @param html - The raw HTML body.
  */
-export function htmlToText(html) {
+export function htmlToText(html: string) {
   if (!html) return '';
   // A body that is *entirely* entity-escaped markup (no real tags) needs
   // decoding before parsing, or its tags would surface as literal text.

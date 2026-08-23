@@ -20,7 +20,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runSource } from '../sources/lib/harness.mjs';
+import { runSource } from '../sources/lib/harness.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCES_DIR = path.join(ROOT, 'sources');

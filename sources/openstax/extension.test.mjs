@@ -1,11 +1,11 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // The REAL converter, imported from the module that defines it so this mock
 // cannot shadow it. See the note on `htmlToText` below.
-import { htmlToText } from '../lib/html-markdown.mjs';
+import { htmlToText } from '../lib/html-markdown.ts';
 
 afterAll(() => vi.restoreAllMocks());
 
-import { at, makeSourceContext, okResponse, setFetch, syncOf } from '../lib/test-fixtures.mjs';
+import { at, makeSourceContext, okResponse, setFetch, syncOf } from '../lib/test-fixtures.ts';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -30,8 +30,8 @@ function installFetch() {
 // The spy delegates to the real implementation resolved INSIDE the factory:
 // `vi.mock` is hoisted above the imports, so a module-scope binding would not
 // exist yet when this runs.
-vi.mock('../lib/feeds.mjs', async (importOriginal) => {
-  const real = /** @type {typeof import('../lib/feeds.mjs')} */ (await importOriginal());
+vi.mock('../lib/feeds.ts', async (importOriginal) => {
+  const real = /** @type {typeof import('../lib/feeds.ts')} */ (await importOriginal());
   return {
     ...real,
     /** @type {(context: import('../lib/types.d.ts').SourceContext) => boolean} */
@@ -66,7 +66,7 @@ vi.mock('../lib/feeds.mjs', async (importOriginal) => {
 
 // The spy lives in the mocked module now — `vi.mock` is hoisted, so it cannot
 // be a module-scope binding declared beside it.
-const { hasDeadlinePassed } = await import('../lib/feeds.mjs');
+const { hasDeadlinePassed } = await import('../lib/feeds.ts');
 const { default: extension } = await import('./extension.ts');
 const sync = syncOf(extension);
 

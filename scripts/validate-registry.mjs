@@ -33,13 +33,25 @@ const ENTRY_FILENAMES = ['extension.ts', 'index.ts', 'index.mjs'];
 const DIRECTORY_PROVIDER_DIR = new URL('../sources/lib/directories/', import.meta.url);
 
 /**
+ * The extensions a directory provider module may have, most-preferred first.
+ *
+ * The same reason {@link ENTRY_FILENAMES} is a list: keying on the single
+ * literal `.mjs` turned all four providers into "not a provider this catalog
+ * knows" the moment `sources/lib/` was ported to TypeScript, which reads as
+ * four broken manifests rather than one stale check.
+ */
+const DIRECTORY_PROVIDER_EXTENSIONS = ['.ts', '.mjs'];
+
+/**
  * Whether a directory provider module exists for `name`.
  *
  * @param {string} name - The provider named by a manifest field.
- * @returns {boolean} True when `sources/lib/directories/{name}.mjs` exists.
+ * @returns {boolean} True when `sources/lib/directories/{name}` exists.
  */
-function directoryProviderExists(name) {
-  return existsSync(new URL(`${name}.mjs`, DIRECTORY_PROVIDER_DIR));
+function hasDirectoryProvider(name) {
+  return DIRECTORY_PROVIDER_EXTENSIONS.some((extension) =>
+    existsSync(new URL(`${name}${extension}`, DIRECTORY_PROVIDER_DIR)),
+  );
 }
 
 const { join } = path;
@@ -184,13 +196,14 @@ for (const { manifest, path } of fsSources) {
 // and the optional `schedule`, `fanOut`, `formatting` and `directory`
 // declarations.
 //
-// `directoryProviderExists` is injected rather than assumed, because only this
+// `hasDirectoryProvider` is injected rather than assumed, because only this
 // script knows the repo layout — and a provider typo caught at build time beats
 // one surfacing to a user as an empty search result.
 for (const { manifest, hasCode, path } of fsSources) {
   const { errors } = validateSourceManifest(manifest, {
     implemented: hasCode,
-    directoryProviderExists,
+    // The option's name is @ontrove/extend's, not ours.
+    directoryProviderExists: hasDirectoryProvider,
   });
   for (const error of errors) {
     warn(`${path}/manifest.json: ${error}`);

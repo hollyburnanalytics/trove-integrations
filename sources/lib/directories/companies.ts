@@ -19,6 +19,7 @@
  *
  * @module
  */
+import type { DirectoryContext, DirectoryEntry, DirectoryQuery } from '../types.js';
 
 /** EDGAR's ticker → CIK registry: every company with a listed symbol. */
 const REGISTRY_URL = 'https://www.sec.gov/files/company_tickers.json';
@@ -30,10 +31,10 @@ export const auth = 'sec-edgar';
  * Rows from the registry payload, which is an object keyed by row number
  * rather than an array.
  *
- * @param {unknown} [payload] - The parsed `company_tickers.json`.
- * @returns {Array<{ticker: string, name: string}>}
+ * @param payload - The parsed `company_tickers.json`.
+ * @returns
  */
-export function parseRegistry(payload) {
+export function parseRegistry(payload?: unknown): Array<{ ticker: string; name: string }> {
   if (!payload || typeof payload !== 'object') return [];
   const out = [];
   for (const row of Object.values(payload)) {
@@ -52,11 +53,11 @@ export function parseRegistry(payload) {
  * this, searching "shop" buries SHOP under every company with "shop" in its
  * name, and the one thing the person certainly meant is off the bottom.
  *
- * @param {{ticker: string, name: string}} row
- * @param {string} term - Lower-cased search term.
- * @returns {number} Rank, lower is better; Infinity means no match.
+ * @param row
+ * @param term - Lower-cased search term.
+ * @returns Rank, lower is better; Infinity means no match.
  */
-export function matchRank(row, term) {
+export function matchRank(row: { ticker: string; name: string }, term: string): number {
   const ticker = row.ticker.toLowerCase();
   if (ticker === term) return 0;
   if (ticker.startsWith(term)) return 1;
@@ -73,11 +74,14 @@ export function matchRank(row, term) {
  * companies in registry order is not a browse, and EDGAR publishes no notion of
  * a notable one. This field is searched, not browsed.
  *
- * @param {import('../types.d.ts').DirectoryQuery} input
- * @param {import('../types.d.ts').DirectoryContext} context - The directory context (signing fetch + log).
- * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Company entries whose value is the ticker.
+ * @param input
+ * @param context - The directory context (signing fetch + log).
+ * @returns Company entries whose value is the ticker.
  */
-export async function query(input, context) {
+export async function query(
+  input: DirectoryQuery,
+  context: DirectoryContext,
+): Promise<DirectoryEntry[]> {
   const term = (input.query ?? '').trim().toLowerCase();
   if (term === '') return [];
 

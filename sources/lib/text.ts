@@ -13,10 +13,10 @@ import { createHash } from 'node:crypto';
  * Strip HTML tags from a string by matching angle-bracketed sequences.
  * Uses a simple state-machine approach to avoid regex backtracking issues.
  *
- * @param {string} input - The markup to flatten.
- * @returns {string} Everything outside a tag.
+ * @param input - The markup to flatten.
+ * @returns Everything outside a tag.
  */
-export function stripHtmlTags(input) {
+export function stripHtmlTags(input: string): string {
   let result = '';
   let isInTag = false;
   for (const char of input) {
@@ -34,11 +34,11 @@ export function stripHtmlTags(input) {
 /**
  * Generate a stable, collision-resistant ID from a string.
  *
- * @param {string} prefix - Names the source, so ids from two sources never collide.
- * @param {string} input - The identity being hashed; the same input must hash the same forever.
- * @returns {string} The prefixed id.
+ * @param prefix - Names the source, so ids from two sources never collide.
+ * @param input - The identity being hashed; the same input must hash the same forever.
+ * @returns The prefixed id.
  */
-export function stableId(prefix, input) {
+export function stableId(prefix: string, input: string): string {
   const hash = createHash('sha256').update(input).digest('hex').slice(0, 16);
   return `${prefix}-${hash}`;
 }
@@ -46,10 +46,10 @@ export function stableId(prefix, input) {
 /**
  * Safely parse a date string. Returns a valid ISO string or undefined.
  *
- * @param {string} [dateString] - Whatever the feed published.
- * @returns {string | undefined} An ISO instant, or nothing — never a faked date.
+ * @param dateString - Whatever the feed published.
+ * @returns An ISO instant, or nothing — never a faked date.
  */
-export function safeDate(dateString) {
+export function safeDate(dateString?: string): string | undefined {
   if (!dateString) return;
   const d = new Date(dateString);
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
@@ -58,11 +58,11 @@ export function safeDate(dateString) {
 /**
  * Hour-of-day a `YYYY-MM-DD` instant lands on in `timeZone`.
  *
- * @param {Date} instant - The instant to read.
- * @param {string} timeZone - IANA zone.
- * @returns {number} The local hour, 0–23.
+ * @param instant - The instant to read.
+ * @param timeZone - IANA zone.
+ * @returns The local hour, 0–23.
  */
-function hourIn(instant, timeZone) {
+function hourIn(instant: Date, timeZone: string): number {
   const hour = new Intl.DateTimeFormat('en-US', {
     timeZone,
     hour: 'numeric',
@@ -85,11 +85,11 @@ function hourIn(instant, timeZone) {
  * DST is resolved by construction rather than by a hardcoded offset: we try each
  * plausible UTC offset and keep the one that actually lands on noon locally.
  *
- * @param {string} day - Calendar day as `YYYY-MM-DD`.
- * @param {string} timeZone - IANA zone, e.g. `'America/Vancouver'`.
- * @returns {string | undefined} ISO instant, or undefined if `day` is unparseable.
+ * @param day - Calendar day as `YYYY-MM-DD`.
+ * @param timeZone - IANA zone, e.g. `'America/Vancouver'`.
+ * @returns ISO instant, or undefined if `day` is unparseable.
  */
-export function dayToLocalNoonIso(day, timeZone) {
+export function dayToLocalNoonIso(day: string, timeZone: string): string | undefined {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return safeDate(day);
   // Offsets are whole or half hours; 0..14 either side covers every real zone.
   for (let offset = -14; offset <= 14; offset += 0.5) {
@@ -112,20 +112,18 @@ const NAMED_ENTITIES = {
   '&rdquo;': '”',
   '&middot;': '·',
 };
-
-/** @type {(match: string, digits: string) => string} */
-const fromDecimal = (_, digits) => String.fromCodePoint(Number(digits));
-
-/** @type {(match: string, hex: string) => string} */
-const fromHex = (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16));
+const fromDecimal: (match: string, digits: string) => string = (_, digits) =>
+  String.fromCodePoint(Number(digits));
+const fromHex: (match: string, hex: string) => string = (_, hex) =>
+  String.fromCodePoint(Number.parseInt(hex, 16));
 
 /**
  * Decode common HTML entities (numeric plus the named ones feeds use).
  *
- * @param {string} string_ - The text to decode.
- * @returns {string} The same text with entities resolved.
+ * @param string_ - The text to decode.
+ * @returns The same text with entities resolved.
  */
-export function decodeHtmlEntities(string_) {
+export function decodeHtmlEntities(string_: string): string {
   let result = string_
     .replaceAll(/&#(\d+);/g, (match, digits) => fromDecimal(match, digits))
     .replaceAll(/&#x([0-9a-fA-F]+);/g, (match, hex) => fromHex(match, hex))
@@ -146,4 +144,4 @@ export function decodeHtmlEntities(string_) {
 // Re-exported so the many callers of `htmlToText` keep one import. The
 // implementation moved to `html-markdown.mjs`; the name stays because it is the
 // vocabulary every source adapter already uses.
-export { htmlToText } from './html-markdown.mjs';
+export { htmlToText } from './html-markdown.ts';

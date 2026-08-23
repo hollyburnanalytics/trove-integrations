@@ -6,7 +6,7 @@ import {
   okResponse,
   setFetch,
   syncOf,
-} from '../lib/test-fixtures.mjs';
+} from '../lib/test-fixtures.ts';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 

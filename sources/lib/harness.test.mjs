@@ -11,7 +11,7 @@ import {
   runSource,
   SOFT_BUDGET_RATIO,
   validateResult,
-} from './harness.mjs';
+} from './harness.ts';
 
 /**
  * Absolute path to a fixture source directory.
@@ -179,6 +179,22 @@ describe('runSource', () => {
     expect(result.cursor).toBe('echo-cursor');
     expect(result.stats?.fetched).toBe(2);
     expect(typeof result.stats?.duration_ms).toBe('number');
+  });
+
+  it('runs an extension.ts source that default-exports its declaration', async () => {
+    // The shape every real adapter now uses. Kept separate from `echo` because
+    // the harness resolving `mod.default ?? mod` and binding the receiver are
+    // two different things, and neither is reachable through a bare-export
+    // fixture. `this.id` in the document id is the receiver assertion.
+    const result = await runSource({ sourcePath: fixture('echo-declared') });
+    expect(result.documents).toHaveLength(1);
+    expect(result.documents[0]?.id).toBe('echo-declared-1');
+  });
+
+  it('names the entry filenames it looked for when a directory has none', async () => {
+    await expect(runSource({ sourcePath: fixture('bad-shape/..') })).rejects.toThrow(
+      /no extension\.ts or index\.ts or index\.mjs in/,
+    );
   });
 
   it('resolves a cwd-relative source path', async () => {

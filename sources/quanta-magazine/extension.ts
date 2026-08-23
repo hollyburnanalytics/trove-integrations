@@ -1,5 +1,5 @@
 import { defineSource } from '@ontrove/extend/source';
-import { syncFeedArticles } from '../lib/feeds.mjs';
+import { syncFeedArticles } from '../lib/feeds.ts';
 
 export default defineSource({
   id: 'quanta-magazine',

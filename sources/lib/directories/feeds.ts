@@ -1,6 +1,8 @@
+import type { HTMLElement } from 'node-html-parser';
 import { parse as parseHtmlDocument } from 'node-html-parser';
-import { parseRSS } from '../rss-parse.mjs';
-import { decodeHtmlEntities } from '../text.mjs';
+import { parseRSS } from '../rss-parse.ts';
+import { decodeHtmlEntities } from '../text.ts';
+import type { DirectoryContext, DirectoryEntry, DirectoryQuery } from '../types.js';
 
 /**
  * The RSS directory — resolve mode (trove docs/39 D8).
@@ -40,17 +42,17 @@ const MAX_LINKS = 20;
  * is not http(s) — the page chose these values, so a `javascript:` or `data:`
  * alternate is untrusted input that must never be offered as a subscription.
  *
- * @param {import('node-html-parser').HTMLElement} link - A parsed `<link>` element.
- * @param {string} baseUrl - For resolving relative hrefs.
- * @returns {string | undefined} The absolute feed URL.
+ * @param link - A parsed `<link>` element.
+ * @param baseUrl - For resolving relative hrefs.
+ * @returns The absolute feed URL.
  */
-function feedLinkUrl(link, baseUrl) {
+function feedLinkUrl(link: HTMLElement, baseUrl: string): string | undefined {
   const [declared = ''] = (link.getAttribute('type') || '').toLowerCase().split(';', 1);
   const type = declared.trim();
   const href = link.getAttribute('href');
   if (!href || !FEED_LINK_TYPES.has(type)) return;
 
-  let resolved;
+  let resolved: URL;
   try {
     resolved = new URL(href, baseUrl);
   } catch {
@@ -67,15 +69,17 @@ function feedLinkUrl(link, baseUrl) {
  * post and comment feeds — or one feed per section — is exactly the case where
  * guessing picks wrong and a person picks right.
  *
- * @param {string} html - The fetched document.
- * @param {string} baseUrl - For resolving relative hrefs.
- * @returns {Array<{url: string, title: string}>} Every advertised feed.
+ * @param html - The fetched document.
+ * @param baseUrl - For resolving relative hrefs.
+ * @returns Every advertised feed.
  */
-export function advertisedFeeds(html, baseUrl) {
+export function advertisedFeeds(
+  html: string,
+  baseUrl: string,
+): Array<{ url: string; title: string }> {
   const root = parseHtmlDocument(html);
   const pageTitle = decodeHtmlEntities(root.querySelector('title')?.text?.trim() ?? '');
-  /** @type {Array<{url: string, title: string}>} */
-  const found = [];
+  const found: Array<{ url: string; title: string }> = [];
   const seen = new Set();
 
   for (const link of root.querySelectorAll('link[rel="alternate"]')) {
@@ -98,11 +102,14 @@ export function advertisedFeeds(html, baseUrl) {
  * An address that IS a feed resolves to itself, named by its own channel title
  * — so pasting a feed URL confirms what it is rather than rejecting it.
  *
- * @param {import('../types.d.ts').DirectoryQuery} input - `query` is the pasted address.
- * @param {import('../types.d.ts').DirectoryContext} context - The directory context (guarded fetch + log).
- * @returns {Promise<import('../types.d.ts').DirectoryEntry[]>} Subscribable feeds.
+ * @param input - `query` is the pasted address.
+ * @param context - The directory context (guarded fetch + log).
+ * @returns Subscribable feeds.
  */
-export async function query(input, context) {
+export async function query(
+  input: DirectoryQuery,
+  context: DirectoryContext,
+): Promise<DirectoryEntry[]> {
   const address = typeof input.query === 'string' ? input.query.trim() : '';
   // No featured set: "every feed on the web" is not a list, and an empty
   // address is a person who has not typed yet rather than a request.

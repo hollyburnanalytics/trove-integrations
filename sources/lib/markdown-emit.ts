@@ -61,10 +61,10 @@ const ZERO_WIDTH = new Set([
  * suppression to say "the control characters are the point". Naming the ranges
  * costs three lines and needs no such excuse.
  *
- * @param {number} code - The code point to judge.
- * @returns {boolean} True when it must not reach the stored body.
+ * @param code - The code point to judge.
+ * @returns True when it must not reach the stored body.
  */
-function isRemovable(code) {
+function isRemovable(code: number): boolean {
   if (code === 9 || code === 10) return false; // tab and newline are content
   if (code < 32 || (code >= 127 && code <= 159)) return true; // C0 and C1 controls
   if (code >= 8234 && code <= 8238) return true; // U+202A–U+202E bidi overrides
@@ -74,10 +74,10 @@ function isRemovable(code) {
 /**
  * Strip characters that are invisible in a browser but fatal at the ingest gate.
  *
- * @param {string} value - The text to clean.
- * @returns {string} The same text without the invisible characters.
+ * @param value - The text to clean.
+ * @returns The same text without the invisible characters.
  */
-export function stripControlCharacters(value) {
+export function stripControlCharacters(value: string): string {
   let out = '';
   for (const character of value) {
     const code = character.codePointAt(0);
@@ -93,10 +93,10 @@ export function stripControlCharacters(value) {
  * Scheme-relative (`//host/path`) and site-relative (`/path`, `./path`) URLs have
  * no scheme to check and are allowed through.
  *
- * @param {string} href - The destination the source markup carried.
- * @returns {boolean} True when it may be emitted as a link target.
+ * @param href - The destination the source markup carried.
+ * @returns True when it may be emitted as a link target.
  */
-export function isSafeUrl(href) {
+export function isSafeUrl(href: string): boolean {
   const [, scheme] = /^([a-z][a-z0-9+.-]*):/i.exec(href) ?? [];
   return scheme ? SAFE_SCHEMES.has(scheme.toLowerCase()) : true;
 }
@@ -111,12 +111,12 @@ export function isSafeUrl(href) {
  * than silently polluting the corpus. So a title containing `]` or a URL
  * containing `)` does not degrade one document, it stops the feed advancing.
  *
- * @param {string} value - Raw link text or destination.
- * @param {boolean} isUrl - Escape for the `(...)` destination rather than the
+ * @param value - Raw link text or destination.
+ * @param isUrl - Escape for the `(...)` destination rather than the
  *   `[...]` label.
- * @returns {string} The escaped value.
+ * @returns The escaped value.
  */
-export function escapeLinkPart(value, isUrl) {
+export function escapeLinkPart(value: string, isUrl: boolean): string {
   return isUrl
     ? value.replaceAll('(', '%28').replaceAll(')', '%29').replaceAll(/\s/g, '%20')
     : // Idempotent: source text reaching a label has already been escaped once on
@@ -141,12 +141,12 @@ export function escapeLinkPart(value, isUrl) {
  * containing raw HTML outright — text discussing `<div>` reads to that gate as a
  * converter that failed to do its job.
  *
- * @param {string} value - The source text.
- * @param {boolean} atLineStart - Whether it will open a line, which decides
+ * @param value - The source text.
+ * @param atLineStart - Whether it will open a line, which decides
  *   whether the block markers need escaping too.
- * @returns {string} The escaped text.
+ * @returns The escaped text.
  */
-export function escapeText(value, atLineStart) {
+export function escapeText(value: string, atLineStart: boolean): string {
   const inline = value
     .replaceAll('\\', '\\\\')
     .replaceAll(/([[\]`])/g, String.raw`\$1`)
@@ -163,10 +163,10 @@ export function escapeText(value, atLineStart) {
  * prose. CommonMark's own rule is a fence longer than the longest inner run, plus
  * a space of padding when the content itself starts or ends with a backtick.
  *
- * @param {string} body - The code to wrap.
- * @returns {string} The code span, or `''` for empty code.
+ * @param body - The code to wrap.
+ * @returns The code span, or `''` for empty code.
  */
-export function codeSpan(body) {
+export function codeSpan(body: string): string {
   if (!body) return '';
   const longest = Math.max(0, ...(body.match(/`+/g) ?? []).map((run) => run.length));
   const fence = '`'.repeat(longest + 1);
@@ -182,10 +182,10 @@ export function codeSpan(body) {
  * — a single leading `> ` would quote the first line and silently drop the rest
  * back into body prose, which is the bug this whole change exists to fix.
  *
- * @param {string} body - The rendered children.
- * @returns {string} The quoted block.
+ * @param body - The rendered children.
+ * @returns The quoted block.
  */
-export function quoteLines(body) {
+export function quoteLines(body: string): string {
   return (
     body
       // Collapse the blank runs FIRST. The outer pass caps consecutive newlines,
@@ -209,10 +209,10 @@ export function quoteLines(body) {
  * happens to start with hashes — not a heading, not what the source meant, and
  * impossible to correct downstream.
  *
- * @param {string} body - The rendered children.
- * @returns {string} The same content as one inline run.
+ * @param body - The rendered children.
+ * @returns The same content as one inline run.
  */
-export function flattenInline(body) {
+export function flattenInline(body: string): string {
   return (
     body
       // Every quantifier here is bounded and matches only horizontal whitespace.
@@ -231,10 +231,10 @@ export function flattenInline(body) {
 /**
  * One table cell, flattened and pipe-escaped, never empty.
  *
- * @param {string} value - The cell's rendered content.
- * @returns {string} The cell, safe to sit between pipes.
+ * @param value - The cell's rendered content.
+ * @returns The cell, safe to sit between pipes.
  */
-function tableCell(value) {
+function tableCell(value: string): string {
   // A pipe inside a cell would open a column the header row never declared, so
   // the row's width stops matching and the whole table degrades to prose.
   return flattenInline(value).replaceAll('|', String.raw`\|`) || ' ';
@@ -253,15 +253,14 @@ function tableCell(value) {
  * arrived in the corpus as `Launch dateSeptember 2026`, which is not a formatting
  * loss but a fabricated string that never appeared in the source.
  *
- * @param {string[][]} rows - The cells, already rendered inline.
- * @returns {string | undefined} The table, or nothing when no row has cells.
+ * @param rows - The cells, already rendered inline.
+ * @returns The table, or nothing when no row has cells.
  */
-export function renderTable(rows) {
+export function renderTable(rows: string[][]): string | undefined {
   const [header, ...body] = rows.filter((row) => row.length > 0);
   if (header === undefined) return;
   const width = Math.max(header.length, ...body.map((row) => row.length));
-  /** @type {(row: string[]) => string} */
-  const line = (row) =>
+  const line: (row: string[]) => string = (row) =>
     `| ${Array.from({ length: width }, (_, index) => tableCell(row[index] ?? '')).join(' | ')} |`;
   const divider = `| ${Array.from({ length: width }, () => '---').join(' | ')} |`;
   return [line(header), divider, ...body.map((row) => line(row))].join('\n');

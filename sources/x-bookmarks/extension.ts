@@ -1,5 +1,5 @@
 import { defineSource } from '@ontrove/extend/source';
-import { hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.mjs';
+import { hasDeadlinePassed, htmlToText, safeDate, stableId } from '../lib/feeds.ts';
 
 /**
  * X (Twitter) Bookmarks — your saved posts, synced into Trove.
