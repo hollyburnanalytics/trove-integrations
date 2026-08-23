@@ -25,20 +25,8 @@ import {
   readDateCursor,
   stringList,
 } from '@ontrove/extend/source';
-import { dayToLocalNoonIso, fetchPage, stableId } from '../lib/feeds.mjs';
-
-const FILING_TYPES = new Set([
-  '10-K',
-  '10-K/A',
-  '10-Q',
-  '10-Q/A',
-  '20-F',
-  '20-F/A',
-  'S-1',
-  'S-1/A',
-  'F-1',
-  'F-1/A',
-]);
+import { fetchPage } from '../lib/feeds.mjs';
+import { FILING_TYPES, type Filing, filterFilings, processFiling } from './filing-document.ts';
 
 /**
  * EDGAR refuses a generic bot User-Agent outright — a request carrying one
@@ -53,7 +41,6 @@ const SEC_HEADERS = {
 };
 
 /** EDGAR timestamps filings on Eastern time — filing days are local days. */
-const FILING_TIME_ZONE = 'America/New_York';
 const DELAY_MS = 200;
 
 /**
@@ -63,17 +50,24 @@ const DELAY_MS = 200;
  * the same length, indexed together. Every column is optional because only
  * `accessionNumber` is guarded before the zip — the rest are read defensively so
  * a column EDGAR stops sending costs the affected field, not the whole round.
- *
- * @typedef {{ ticker: string, cik_str: number, title: string }} TickerFileEntry
- * @typedef {{ cik: number, name: string }} TickerEntry
- * @typedef {{ accessionNumber?: string[], filingDate?: string[], reportDate?: string[],
- *   form?: string[], primaryDocument?: string[] }} RecentFilings
- * @typedef {{ name?: string, filings?: { recent?: RecentFilings } }} Submissions
- * @typedef {{ accessionNumber: string, filingDate: string, reportDate: string, form: string,
- *   primaryDocument: string }} Filing
- * @typedef {{ documents: import('../lib/types.d.ts').Document[], rawDates: number[],
- *   updatedTickerMap: Record<string, TickerEntry>, skipped: number, anyFailed: boolean }} SyncState
  */
+type TickerFileEntry = { ticker: string; cik_str: number; title: string };
+type TickerEntry = { cik: number; name: string };
+type RecentFilings = {
+  accessionNumber?: string[];
+  filingDate?: string[];
+  reportDate?: string[];
+  form?: string[];
+  primaryDocument?: string[];
+};
+type Submissions = { name?: string; filings?: { recent?: RecentFilings } };
+type SyncState = {
+  documents: import('../lib/types.js').Document[];
+  rawDates: number[];
+  updatedTickerMap: Record<string, TickerEntry>;
+  skipped: number;
+  anyFailed: boolean;
+};
 
 // --- Helpers ---
 
@@ -85,24 +79,23 @@ const DELAY_MS = 200;
 /**
  * Fetch a JSON payload from EDGAR.
  *
- * @template T
- * @param {string} url - The endpoint to read.
- * @returns {Promise<T>} The parsed body, as the caller declares it.
+ * @param url - The endpoint to read.
+ * @returns The parsed body, as the caller declares it.
  */
-async function fetchJson(url) {
+async function fetchJson<T>(url: string): Promise<T> {
   return JSON.parse(await fetchPage(url, { headers: SEC_HEADERS }));
 }
 
 /**
  * Fetch the SEC ticker→CIK mapping and build a lookup by uppercase ticker.
  *
- * @returns {Promise<Record<string, TickerEntry>>} Every listed ticker's CIK and company name.
+ * @returns Every listed ticker's CIK and company name.
  */
-export async function loadTickerMap() {
-  /** @type {Record<string, TickerFileEntry>} */
-  const data = await fetchJson('https://www.sec.gov/files/company_tickers.json');
-  /** @type {Record<string, TickerEntry>} */
-  const map = {};
+export async function loadTickerMap(): Promise<Record<string, TickerEntry>> {
+  const data: Record<string, TickerFileEntry> = await fetchJson(
+    'https://www.sec.gov/files/company_tickers.json',
+  );
+  const map: Record<string, TickerEntry> = {};
   for (const entry of Object.values(data)) {
     map[entry.ticker.toUpperCase()] = {
       cik: entry.cik_str,
@@ -118,20 +111,22 @@ export async function loadTickerMap() {
  * `primaryDocument` is the actual filing document (not an exhibit), so we
  * carry it through rather than guessing from the archive index.
  *
- * @param {number | string} cik - The company's CIK, padded here to EDGAR's ten digits.
- * @returns {Promise<{ name: string | undefined, filings: Filing[] }>} The company's
+ * @param cik - The company's CIK, padded here to EDGAR's ten digits.
+ * @returns The company's
  *   registered name and its recent filings, zipped out of EDGAR's parallel arrays.
  */
-export async function fetchFilings(cik) {
+export async function fetchFilings(
+  cik: number | string,
+): Promise<{ name: string | undefined; filings: Filing[] }> {
   const paddedCik = String(cik).padStart(10, '0');
-  /** @type {Submissions} */
-  const data = await fetchJson(`https://data.sec.gov/submissions/CIK${paddedCik}.json`);
+  const data: Submissions = await fetchJson(
+    `https://data.sec.gov/submissions/CIK${paddedCik}.json`,
+  );
   const recent = data.filings?.recent;
   if (!recent?.accessionNumber) return { name: data.name, filings: [] };
 
   const count = recent.accessionNumber.length;
-  /** @type {Filing[]} */
-  const filings = [];
+  const filings: Filing[] = [];
   for (let index = 0; index < count; index++) {
     filings.push({
       accessionNumber: recent.accessionNumber[index] ?? '',
@@ -145,112 +140,22 @@ export async function fetchFilings(cik) {
 }
 
 /**
- * Filter filings to target types and optionally by date cursor.
- *
- * @param {Filing[]} filings - Everything the submissions endpoint reported.
- * @param {Date} [afterDate] - Keep only filings later than this, when resuming.
- * @returns {Filing[]} The filings worth fetching.
- */
-export function filterFilings(filings, afterDate) {
-  return filings.filter((filing) => {
-    if (!FILING_TYPES.has(filing.form)) return false;
-    if (afterDate) {
-      const filed = new Date(filing.filingDate);
-      if (!Number.isNaN(filed.getTime()) && filed <= afterDate) return false;
-    }
-    return true;
-  });
-}
-
-/**
- * The EDGAR archive URL of a filing's primary document.
- *
- * @param {number | string} cik - The filer's CIK, unpadded as the archive path uses it.
- * @param {string} accessionNumber - The filing's accession number, with dashes.
- * @param {string} primaryDocument - The filename of the filing itself.
- * @returns {string} The document's archive URL.
- */
-function buildDocumentUrl(cik, accessionNumber, primaryDocument) {
-  const accumulatorNoDashes = accessionNumber.replaceAll('-', '');
-  return `https://www.sec.gov/Archives/edgar/data/${cik}/${accumulatorNoDashes}/${primaryDocument}`;
-}
-
-/**
- * Pause, to pace requests against EDGAR's rate policy.
- *
- * @param {number} ms - How long to wait.
- * @returns {Promise<void>} Resolves once the time has passed.
- */
-function delay(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-// --- Per-filing processing ---
-
-/**
- * Turn one filing into a Trove document, or nothing when EDGAR names no HTML
- * primary document for it.
- *
- * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
- * @param {Filing} filing - The filing to emit.
- * @param {number | string} cik - The filer's CIK, for the archive URL.
- * @param {string} companyName - The filer's name, used as the document's author.
- * @param {string} upperTicker - The configured ticker, uppercased, carried as a tag.
- * @returns {import('../lib/types.d.ts').Document | undefined} The document, when there is one.
- */
-function processFiling(context, filing, cik, companyName, upperTicker) {
-  if (!filing.primaryDocument?.endsWith('.htm')) {
-    context.log.warn(`No HTML primary document for ${filing.form} ${filing.accessionNumber}`);
-    return;
-  }
-  const documentUrl = buildDocumentUrl(cik, filing.accessionNumber, filing.primaryDocument);
-
-  const dateLabel = filing.reportDate || filing.filingDate;
-  const period = filing.reportDate || 'N/A';
-  const header = `${companyName} ${filing.form}\nFiled: ${filing.filingDate}\nPeriod: ${period}`;
-  return {
-    id: stableId('sec', filing.accessionNumber),
-    title: `${companyName} ${filing.form} (${dateLabel})`,
-    // The header only. The filing itself is the body, extracted server-side —
-    // see `fileUrl` below.
-    text: header,
-    // Hand over the filing rather than a flattened copy of it.
-    //
-    // This adapter used to fetch each filing and reduce it to plain text here.
-    // That put extraction in the wrong place: it threw away the headings and
-    // tables the platform's HTML pass turns into Markdown, it capped every
-    // document at 100,000 characters (a 10-K stops mid-Part-II), it kept no
-    // retrievable copy of the filing, and it spent one EDGAR request per filing
-    // on work the server would do anyway — against an API that answers a
-    // generic client with 403.
-    fileUrl: documentUrl,
-    mimeType: 'text/html',
-    url: documentUrl,
-    author: companyName,
-    // EDGAR reports a bare filing day (`YYYY-MM-DD`) on Eastern time. Anchor it
-    // to noon there: left bare it parses as midnight UTC, which renders as the
-    // *previous* day across North America.
-    date: dayToLocalNoonIso(filing.filingDate, FILING_TIME_ZONE),
-    tags: [filing.form, upperTicker],
-  };
-}
-
-// --- Ticker resolution ---
-
-/**
  * Resolve a ticker to its CIK and company name, loading EDGAR's ticker file
  * once per run and only when the cache misses.
  *
- * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
- * @param {string} upperTicker - The ticker, uppercased.
- * @param {Record<string, TickerEntry>} cachedTickers - Tickers resolved on a previous run.
- * @param {{ map: Record<string, TickerEntry> | undefined }} tickerMapReference - The
+ * @param context - The harness context.
+ * @param upperTicker - The ticker, uppercased.
+ * @param cachedTickers - Tickers resolved on a previous run.
+ * @param tickerMapReference - The
  *   run's lazily-loaded ticker file, shared across tickers.
- * @returns {Promise<TickerEntry | undefined>} The entry, or nothing for an unknown ticker.
+ * @returns The entry, or nothing for an unknown ticker.
  */
-async function resolveTicker(context, upperTicker, cachedTickers, tickerMapReference) {
+async function resolveTicker(
+  context: import('../lib/types.js').SourceContext,
+  upperTicker: string,
+  cachedTickers: Record<string, TickerEntry>,
+  tickerMapReference: { map: Record<string, TickerEntry> | undefined },
+): Promise<TickerEntry | undefined> {
   const alreadyResolved = cachedTickers[upperTicker];
   if (alreadyResolved) {
     return alreadyResolved;
@@ -268,23 +173,23 @@ async function resolveTicker(context, upperTicker, cachedTickers, tickerMapRefer
  * Sync one ticker: resolve it, fetch its filings, and push what is new onto the
  * run's shared state.
  *
- * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
- * @param {string} upperTicker - The ticker, uppercased.
- * @param {Date | undefined} lastDate - The previous run's cursor, when resuming.
- * @param {Record<string, TickerEntry>} cachedTickers - Tickers resolved on a previous run.
- * @param {{ map: Record<string, TickerEntry> | undefined }} tickerMapReference - The
+ * @param context - The harness context.
+ * @param upperTicker - The ticker, uppercased.
+ * @param lastDate - The previous run's cursor, when resuming.
+ * @param cachedTickers - Tickers resolved on a previous run.
+ * @param tickerMapReference - The
  *   run's lazily-loaded ticker file.
- * @param {SyncState} state - Accumulated across every ticker in the round.
- * @returns {Promise<void>} Resolves when this ticker is done.
+ * @param state - Accumulated across every ticker in the round.
+ * @returns Resolves when this ticker is done.
  */
 async function syncTicker(
-  context,
-  upperTicker,
-  lastDate,
-  cachedTickers,
-  tickerMapReference,
-  state,
-) {
+  context: import('../lib/types.js').SourceContext,
+  upperTicker: string,
+  lastDate: Date | undefined,
+  cachedTickers: Record<string, TickerEntry>,
+  tickerMapReference: { map: Record<string, TickerEntry> | undefined },
+  state: SyncState,
+): Promise<void> {
   const resolved = await resolveTicker(context, upperTicker, cachedTickers, tickerMapReference);
   if (!resolved) {
     context.log.warn(`Unknown ticker: ${upperTicker}`);
@@ -329,16 +234,28 @@ async function syncTicker(
  * Resolve the newest filing date (ms epoch) across this run, falling back to
  * the previous cursor date when nothing new was collected.
  *
- * @param {number[]} rawDates - Filing dates collected this round, in epoch ms.
- * @param {Date | undefined} lastDate - The incoming cursor.
- * @returns {number} The newest time known, or 0 when there is none.
+ * @param rawDates - Filing dates collected this round, in epoch ms.
+ * @param lastDate - The incoming cursor.
+ * @returns The newest time known, or 0 when there is none.
  */
-function newestTime(rawDates, lastDate) {
+function newestTime(rawDates: number[], lastDate: Date | undefined): number {
   if (rawDates.length > 0) return Math.max(...rawDates);
   return lastDate ? lastDate.getTime() : 0;
 }
 
 // --- Main sync ---
+
+/**
+ * Pause, to pace requests against EDGAR's rate policy.
+ *
+ * @param ms - How long to wait.
+ * @returns Resolves once the time has passed.
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 export default defineSource({
   id: 'sec-filings',
@@ -386,12 +303,9 @@ export default defineSource({
     }
 
     const lastDate = readDateCursor(context.cursor);
-    /** @type {Record<string, TickerEntry>} */
-    const cachedTickers = {};
-    /** @type {{ map: Record<string, TickerEntry> | undefined }} */
-    const tickerMapReference = { map: undefined };
-    /** @type {SyncState} */
-    const state = {
+    const cachedTickers: Record<string, TickerEntry> = {};
+    const tickerMapReference: { map: Record<string, TickerEntry> | undefined } = { map: undefined };
+    const state: SyncState = {
       documents: [],
       rawDates: [],
       updatedTickerMap: { ...cachedTickers },

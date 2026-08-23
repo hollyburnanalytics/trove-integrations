@@ -18,29 +18,32 @@ const MAX_PAGES_PER_QUERY = 5;
 /**
  * One Atom element's text content, or `''`.
  *
- * @type {(xml: string, tag: string) => string}
  */
-const getTagValue = (xml, tag) => {
+const getTagValue: (xml: string, tag: string) => string = (xml, tag) => {
   const [, value] = xml.match(new RegExp(String.raw`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`)) ?? [];
   return value ? value.trim() : '';
 };
 
-/**
- * @typedef {{ documentId: string, publishedMs: number,
- *   doc: import('../lib/types.d.ts').Document }} PaperEntry
- * @typedef {{ lastDate: Date | undefined, seenIds: Set<string>,
- *   documents: import('../lib/types.d.ts').Document[],
- *   publishedTimes: number[] }} Accumulators
- */
+type PaperEntry = {
+  documentId: string;
+  publishedMs: number;
+  doc: import('../lib/types.js').Document;
+};
+type Accumulators = {
+  lastDate: Date | undefined;
+  seenIds: Set<string>;
+  documents: import('../lib/types.js').Document[];
+  publishedTimes: number[];
+};
 
 /**
  * Project one `<entry>` onto a document, plus what the caller needs to decide
  * whether to keep it.
  *
- * @param {string} entryXml - The entry's markup.
- * @returns {PaperEntry} The document and its identity and publication time.
+ * @param entryXml - The entry's markup.
+ * @returns The document and its identity and publication time.
  */
-function entryToDocument(entryXml) {
+function entryToDocument(entryXml: string): PaperEntry {
   const get = getTagValue.bind(undefined, entryXml);
   const id = get('id');
   // arXiv's Atom payload entity-encodes titles/abstracts (H&amp;E, &lt;) —
@@ -87,11 +90,11 @@ function entryToDocument(entryXml) {
 /**
  * Build the arXiv API URL for one page of a query.
  *
- * @param {string} encodedQuery - The search query, already URL-encoded.
- * @param {number} page - Zero-based page number.
- * @returns {string} The endpoint to fetch.
+ * @param encodedQuery - The search query, already URL-encoded.
+ * @param page - Zero-based page number.
+ * @returns The endpoint to fetch.
  */
-function buildQueryUrl(encodedQuery, page) {
+function buildQueryUrl(encodedQuery: string, page: number): string {
   return `https://export.arxiv.org/api/query?search_query=${encodedQuery}&start=${page * PAGE_SIZE}&max_results=${PAGE_SIZE}&sortBy=submittedDate&sortOrder=descending`;
 }
 
@@ -100,11 +103,14 @@ function buildQueryUrl(encodedQuery, page) {
  * Returns true when an entry at or behind the cursor is reached (everything
  * after it is older), signalling the caller to stop paging this query.
  *
- * @param {RegExpMatchArray[]} entries - One match per `<entry>` on the page.
- * @param {Accumulators} accumulators - State shared across every query in the round.
- * @returns {boolean} True once the cursor is reached.
+ * @param entries - One match per `<entry>` on the page.
+ * @param accumulators - State shared across every query in the round.
+ * @returns True once the cursor is reached.
  */
-function collectEntries(entries, { lastDate, seenIds, documents, publishedTimes }) {
+function collectEntries(
+  entries: RegExpMatchArray[],
+  { lastDate, seenIds, documents, publishedTimes }: Accumulators,
+): boolean {
   for (const entry of entries) {
     const { documentId, publishedMs, doc } = entryToDocument(entry[1] ?? '');
     if (lastDate && !Number.isNaN(publishedMs) && publishedMs <= lastDate.getTime()) {
@@ -123,12 +129,16 @@ function collectEntries(entries, { lastDate, seenIds, documents, publishedTimes 
  * newest-first, so paging continues until a page comes back short, an entry
  * falls behind the cursor, the per-run page cap, or the soft deadline.
  *
- * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
- * @param {string} query - One arXiv search query.
- * @param {Accumulators} accumulators - State shared across every query in the round.
- * @returns {Promise<void>} Resolves when this query is done or bounded out.
+ * @param context - The harness context.
+ * @param query - One arXiv search query.
+ * @param accumulators - State shared across every query in the round.
+ * @returns Resolves when this query is done or bounded out.
  */
-async function syncQuery(context, query, accumulators) {
+async function syncQuery(
+  context: import('../lib/types.js').SourceContext,
+  query: string,
+  accumulators: Accumulators,
+): Promise<void> {
   const encoded = encodeURIComponent(query);
 
   for (let page = 0; page < MAX_PAGES_PER_QUERY; page++) {
@@ -149,10 +159,10 @@ async function syncQuery(context, query, accumulators) {
 /**
  * The queries to run, falling back to the two default categories.
  *
- * @param {unknown} value - The `queries` config field.
- * @returns {string[]} The queries to search for.
+ * @param value - The `queries` config field.
+ * @returns The queries to search for.
  */
-function queriesFrom(value) {
+function queriesFrom(value: unknown): string[] {
   const configured = stringList(value);
   return configured.length > 0 ? configured : ['cat:cs.AI', 'cat:cs.LG'];
 }
@@ -198,13 +208,10 @@ export default defineSource({
     const lastDate = readDateCursor(context.cursor);
 
     context.log.info(`Searching arXiv for ${queries.length} queries...`);
-    /** @type {import('../lib/types.d.ts').Document[]} */
-    const documents = [];
-    /** @type {number[]} */
-    const publishedTimes = [];
+    const documents: import('../lib/types.js').Document[] = [];
+    const publishedTimes: number[] = [];
     // A paper can match several queries (e.g. cs.AI and cs.LG); emit it once.
-    /** @type {Set<string>} */
-    const seenIds = new Set();
+    const seenIds: Set<string> = new Set();
     const accumulators = { lastDate, seenIds, documents, publishedTimes };
     let isAnyFailed = false;
 

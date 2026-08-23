@@ -19,10 +19,10 @@ const DEFAULT_SECTIONS = ['top_stories', 'world', 'uk', 'technology', 'business'
 /**
  * The BBC feed for one section. `top_stories` is the unprefixed root feed.
  *
- * @param {string} section - The configured section name.
- * @returns {string} Its RSS URL.
+ * @param section - The configured section name.
+ * @returns Its RSS URL.
  */
-function feedUrl(section) {
+function feedUrl(section: string): string {
   if (section === 'top_stories') return `${FEED_BASE}/rss.xml`;
   return `${FEED_BASE}/${section}/rss.xml`;
 }

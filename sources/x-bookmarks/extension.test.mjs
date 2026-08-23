@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { at, idSetCursor, makeSourceContext, setFetch, syncOf } from '../lib/test-fixtures.mjs';
-import extension from './index.mjs';
+import extension from './extension.ts';
 
 const sync = syncOf(extension);
 

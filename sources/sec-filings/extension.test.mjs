@@ -7,7 +7,8 @@ import {
   setFetch,
   syncOf,
 } from '../lib/test-fixtures.mjs';
-import extension, { filterFilings } from './index.mjs';
+import extension from './extension.ts';
+import { filterFilings } from './filing-document.ts';
 
 const sync = syncOf(extension);
 
@@ -317,7 +318,7 @@ describe('sec-filings source', () => {
  * @param {string} accessionNumber - Its accession number.
  * @param {string} filingDate - The day it was filed.
  * @param {string} form - Its form type.
- * @returns {import('./index.mjs').Filing} The filing.
+ * @returns {import('./filing-document.ts').Filing} The filing.
  */
 const filing = (accessionNumber, filingDate, form) => ({
   accessionNumber,

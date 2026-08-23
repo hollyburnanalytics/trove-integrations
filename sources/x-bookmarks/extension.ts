@@ -38,22 +38,29 @@ const USER_AGENT = 'TroveBot/0.1 (+https://github.com/hollyburnanalytics/trove-i
 
 /**
  * The X payloads this source reads, and the cursor it has to keep reading.
- *
- * @typedef {{ id: string, name?: string, username?: string }} XUser
- * @typedef {{ id: string, text?: string, author_id?: string, created_at?: string,
- *   entities?: { hashtags?: Array<{ tag?: string }> } }} XTweet
- * @typedef {{ data?: XTweet[], includes?: { users?: XUser[] },
- *   meta?: { next_token?: string } }} BookmarksPage
- * @typedef {{ type?: string, values?: unknown, value?: unknown }} StoredCursor
  */
+type XUser = { id: string; name?: string; username?: string };
+type XTweet = {
+  id: string;
+  text?: string;
+  author_id?: string;
+  created_at?: string;
+  entities?: { hashtags?: Array<{ tag?: string }> };
+};
+type BookmarksPage = {
+  data?: XTweet[];
+  includes?: { users?: XUser[] };
+  meta?: { next_token?: string };
+};
+type StoredCursor = { type?: string; values?: unknown; value?: unknown };
 
 /**
  * Honest, attributable headers carrying a user-context Bearer.
  *
- * @param {string} accessToken - The short-lived token minted this run.
- * @returns {Record<string, string>} The request headers.
+ * @param accessToken - The short-lived token minted this run.
+ * @returns The request headers.
  */
-function authHeaders(accessToken) {
+function authHeaders(accessToken: string): Record<string, string> {
   return {
     authorization: `Bearer ${accessToken}`,
     accept: 'application/json',
@@ -79,11 +86,11 @@ function authHeaders(accessToken) {
  * The legacy branch stays for one release so an existing Mac cursor is not
  * discarded on upgrade; new cursors are always written as `values`.
  *
- * @param {unknown} cursor - Whatever the previous run returned.
- * @returns {string[]} The seen ids, newest-first.
+ * @param cursor - Whatever the previous run returned.
+ * @returns The seen ids, newest-first.
  */
-function readSeenIds(cursor) {
-  const stored = /** @type {StoredCursor | undefined} */ (cursor);
+function readSeenIds(cursor: unknown): string[] {
+  const stored = cursor as StoredCursor | undefined;
   if (stored?.type !== 'idSet') return [];
   if (Array.isArray(stored.values)) return stored.values.map(String);
   return Array.isArray(stored.value) ? stored.value.map(String) : [];
@@ -93,10 +100,12 @@ function readSeenIds(cursor) {
  * Exchange the rotating refresh token for a short-lived access token. Throws a
  * clear, token-free error when credentials are absent or the grant is rejected.
  *
- * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
- * @returns {Promise<string>} The access token, valid for this run only.
+ * @param context - The harness context.
+ * @returns The access token, valid for this run only.
  */
-async function refreshAccessToken(context) {
+async function refreshAccessToken(
+  context: import('../lib/types.js').SourceContext,
+): Promise<string> {
   const clientId = await context.requireSecret('X_OAUTH_CLIENT_ID');
   const refreshToken = await context.requireSecret('X_OAUTH_REFRESH_TOKEN');
 
@@ -109,8 +118,7 @@ async function refreshAccessToken(context) {
     refresh_token: refreshToken,
     client_id: clientId,
   });
-  /** @type {Record<string, string>} */
-  const headers = {
+  const headers: Record<string, string> = {
     'content-type': 'application/x-www-form-urlencoded',
     accept: 'application/json',
     'user-agent': USER_AGENT,
@@ -129,8 +137,7 @@ async function refreshAccessToken(context) {
         'Re-run scripts/x-authorize.mjs and update X_OAUTH_REFRESH_TOKEN.',
     );
   }
-  /** @type {{ access_token?: string }} */
-  const data = await response.json();
+  const data: { access_token?: string } = await response.json();
   if (!data.access_token) throw new Error('X token refresh returned no access_token.');
   // data.refresh_token is the NEW rotated token; see the module note — we do not
   // persist it here (the harness owns rotation) and never write it to the cursor.
@@ -140,14 +147,13 @@ async function refreshAccessToken(context) {
 /**
  * Resolve the bookmark owner's user id via `/2/users/me`.
  *
- * @param {string} accessToken - The user-context token.
- * @returns {Promise<string>} The account's numeric id.
+ * @param accessToken - The user-context token.
+ * @returns The account's numeric id.
  */
-async function fetchUserId(accessToken) {
+async function fetchUserId(accessToken: string): Promise<string> {
   const response = await fetch(`${BASE_URL}/2/users/me`, { headers: authHeaders(accessToken) });
   if (!response.ok) throw new Error(`X /2/users/me failed (HTTP ${response.status}).`);
-  /** @type {{ data?: { id?: string } }} */
-  const data = await response.json();
+  const data: { data?: { id?: string } } = await response.json();
   const id = data?.data?.id;
   if (!id) throw new Error('Could not resolve X user id for bookmarks.');
   return id;
@@ -161,13 +167,16 @@ async function fetchUserId(accessToken) {
  * Counting those as skipped rather than walking them is what keeps a routine
  * sync to one page.
  *
- * @param {XTweet[]} tweets - The page, newest first.
- * @param {Set<string>} seenIds - Bookmark ids already stored.
- * @returns {{ tweets: XTweet[], skipped: number, reachedSeen: boolean }} The new
+ * @param tweets - The page, newest first.
+ * @param seenIds - Bookmark ids already stored.
+ * @returns The new
  *   tweets, how many were passed over, and whether the page ran into the
  *   already-stored ones.
  */
-function freshBookmarks(tweets, seenIds) {
+function freshBookmarks(
+  tweets: XTweet[],
+  seenIds: Set<string>,
+): { tweets: XTweet[]; skipped: number; reachedSeen: boolean } {
   for (const [index, tweet] of tweets.entries()) {
     if (seenIds.has(tweet.id)) {
       // This id and every older one on the page.
@@ -180,12 +189,16 @@ function freshBookmarks(tweets, seenIds) {
 /**
  * Fetch one page of bookmarks (newest-first).
  *
- * @param {string} accessToken - The user-context token.
- * @param {string} userId - Whose bookmarks to read.
- * @param {string} [paginationToken] - Where to resume, from the previous page.
- * @returns {Promise<BookmarksPage>} The page as X returned it.
+ * @param accessToken - The user-context token.
+ * @param userId - Whose bookmarks to read.
+ * @param paginationToken - Where to resume, from the previous page.
+ * @returns The page as X returned it.
  */
-async function fetchBookmarksPage(accessToken, userId, paginationToken) {
+async function fetchBookmarksPage(
+  accessToken: string,
+  userId: string,
+  paginationToken?: string,
+): Promise<BookmarksPage> {
   const parameters = new URLSearchParams({
     max_results: String(PAGE_SIZE),
     'tweet.fields': TWEET_FIELDS,
@@ -202,12 +215,11 @@ async function fetchBookmarksPage(accessToken, userId, paginationToken) {
 /**
  * Index `includes.users` by id for author joins.
  *
- * @param {{ users?: XUser[] } | undefined} includes - The page's expansions.
- * @returns {Map<string, XUser>} The users, by id.
+ * @param includes - The page's expansions.
+ * @returns The users, by id.
  */
-function indexUsers(includes) {
-  /** @type {Map<string, XUser>} */
-  const usersById = new Map();
+function indexUsers(includes: { users?: XUser[] } | undefined): Map<string, XUser> {
+  const usersById: Map<string, XUser> = new Map();
   const users = includes?.users ?? [];
   for (const user of users) {
     if (user?.id) usersById.set(user.id, user);
@@ -218,11 +230,11 @@ function indexUsers(includes) {
 /**
  * A short, single-line title prefix derived from the post body.
  *
- * @param {string} text - The post's text.
- * @param {string} [handle] - The author's handle, when the join resolved one.
- * @returns {string} The title.
+ * @param text - The post's text.
+ * @param handle - The author's handle, when the join resolved one.
+ * @returns The title.
  */
-function buildTitle(text, handle) {
+function buildTitle(text: string, handle?: string): string {
   const flat = text.replaceAll(/\s+/g, ' ').trim();
   if (!flat) return handle ? `@${handle} on X` : 'X Bookmark';
   return flat.length > TITLE_MAX ? `${flat.slice(0, TITLE_MAX - 1)}…` : flat;
@@ -231,11 +243,14 @@ function buildTitle(text, handle) {
 /**
  * Map one bookmarked tweet to a Trove document.
  *
- * @param {XTweet} tweet - The bookmarked post.
- * @param {Map<string, XUser>} usersById - The page's author expansions.
- * @returns {import('../lib/types.d.ts').Document} The document.
+ * @param tweet - The bookmarked post.
+ * @param usersById - The page's author expansions.
+ * @returns The document.
  */
-function mapBookmark(tweet, usersById) {
+function mapBookmark(
+  tweet: XTweet,
+  usersById: Map<string, XUser>,
+): import('../lib/types.js').Document {
   const author = usersById.get(tweet.author_id ?? '');
   const handle = author?.username;
   const text = htmlToText(tweet.text ?? '');
@@ -261,21 +276,23 @@ function mapBookmark(tweet, usersById) {
  * the feed is newest-first, the first seen id means everything below it is older
  * and already ingested — so we stop without re-walking the tail.
  *
- * @param {import('../lib/types.d.ts').SourceContext} context - The harness context.
- * @param {string} accessToken - The user-context token.
- * @param {string} userId - Whose bookmarks to read.
- * @param {Set<string>} seenIds - Ids already ingested on a previous run.
- * @returns {Promise<{ documents: import('../lib/types.d.ts').Document[],
+ * @param context - The harness context.
+ * @param accessToken - The user-context token.
+ * @param userId - Whose bookmarks to read.
+ * @param seenIds - Ids already ingested on a previous run.
+ * @returns {Promise<{ documents: import('../lib/types.js').Document[],
  *   newIdsNewestFirst: string[], skipped: number }>} What this round collected.
  */
-async function collectNewBookmarks(context, accessToken, userId, seenIds) {
-  /** @type {import('../lib/types.d.ts').Document[]} */
-  const documents = [];
-  /** @type {string[]} */
-  const newIdsNewestFirst = [];
+async function collectNewBookmarks(
+  context: import('../lib/types.js').SourceContext,
+  accessToken: string,
+  userId: string,
+  seenIds: Set<string>,
+) {
+  const documents: import('../lib/types.js').Document[] = [];
+  const newIdsNewestFirst: string[] = [];
   let skipped = 0;
-  /** @type {string | undefined} */
-  let paginationToken;
+  let paginationToken: string | undefined;
 
   for (let page = 0; page < MAX_PAGES; page++) {
     if (hasDeadlinePassed(context)) {

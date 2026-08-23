@@ -10,7 +10,7 @@ import {
   setFetch,
   syncOf,
 } from '../lib/test-fixtures.mjs';
-import extension from './index.mjs';
+import extension from './extension.ts';
 
 const sync = syncOf(extension);
 

@@ -21,10 +21,10 @@ const BOILERPLATE = 'Continue reading...';
 /**
  * Build one Guardian document, with the feed's boilerplate trailer removed.
  *
- * @param {import('../lib/types.d.ts').FeedItem} item - The parsed feed item.
- * @returns {import('../lib/types.d.ts').Document} The document.
+ * @param item - The parsed feed item.
+ * @returns The document.
  */
-function toDocument(item) {
+function toDocument(item: import('../lib/types.js').FeedItem): import('../lib/types.js').Document {
   const document = feedItemDocument('guardian', item, {
     defaultAuthor: 'The Guardian',
     tags: item.categories,

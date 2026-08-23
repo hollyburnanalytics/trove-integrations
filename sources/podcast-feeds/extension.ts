@@ -63,13 +63,15 @@ const AUDIO_EXTENSIONS = new Set(['mp3', 'm4a', 'm4b', 'aac', 'ogg', 'oga', 'opu
  * the tracking-prefix redirects podcast hosts use (`.../traffic.megaphone.fm/
  * ABC123.mp3?updated=…`) still resolve.
  *
- * @param {import('../lib/types.d.ts').FeedEnclosure | undefined} enclosure - The
+ * @param enclosure - The
  *   item's enclosure, when it has one.
- * @returns {enclosure is import('../lib/types.d.ts').FeedEnclosure} True when it
+ * @returns True when it
  *   is audio Trove can transcribe. A predicate rather than a boolean so the
  *   caller keeps the narrowing instead of re-checking the field it just proved.
  */
-function isAudioEnclosure(enclosure) {
+function isAudioEnclosure(
+  enclosure: import('../lib/types.js').FeedEnclosure | undefined,
+): enclosure is import('../lib/types.js').FeedEnclosure {
   if (!enclosure?.url) return false;
   if (enclosure.type) return enclosure.type.startsWith('audio/');
   try {
@@ -86,11 +88,13 @@ function isAudioEnclosure(enclosure) {
  * show whose public feed withholds the enclosure. `syncFeeds` counts those as
  * skipped rather than emitting a document with no body.
  *
- * @param {import('../lib/types.d.ts').FeedItem} item - a `parseRSS()` item, with resolved `url`
- * @returns {import('../lib/types.d.ts').Document | undefined} The audio
+ * @param item - a `parseRSS()` item, with resolved `url`
+ * @returns The audio
  *   document, or nothing when the item carries no audio.
  */
-export function episodeDocument(item) {
+export function episodeDocument(
+  item: import('../lib/types.js').FeedItem,
+): import('../lib/types.js').Document | undefined {
   if (!isAudioEnclosure(item.enclosure)) return;
   return {
     id: stableId('podcast', item.guid || item.link),

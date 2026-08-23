@@ -44,26 +44,37 @@ const MAX_DOCUMENTS_PER_RUN = 25;
  */
 const EARLIEST_MEETING_DAY = '2026-01-01';
 
-/**
- * @typedef {{ text: string, link: string, docName: string, docNumber: string,
- *   docType: string }} MeetingDocument
- * @typedef {{ date: string, type: string, subject: string, bylaw: string,
- *   meetingDocuments: MeetingDocument[] }} Meeting
- * @typedef {{ meeting: Meeting, document: MeetingDocument }} WorkItem
- */
+type MeetingDocument = {
+  text: string;
+  link: string;
+  docName: string;
+  docNumber: string;
+  docType: string;
+};
+type Meeting = {
+  date: string;
+  type: string;
+  subject: string;
+  bylaw: string;
+  meetingDocuments: MeetingDocument[];
+};
+type WorkItem = { meeting: Meeting; document: MeetingDocument };
 
 /**
  * The documents one meeting still owes, skipping videos and anything already
  * stored or already queued by an earlier meeting that listed the same paper.
  *
- * @param {Meeting} meeting - The meeting to read.
- * @param {Set<string>} seenNumbers - Document numbers already synced.
- * @param {Set<string>} queued - Numbers this run has already queued, mutated here.
- * @returns {WorkItem[]} Its pending documents.
+ * @param meeting - The meeting to read.
+ * @param seenNumbers - Document numbers already synced.
+ * @param queued - Numbers this run has already queued, mutated here.
+ * @returns Its pending documents.
  */
-function pendingForMeeting(meeting, seenNumbers, queued) {
-  /** @type {WorkItem[]} */
-  const items = [];
+function pendingForMeeting(
+  meeting: Meeting,
+  seenNumbers: Set<string>,
+  queued: Set<string>,
+): WorkItem[] {
+  const items: WorkItem[] = [];
   const meetingDocuments = meeting.meetingDocuments ?? [];
   for (const document of meetingDocuments) {
     const { docNumber, docType } = document;
@@ -83,13 +94,13 @@ function pendingForMeeting(meeting, seenNumbers, queued) {
  * not documents) and already-synced document numbers are dropped, and the rest
  * are ordered oldest-first so the backfill advances chronologically.
  *
- * @param {Meeting[]} meetings
- * @param {Set<string>} seenNumbers
- * @returns {WorkItem[]}
+ * @param meetings
+ * @param seenNumbers
+ * @returns
  */
-function pendingDocuments(meetings, seenNumbers) {
+function pendingDocuments(meetings: Meeting[], seenNumbers: Set<string>): WorkItem[] {
   const items = [];
-  const queued = new Set();
+  const queued = new Set<string>();
   for (const meeting of meetings) {
     // A meeting with no date is dropped rather than kept. Every one of the
     // District's 1,327 meetings carries a date today, so this decides nothing
@@ -104,10 +115,10 @@ function pendingDocuments(meetings, seenNumbers) {
 /**
  * "Regular Meeting" or "Public Hearing (1565 Rupert Street)".
  *
- * @param {Meeting} meeting - The meeting to name.
- * @returns {string} Its label.
+ * @param meeting - The meeting to name.
+ * @returns Its label.
  */
-function meetingLabel(meeting) {
+function meetingLabel(meeting: Meeting): string {
   return meeting.subject ? `${meeting.type} (${meeting.subject})` : meeting.type;
 }
 
@@ -116,10 +127,10 @@ function meetingLabel(meeting) {
  * short metadata header (meeting, date, subject, bylaw) the extractor prepends
  * to the extracted text.
  *
- * @param {WorkItem} item - One meeting document to emit.
- * @returns {import('../lib/types.d.ts').Document} The document.
+ * @param item - One meeting document to emit.
+ * @returns The document.
  */
-function toDocument({ meeting, document }) {
+function toDocument({ meeting, document }: WorkItem): import('../lib/types.js').Document {
   const title = `${document.docType} — ${meetingLabel(meeting)}, ${meeting.date}`;
   const header = [title, meeting.bylaw ? `Bylaw: ${meeting.bylaw}` : ''].filter(Boolean).join('\n');
   return {
@@ -159,8 +170,7 @@ export default defineSource({
   formatting: 'reformat',
   async sync(context) {
     context.log.info('Fetching council meeting index...');
-    /** @type {Meeting[]} */
-    const meetings = JSON.parse(await fetchPage(SEARCH_URL));
+    const meetings: Meeting[] = JSON.parse(await fetchPage(SEARCH_URL));
     const previousNumbers = readIdSet(context.cursor);
     const pending = pendingDocuments(meetings, new Set(previousNumbers));
     context.log.info(

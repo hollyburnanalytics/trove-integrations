@@ -3,11 +3,17 @@ import { htmlToText, safeDate, undatedStats, warnIfUndated } from '../lib/feeds.
 
 /**
  * One Algolia search hit, as the front-page query returns it.
- *
- * @typedef {{ objectID: string, title?: string, url?: string, points?: number,
- *   num_comments?: number, story_text?: string, author?: string,
- *   created_at?: string }} Hit
  */
+type Hit = {
+  objectID: string;
+  title?: string;
+  url?: string;
+  points?: number;
+  num_comments?: number;
+  story_text?: string;
+  author?: string;
+  created_at?: string;
+};
 
 export default defineSource({
   id: 'hacker-news',
@@ -38,14 +44,10 @@ export default defineSource({
     if (!response.ok) {
       throw new Error(`HN API returned ${response.status}: ${response.statusText}`);
     }
-
-    /** @type {{ hits: Hit[] }} */
-    const data = await response.json();
+    const data: { hits: Hit[] } = await response.json();
 
     context.progress(0, `Processing ${data.hits.length} stories...`);
-
-    /** @type {import('../lib/types.d.ts').Document[]} */
-    const documents = data.hits.map((hit) => ({
+    const documents: import('../lib/types.js').Document[] = data.hits.map((hit) => ({
       id: `hn-${hit.objectID}`,
       title: hit.title || 'Untitled',
       text: [
