@@ -75,7 +75,7 @@ function authHeaders(accessToken: string): Record<string, string> {
  * Reads BOTH shapes on purpose. This source used to store the set under
  * `value`, deliberately unlike the SDK's `{ values, max }`, and the
  * deviation was invisible because the reader and the writer agreed with each
- * other. It was not invisible to the platform: Trove's `parseWatermark` requires
+ * other. It was not invisible to the platform: Trove's `parseCursor` requires
  * `values`, so a `value` cursor parses to null — the feed would resume from
  * nothing on every run and re-fetch every bookmark, and its cursor could not
  * be displayed at all.

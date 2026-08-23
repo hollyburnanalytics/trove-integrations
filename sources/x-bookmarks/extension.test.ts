@@ -217,7 +217,7 @@ describe('x-bookmarks source', () => {
   });
 
   it('resumes from the corrected `values` cursor', async () => {
-    // The shape the platform can actually parse. `parseWatermark` requires
+    // The shape the platform can actually parse. `parseCursor` requires
     // `values`, so the old cursor read as null in the cloud — this source would
     // have re-fetched every bookmark on every run the moment it left the Mac.
     const cursor: Cursor = {

@@ -246,7 +246,7 @@ export default defineSource({
 
     // This source's resume state is NOT an idSet, whatever the manifest says: it
     // is `{ done: string[], partial?: { key, next } }` — which books are finished
-    // plus one left mid-sync. Trove's `parseWatermark` models three shapes and
+    // plus one left mid-sync. Trove's `parseCursor` models three shapes and
     // this is a fourth, so in the cloud it would parse to null and every run
     // would restart from zero books. That is survivable here ONLY because this
     // source is `location: client`, where the Mac hands the raw cursor back
