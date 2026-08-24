@@ -40,7 +40,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['catalog.shopify.com'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_products',

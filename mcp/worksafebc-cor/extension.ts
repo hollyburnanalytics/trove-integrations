@@ -31,7 +31,7 @@ export default defineToolkit({
   version: '1.0.0',
   secrets: [],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   egress: ['corcp.online.worksafebc.com'],
   tools: [searchEmployers, getEmployerCertificates, listCertifyingPartners, listCertifiedEmployers],
 });

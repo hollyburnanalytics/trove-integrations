@@ -51,7 +51,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['ourworldindata.org', 'api.ourworldindata.org', 'search.owid.io'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_charts',

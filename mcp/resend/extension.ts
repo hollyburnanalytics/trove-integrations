@@ -54,7 +54,7 @@ export default defineToolkit({
   secrets: ['RESEND_API_KEY', 'RECIPIENT_EMAIL'],
   egress: ['api.resend.com'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'send_email',

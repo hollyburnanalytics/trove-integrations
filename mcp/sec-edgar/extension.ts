@@ -37,7 +37,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['efts.sec.gov', 'www.sec.gov', 'data.sec.gov'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     getFinancials,
     getXbrlConcept,

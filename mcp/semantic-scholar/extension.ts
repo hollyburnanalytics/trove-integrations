@@ -55,7 +55,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['api.semanticscholar.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_papers',

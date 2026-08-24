@@ -71,7 +71,7 @@ export default defineToolkit({
   ],
   egress: ['api.x.com'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     getUserTweets,
     getTweet,

@@ -56,7 +56,7 @@ export default defineToolkit({
   version: '2.0.0',
   secrets: ['FRED_API_KEY'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   egress: ['api.stlouisfed.org'],
   tools: [
     tool({

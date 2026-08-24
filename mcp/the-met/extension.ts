@@ -40,7 +40,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['collectionapi.metmuseum.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_objects',

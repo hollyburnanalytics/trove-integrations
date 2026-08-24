@@ -50,7 +50,7 @@ export default defineToolkit({
   version: '1.0.0',
   secrets: ['SEATS_AERO_API_KEY'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   config: {
     home_airports: {
       label: 'Home airports',

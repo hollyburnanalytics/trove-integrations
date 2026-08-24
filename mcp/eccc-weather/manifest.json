@@ -10,6 +10,6 @@
     "geo.weather.gc.ca"
   ],
   "scopes": [],
-  "visibility": "public",
+  "visibility": "shared",
   "generated": true
 }

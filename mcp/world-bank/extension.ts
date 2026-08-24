@@ -187,7 +187,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['api.worldbank.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_indicators',

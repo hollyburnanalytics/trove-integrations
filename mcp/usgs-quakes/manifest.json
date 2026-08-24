@@ -9,6 +9,6 @@
     "earthquake.usgs.gov"
   ],
   "scopes": [],
-  "visibility": "public",
+  "visibility": "shared",
   "generated": true
 }

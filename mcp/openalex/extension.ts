@@ -35,7 +35,7 @@ export default defineToolkit({
   secrets: ['OPENALEX_API_KEY'],
   egress: ['api.openalex.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_works',

@@ -30,7 +30,7 @@ export default defineToolkit({
   version: '1.1.0',
   secrets: [],
   egress: ['export.arxiv.org', 'arxiv.org', 'ar5iv.labs.arxiv.org'],
-  visibility: 'public',
+  visibility: 'shared',
   scopes: ['trove:ingest'],
   tools: [searchPapers, getPaper, getPaperContent, savePaper],
 });

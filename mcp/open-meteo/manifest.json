@@ -12,6 +12,6 @@
     "archive-api.open-meteo.com"
   ],
   "scopes": [],
-  "visibility": "public",
+  "visibility": "shared",
   "generated": true
 }

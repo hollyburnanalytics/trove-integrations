@@ -189,7 +189,7 @@ export default defineToolkit({
   version: '1.0.0',
   secrets: [],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   egress: ['www.businessregistration-inscriptionentreprise.gc.ca'],
   tools: [
     tool({

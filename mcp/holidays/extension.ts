@@ -86,7 +86,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['date.nager.at'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'public_holidays',

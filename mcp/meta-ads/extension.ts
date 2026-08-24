@@ -69,7 +69,7 @@ export default defineToolkit({
   secrets: ['META_ACCESS_TOKEN', 'META_APP_SECRET'],
   egress: ['graph.facebook.com'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   config: {
     default_ad_account_id: {
       label: 'Default ad account',

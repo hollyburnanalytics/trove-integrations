@@ -69,7 +69,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['earthquake.usgs.gov'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'recent_quakes',

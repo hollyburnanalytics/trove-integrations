@@ -56,7 +56,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['openlibrary.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_books',

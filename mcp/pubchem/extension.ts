@@ -50,7 +50,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['pubchem.ncbi.nlm.nih.gov'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'get_compound',
