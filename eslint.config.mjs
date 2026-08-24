@@ -8,9 +8,10 @@ import unicorn from 'eslint-plugin-unicorn';
 // are wrong about these repos rather than about the code — those are turned off
 // below, each with the reason. Everything else is expected to stay at zero.
 // The twenty-nine that once sat here as "deferred, not settled" were worked off
-// rather than argued away: twenty-five are gone, three remain — the render-idiom
-// cluster, landing with the file splits — and one, `prefer-number-coercion`, was
-// argued and accepted. `trove-integrations` is already at zero on all four.
+// rather than argued away: twenty-eight are gone and one,
+// `prefer-number-coercion`, was argued and accepted. Both catalogs are at zero,
+// so there is no deferred block left — every rule below is off for a reason
+// stated beside it, and nothing is off merely because it had not been done.
 //
 // THIS FILE IS SHARED, BYTE FOR BYTE, between `trove-integrations` and
 // `trove-matt-helm`. The two catalogs meet the same platform and are written to
@@ -251,24 +252,6 @@ export default [
       // whole-string coercion already say `Number(...)`. Same argument as
       // `prefer-math-trunc` above; the plugin agrees, and offers no autofix.
       'unicorn/prefer-number-coercion': 'off',
-    },
-  },
-  {
-    // ---- Deferred, not settled (task #170) ----
-    //
-    // What is left of a block that held twenty-nine rules. These three are one
-    // idiom from three angles: a tool's text output is one expression, its
-    // optional clauses inline as `${x ? `…` : ''}`. Naming every clause is the
-    // same refactor that brings the oversized files under
-    // `noExcessiveLinesPerFile` — `charitydata/extension.ts` was done that way
-    // and lost all 34 of its findings to seven named row renderers — so the
-    // rest should land with those splits rather than ahead of them. Counts are
-    // `trove-matt-helm` on this commit; retire a line at zero in BOTH repos.
-    files: SOURCES,
-    rules: {
-      'sonarjs/no-nested-template-literals': 'off', // 227 — the render idiom: one sentence, one expression
-      'sonarjs/no-nested-conditional': 'off', //        74 — nested ternaries, mostly inside the render idiom
-      'unicorn/no-nested-ternary': 'off', //            35 — a subset of no-nested-conditional
     },
   },
   {
