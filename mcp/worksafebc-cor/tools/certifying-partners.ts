@@ -88,7 +88,7 @@ export const listCertifiedEmployers = tool({
     // call is spent. What remains after this check really is likely transient.
     const wanted = args.certifyingPartnerId.trim();
     const partners = parsePartners(session.html);
-    if (partners.length > 0 && !partners.some((partner) => partner.id === wanted)) {
+    if (partners.length > 0 && partners.every((partner) => partner.id !== wanted)) {
       throw new ToolError(
         `"${wanted}" is not a WorkSafeBC certifying partner id. Valid ids: ` +
           `${partners.map((partner) => `${partner.id} (${partner.name})`).join(', ')}.`,

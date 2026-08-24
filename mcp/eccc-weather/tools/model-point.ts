@@ -28,7 +28,7 @@ import {
 /** ISO hour stamps at `startHour`..`startHour + hours - 1` from a base time. */
 function hourStamps(from: Date, startHour: number, hours: number): string[] {
   return Array.from({ length: hours }, (_unused, index) => {
-    const at = new Date(from.getTime());
+    const at = new Date(from);
     at.setUTCMinutes(0, 0, 0);
     at.setUTCHours(at.getUTCHours() + startHour + index);
     return at.toISOString().replace(/\.\d{3}Z$/, 'Z');

@@ -104,7 +104,7 @@ function expandTcoLinks(text: string, entities: unknown): string {
     const o = u as Record<string, unknown>;
     const shortUrl = strOrNull(o.url);
     const expanded = strOrNull(o.expanded_url);
-    if (shortUrl && expanded) out = out.replaceAll(shortUrl, expanded);
+    if (shortUrl && expanded) out = out.replaceAll(shortUrl, () => expanded);
   }
   return out;
 }

@@ -28,7 +28,7 @@ function daysInMonth(year: number, month: number): number {
 
 /** Normalize a date input ("2026", "2026-03", "20260315") to arXiv's YYYYMMDD. */
 function toArxivDate(input: string, end: boolean): string {
-  const digits = input.replace(/[^0-9]/g, '');
+  const digits = input.replace(/\D/g, '');
   if (![4, 6, 8].includes(digits.length)) throw invalidDate(input);
 
   const year = Number.parseInt(digits.slice(0, 4), 10);

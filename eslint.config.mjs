@@ -1,3 +1,4 @@
+import tsParser from '@typescript-eslint/parser';
 import sonarjs from 'eslint-plugin-sonarjs';
 import unicorn from 'eslint-plugin-unicorn';
 
@@ -16,6 +17,27 @@ import unicorn from 'eslint-plugin-unicorn';
 // (unicorn 63 against unicorn 73), and the older repo read as clean while the
 // newer one carried 129 findings that the older one simply was not looking for.
 
+// Every file these repos ship, in both spellings. The catalogs are mid-port
+// from `.mjs` to `.ts`, and for a while both will exist; naming the two
+// together is what stops a file leaving the gate simply by being renamed.
+const SOURCES = ['**/*.mjs', '**/*.ts'];
+
+// Tests, plus the two fixture modules that are test support rather than
+// production code — `sources/lib/test-fixtures` holds the `globalThis.fetch`
+// stub every source suite uses, and `mcp/lib/test-harness` the toolkit
+// equivalent. `mcp/lib/xlsx-fixture` exists in one catalog only; a glob that
+// matches nothing is inert, and naming it here keeps the file identical.
+const TESTS = [
+  '**/*.test.mjs',
+  '**/*.test.ts',
+  'mcp/lib/test-harness.mjs',
+  'mcp/lib/test-harness.ts',
+  'mcp/lib/xlsx-fixture.mjs',
+  'mcp/lib/xlsx-fixture.ts',
+  'sources/lib/test-fixtures.mjs',
+  'sources/lib/test-fixtures.ts',
+];
+
 export default [
   {
     ignores: [
@@ -25,10 +47,20 @@ export default [
       'test/fixtures/**',
     ],
   },
-  { ...sonarjs.configs.recommended, files: ['**/*.mjs'] },
-  { ...unicorn.configs.recommended, files: ['**/*.mjs'] },
   {
-    files: ['**/*.mjs'],
+    // sonarjs and unicorn are both parser-agnostic rule sets, but ESLint's
+    // default parser only reads JavaScript, so every `.ts` file used to fail
+    // with "Parsing error: Unexpected token" and was quietly excluded from the
+    // gate. `@typescript-eslint/parser` is here for that and nothing else — no
+    // typescript-eslint rules are enabled, and no `projectService`, so the run
+    // stays syntax-only and as fast as it was.
+    files: ['**/*.ts'],
+    languageOptions: { parser: tsParser, parserOptions: { sourceType: 'module' } },
+  },
+  { ...sonarjs.configs.recommended, files: SOURCES },
+  { ...unicorn.configs.recommended, files: SOURCES },
+  {
+    files: SOURCES,
     rules: {
       // Added in unicorn 73, and it rewrites `/** One line. */` into a
       // three-line block with no leading `*` — which is not JSDoc and is not
@@ -39,11 +71,10 @@ export default [
 
       // Every toolkit here wraps a JSON API, and `null` is a value those APIs
       // send. Fixtures have to reproduce it verbatim or they stop being
-      // recordings of the wire, structured results have to emit it or they
-      // stop round-tripping through JSON, and the two are meaningfully
-      // different in a source: `null` is "the source answered, and the
-      // answer is nothing", `undefined` is "nobody asked". Collapsing them
-      // would erase a distinction the tools are built to report.
+      // recordings of the wire, structured results have to emit it or they stop
+      // round-tripping through JSON, and the two differ in a source: `null` is
+      // "the source answered, and the answer is nothing", `undefined` is
+      // "nobody asked". Collapsing them erases a distinction the tools report.
       'unicorn/no-null': 'off',
 
       // The same argument as `no-null`, for the same fixtures. arXiv's Atom
@@ -108,6 +139,83 @@ export default [
       // seven tests failed on the spot.
       'unicorn/prefer-dom-node-html-methods': 'off',
 
+      // The same argument as `prefer-https`: `http://gedcomx.org/Forwarded` is a
+      // GEDCOM X *identifier*, the string FamilySearch stamps on a forwarded
+      // person record. Nothing is fetched and there is nothing to upgrade —
+      // rewriting it to `https` would stop the comparison matching.
+      'sonarjs/no-clear-text-protocols': 'off',
+
+      // Biome already owns this (`noUnusedVariables`, error) and honours the `_`
+      // prefix, which is how the object-rest omit idiom — `const { programs:
+      // _programs, ...rest } = charity` — drops a key without naming the others.
+      // sonarjs ships a second copy that takes no options, so only one can win,
+      // and it is the one that can be configured to the house convention.
+      'sonarjs/no-unused-vars': 'off',
+
+      // Reads a mutated accumulator returned from two places as "always returns
+      // the same value". `tallyPeriodEnds` returns its tally early on hitting
+      // the sample cap and again at the end: same object, and its contents are
+      // the answer. Satisfying the rule means copying it for no reason.
+      'sonarjs/no-invariant-returns': 'off',
+
+      // A documented alias — `type FiscalYear = number` — is vocabulary, and the
+      // JSDoc on it is the documentation; inlining `number` at every use loses
+      // both. Where an alias must be *enforced* these repos brand it
+      // (`BusinessNumber`); where it need only be *read*, plain is right.
+      'sonarjs/redundant-type-aliases': 'off',
+
+      // Counts three regexes as too complex at 21, 23 and 30 against a limit of
+      // 20. All three mirror something a publisher emits — an ISO-8601 date, a
+      // price cell in Ship & Bunker's markup, the ways a T3010 spells "total
+      // gifts" — and are exactly as complex as the format they mirror.
+      // Splitting one in three moves the complexity into the code that joins
+      // them back up.
+      'sonarjs/regex-complexity': 'off',
+
+      // Wants `Object.hasOwn(obj, key)` in place of `obj[key] ? … : …`. Under
+      // `noUncheckedIndexedAccess` — set by both tsconfigs — `obj[key]` is
+      // already `T | undefined` and the truthiness check is what narrows it.
+      // `Object.hasOwn` does not narrow, so every rewritten site would need a
+      // non-null assertion: a check the compiler understands, traded for one it
+      // does not.
+      'unicorn/no-computed-property-existence-check': 'off',
+
+      // Right about JavaScript, redundant here. It exists because
+      // `['1','2'].map(parseInt)` passes the index as a radix; in strict
+      // TypeScript the callee's signature is checked against `map`'s callback
+      // type, so an unexpected parameter is a compile error. All 76 sites are
+      // named unary renderers — `rows.map(toEntity)` — and every one was checked
+      // for a second parameter before this went in.
+      'unicorn/no-array-callback-reference': 'off',
+
+      // Wants `for…of` over the string. The one site walks a Gutenberg book by
+      // *code unit*, recording each offset so `get_excerpt` re-reads the match
+      // at its true position; `for…of` iterates code points, moving every
+      // offset in any book with an astral character.
+      'unicorn/no-for-loop': 'off',
+
+      // Type-blind, and these repos compare ISO date strings as often as
+      // numbers: `row.publishedAt > newest ? …` picks the newest model run, and
+      // `Math.max` on those strings is `NaN`. The genuinely numeric sites were
+      // rewritten.
+      'unicorn/prefer-math-min-max': 'off',
+
+      // Reads `Number.parseInt(String(x), 10)` as a number being truncated. It
+      // is not: `x` is an `unknown` from a remote payload and `parseInt` is
+      // there for its leniency about what follows the digits, where `Math.trunc`
+      // returns `NaN`.
+      'unicorn/prefer-math-trunc': 'off',
+
+      // Wants `subtype` for `subType`. `AccountSubType` is QuickBooks' own field
+      // name and the local mirrors it — `name-replacements` again, one compound
+      // word on.
+      'unicorn/consistent-compound-words': 'off',
+
+      // `taddy/enums.ts` imports the three vocabularies for its own lookup
+      // tables *and* republishes them. `export…from` cannot do both, so the
+      // rule buys a second statement naming a module already imported.
+      'unicorn/prefer-export-from': 'off',
+
       // Wants `iterator.toArray()` in place of `[...iterator]`. Iterator helpers
       // are ES2025: the runtime this repo's sources run in the cloud has them,
       // but a `location: client` source runs in JavaScriptCore inside the macOS
@@ -115,6 +223,7 @@ export default [
       // repos compile against does not declare them either, so the rewrite is a
       // typecheck error today. Spread reaches every runtime and costs nothing.
       'unicorn/prefer-iterator-to-array': 'off',
+      'unicorn/prefer-iterator-helpers': 'off',
 
       // Kept, with one arm switched off. Flagging `return undefined` and
       // `let x = undefined` is right. Rewriting an arrow BODY is not: it turns
@@ -133,12 +242,55 @@ export default [
     },
   },
   {
+    // ---- Deferred, not settled (task #170) ----
+    //
+    // These twenty-nine rules are off because the gate has to run, not because
+    // anyone has decided they are wrong. All of them arrived the day `.ts` came
+    // into scope, and between the two catalogs they carry 1,532 findings across
+    // code no linter had read. That is a sweep of its own; landing the parser
+    // should not wait for it, and turning them off silently would repeat the
+    // mistake this file exists to prevent.
+    //
+    // Counts are `(trove-integrations + trove-matt-helm)` as measured on the
+    // commit that added this block. Retire a line by getting its rule to zero in
+    // BOTH repos; there is no baseline file to raise.
+    files: SOURCES,
+    rules: {
+      'sonarjs/no-nested-template-literals': 'off', // 405 (144+261) — the render idiom: one sentence, one expression
+      'unicorn/consistent-boolean-name': 'off', //     178  (58+120) — includes `structured` result fields, which are the wire contract
+      'unicorn/prefer-string-replace-all': 'off', //   137   (63+74) — mechanical; `.replace(/x/g)` → `.replaceAll`
+      'sonarjs/no-nested-conditional': 'off', //       126   (50+76) — nested ternaries
+      'unicorn/no-array-sort': 'off', //                80   (13+67) — `.sort()` → `.toSorted()`; check each for an intended mutation
+      'unicorn/no-nested-ternary': 'off', //            56   (21+35) — overlaps no-nested-conditional
+      'sonarjs/super-linear-regex': 'off', //           53   (11+42) — backtracking risk in scraper patterns; worth reading, not sweeping
+      'unicorn/consistent-conditional-object-spread': 'off', // 47 (13+34)
+      'unicorn/prefer-number-coercion': 'off', //       39   (14+25)
+      'unicorn/consistent-function-scoping': 'off', //  39    (5+34) — production copies of what tests are already excused
+      'unicorn/no-negated-condition': 'off', //         38   (19+19)
+      'unicorn/no-unreadable-for-of-expression': 'off', // 37 (8+29) — a ternary in the `for…of` head
+      'unicorn/prefer-simple-condition-first': 'off', // 34   (8+26)
+      'unicorn/prefer-global-number-constants': 'off', // 28  (5+23)
+      'unicorn/prefer-split-limit': 'off', //           27   (13+14)
+      'unicorn/no-break-in-nested-loop': 'off', //      26    (5+21)
+      'unicorn/explicit-length-check': 'off', //        25   (13+12)
+      'unicorn/prefer-url-href': 'off', //              20    (5+15)
+      'unicorn/numeric-separators-style': 'off', //     18    (10+8) — conflicts with Biome's useSimpleNumberKeys on numeric object keys, and with the FIPS table below
+      'unicorn/no-await-expression-member': 'off', //   18    (4+14)
+      'unicorn/no-declarations-before-early-exit': 'off', // 18 (10+8)
+      'unicorn/switch-case-braces': 'off', //           15     (8+7)
+      'unicorn/prefer-string-raw': 'off', //            12     (3+9)
+      'unicorn/catch-error-name': 'off', //             10     (2+8)
+      'unicorn/prefer-includes-over-repeated-comparisons': 'off', // 10 (2+8)
+      'unicorn/prefer-single-call': 'off', //            9     (3+6)
+      'unicorn/no-array-reduce': 'off', //               8     (1+7)
+      'unicorn/prefer-direct-iteration': 'off', //       8     (1+7)
+      'sonarjs/use-type-alias': 'off', //                6     (1+5)
+    },
+  },
+  {
     // Test-only relaxations. Each of these is a rule that is right about
     // production code and wrong about the way these tests are written.
-    // The fixture modules are test support, not production code: they are
-    // imported only from tests, and `sources/lib/test-fixtures.mjs` is where
-    // the `globalThis.fetch` stub lives for every source suite that needs one.
-    files: ['**/*.test.mjs', 'mcp/lib/test-harness.mjs', 'sources/lib/test-fixtures.mjs'],
+    files: TESTS,
     rules: {
       // Test helpers — fake responders, fixture builders — are defined in the
       // `describe` that uses them, next to the assertions that explain them.
@@ -167,13 +319,30 @@ export default [
     },
   },
   {
+    // `scripts/` and `bin/` are the operator command line — run by hand, from a
+    // terminal, by the person who owns the catalog. Two rules that are right
+    // about a Worker are wrong about that.
+    files: ['scripts/**', 'bin/**'],
+    rules: {
+      // "Only use `process.exit()` in CLI apps." These are CLI apps: a build
+      // script that exits 1 on a bad argument is reporting a status to the
+      // shell, and throwing would print a stack trace instead.
+      'unicorn/no-process-exit': 'off',
+
+      // Flags `spawnSync('trove', …)` for resolving a binary through `PATH`.
+      // The binary is the operator's own `trove` CLI, on the operator's own
+      // machine; pinning an absolute path would break the moment they moved it.
+      'sonarjs/no-os-command-from-path': 'off',
+    },
+  },
+  {
     // The SHA-256 constant tables are transcribed from FIPS 180-4, eight
     // 32-bit words per line exactly as the standard prints them. Byte-grouping
     // them — `0x428a2f98` → `0x42_8a_2f_98` — makes them unreadable against the
     // source document, and the reflow that follows breaks the eight-per-line
     // layout that is how a reader checks the transcription at all. The rule is
     // right about `120000`; it is wrong about a published table.
-    files: ['sources/lib/sha256.mjs'],
+    files: ['sources/lib/sha256.ts'],
     rules: { 'unicorn/numeric-separators-style': 'off' },
   },
 ];

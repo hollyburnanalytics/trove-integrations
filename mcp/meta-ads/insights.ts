@@ -91,7 +91,7 @@ function validateWindow(query: InsightsQuery, now: Date): number | undefined {
       { retryable: false },
     );
   }
-  if (!since !== !until) {
+  if (Boolean(since) !== Boolean(until)) {
     throw new ToolError('since and until go together — give both, or neither.', {
       retryable: false,
     });

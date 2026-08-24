@@ -67,7 +67,6 @@ async function browseGet(
       }
       // 401/403 (after the SDK's one automatic re-mint) and 5xx fall through to
       // the default mapping.
-      return undefined;
     },
   })) as Record<string, unknown>;
 }

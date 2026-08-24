@@ -57,7 +57,6 @@ export async function getJson(
           retryable: false,
         });
       }
-      return undefined;
     },
   });
   if (typeof parsed !== 'object' || parsed === null) {

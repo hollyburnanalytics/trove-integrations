@@ -199,7 +199,7 @@ export function searchQuery(
   const origins = input.origin_airport?.length ? input.origin_airport : homeAirports;
   if (origins.length === 0) {
     throw new ToolError(
-      'origin_airport: give at least one 3-letter IATA airport code, e.g. SFO — or set your home airports in this toolkit\u2019s settings and omit it.',
+      'origin_airport: give at least one 3-letter IATA airport code, e.g. SFO — or set your home airports in this toolkit\u{2019}s settings and omit it.',
       { retryable: false },
     );
   }

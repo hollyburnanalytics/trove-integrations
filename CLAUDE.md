@@ -28,9 +28,10 @@ in both in the same pass:
 `mcp/tsconfig.json` · `mise.toml` · `.gitignore`
 
 The same goes for the versions of `typescript`, `vitest`, `@biomejs/biome`,
-`eslint`, `eslint-plugin-unicorn`, `eslint-plugin-sonarjs`, `bun-types` and
-`node-html-parser`. They drifted once — unicorn 63 against unicorn 73 — and this
-repo read as clean while looking for almost nothing.
+`eslint`, `@typescript-eslint/parser`, `eslint-plugin-unicorn`,
+`eslint-plugin-sonarjs`, `bun-types` and `node-html-parser`. They drifted once —
+unicorn 63 against unicorn 73 — and this repo read as clean while looking for
+almost nothing.
 
 Shared vocabulary lives in `sources/lib/constants.mjs`, `sources/lib/cursor.mjs`,
 `sources/lib/types.d.ts` and `sources/lib/test-fixtures.mjs`. Those are twins, not

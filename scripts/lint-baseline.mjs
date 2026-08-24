@@ -31,7 +31,6 @@ const update = process.argv.includes('--update');
 function biomeWarnCounts() {
   let raw;
   try {
-    // eslint-disable-next-line sonarjs/no-os-command-from-path -- dev tooling; same trust as any package.json script
     raw = execSync('bunx biome check . --reporter=json', {
       encoding: 'utf8',
       maxBuffer: 128 * 1024 * 1024,
@@ -63,7 +62,6 @@ function biomeWarnCounts() {
 function suppressionCount() {
   const out = execSync(
     // This script is excluded from its own grep: it names the marker in its docs.
-    // eslint-disable-next-line sonarjs/no-os-command-from-path -- dev tooling; same trust as any package.json script
     "grep -rho 'biome-ignore' mcp sources scripts bin --exclude-dir=node_modules --exclude=lint-baseline.mjs 2>/dev/null | wc -l",
     { encoding: 'utf8' },
   ).trim();

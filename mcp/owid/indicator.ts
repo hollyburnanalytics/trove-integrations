@@ -205,7 +205,7 @@ function inRange(time: string, from: number | undefined, to: number | undefined)
   const year = Number(time);
   if (!Number.isFinite(year)) return true;
   if (from !== undefined && year < from) return false;
-  return !(to !== undefined && year > to);
+  return to === undefined || year <= to;
 }
 
 /** Producers, deduped, in the form the rest of the toolkit cites them. */

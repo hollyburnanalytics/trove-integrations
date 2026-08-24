@@ -68,17 +68,17 @@ function metricFactsByPeriod(
 ): Map<string, Fact> {
   const byPeriod = new Map<string, Fact>();
   const claimed = new Map<string, number>();
-  tagsFor(def, taxonomy).forEach((tag, rank) => {
+  for (const [rank, tag] of tagsFor(def, taxonomy).entries()) {
     const units = taxFacts[tag]?.units;
-    if (!units) return;
+    if (!units) continue;
     const unitKey = pickUnitKey(units, unitPreference(def, currency));
-    if (!unitKey) return;
+    if (!unitKey) continue;
     for (const [key, fact] of latestFiledByPeriod(factsForUnit(units, unitKey))) {
       if ((claimed.get(key) ?? Number.POSITIVE_INFINITY) < rank) continue;
       byPeriod.set(key, fact);
       claimed.set(key, rank);
     }
-  });
+  }
   return byPeriod;
 }
 
@@ -144,13 +144,11 @@ function discoverPeriods(
       // fiscal years: drop annual-length windows whose own filing stamps them
       // as a quarter.
       if (kind !== 'annual') return true;
-      return !(
-        fiscalStampsTrusted(kind, fact) &&
-        fact.fiscalPeriod !== null &&
-        fact.fiscalPeriod !== 'FY'
+      return (
+        !fiscalStampsTrusted(kind, fact) || fact.fiscalPeriod === null || fact.fiscalPeriod === 'FY'
       );
     })
-    .sort((a, b) => (a.end < b.end ? 1 : a.end > b.end ? -1 : 0))
+    .sort((a, b) => b.end.localeCompare(a.end))
     .slice(0, limit)
     .map((fact) => {
       const trusted = fiscalStampsTrusted(kind, fact);
@@ -192,10 +190,9 @@ function detectCurrency(taxFacts: TaxonomyFacts, taxonomy: Taxonomy): string {
   let best = 'USD';
   let bestCount = 0;
   for (const [key, count] of counts) {
-    if (count > bestCount || (count === bestCount && key === 'USD')) {
-      best = key;
-      bestCount = count;
-    }
+    if (count < bestCount || (count === bestCount && key !== 'USD')) continue;
+    best = key;
+    bestCount = count;
   }
   return best;
 }
@@ -207,8 +204,7 @@ function valueFor(
   def: MetricDef,
   period: { start: string; end: string },
 ): number | null {
-  const key =
-    def.statement === 'balance' ? periodKey(null, period.end) : periodKey(period.start, period.end);
+  const key = periodKey(def.statement === 'balance' ? null : period.start, period.end);
   return facts.get(key)?.value ?? null;
 }
 

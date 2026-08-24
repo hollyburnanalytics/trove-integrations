@@ -40,7 +40,7 @@ export const searchAwards = tool({
       .optional()
       .describe(
         'Origin IATA airport codes, e.g. ["SFO","OAK"]. Airports only — not cities. ' +
-          'Omit to use the home airports set in this toolkit\u2019s settings; omitting it ' +
+          'Omit to use the home airports set in this toolkit\u{2019}s settings; omitting it ' +
           'with none set is an error rather than a search of everywhere.',
       ),
     destination_airport: z

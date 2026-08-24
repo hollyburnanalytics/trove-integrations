@@ -87,9 +87,7 @@ export const companyFilings = tool({
       startDate,
       endDate,
     );
-    const matching = pool
-      .filter(isMatch)
-      .sort((a, b) => (a.filedDate < b.filedDate ? 1 : a.filedDate > b.filedDate ? -1 : 0));
+    const matching = pool.filter(isMatch).sort((a, b) => b.filedDate.localeCompare(a.filedDate));
     const filings = matching.slice(0, limit).map((f) => ({
       form: f.form,
       filedDate: f.filedDate,

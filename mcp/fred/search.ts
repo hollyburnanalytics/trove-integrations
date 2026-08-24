@@ -86,10 +86,7 @@ function matchesFilters(s: SeriesMeta, args: SearchArgs): boolean {
     const wanted = args.seasonalAdjustment === 'SA' ? ['SA', 'SAAR'] : ['NSA'];
     if (!wanted.includes(code)) return false;
   }
-  if (args.frequency && s.frequencyShort?.toLowerCase() !== args.frequency.toLowerCase()) {
-    return false;
-  }
-  return true;
+  return !args.frequency || s.frequencyShort?.toLowerCase() === args.frequency.toLowerCase();
 }
 
 /** One page of FRED search results, with enough context to describe it honestly. */

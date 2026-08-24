@@ -102,7 +102,6 @@ async function refreshUserToken(ctx: ToolContext): Promise<string> {
       if (res.status === 400 || res.status === 401) {
         return new ToolError(REAUTH_MESSAGE, { retryable: false });
       }
-      return undefined;
     },
   });
   if (typeof parsed !== 'object' || parsed === null) {

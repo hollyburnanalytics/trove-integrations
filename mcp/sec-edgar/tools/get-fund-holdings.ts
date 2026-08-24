@@ -46,7 +46,7 @@ function selectFilingForm(
   }
   const hr = filings.find((f) => f.form === '13F-HR' || f.form === '13F-HR/A');
   if (!hr) {
-    const nt = filings.find((f) => f.form.startsWith('13F-NT'));
+    const nt = filings.some((f) => f.form.startsWith('13F-NT'));
     throw new ToolError(
       nt
         ? `${name || company} files 13F-NT notices — its holdings are reported by ` +

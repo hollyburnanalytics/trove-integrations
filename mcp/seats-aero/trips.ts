@@ -155,7 +155,7 @@ function orEmpty(value: string[], derive: () => string[]): string[] {
 
 /** Strings the API sends as arrays, defended against a scalar or a null. */
 function list(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map((item) => String(item)).filter(Boolean);
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
   return csv(value);
 }
 

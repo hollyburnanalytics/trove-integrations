@@ -48,7 +48,7 @@ export interface CsvTable {
 function parseCsv(text: string): string[][] {
   // A BOM would otherwise ride along inside the first header cell, so `entity`
   // silently stops matching and every column looks missing.
-  const input = text.charCodeAt(0) === 0xfe_ff ? text.slice(1) : text;
+  const input = text.codePointAt(0) === 0xfe_ff ? text.slice(1) : text;
   if (input === '') return [];
   if (!input.includes('"')) return splitLines(input).map((line) => line.split(','));
   return parseQuotedCsv(input);
@@ -80,10 +80,26 @@ function endRow(state: ScanState): void {
 
 /** Consume one character outside a quoted field. */
 function scanPlain(state: ScanState, ch: string): void {
-  if (ch === '"') state.quoted = true;
-  else if (ch === ',') endField(state);
-  else if (ch === '\n') endRow(state);
-  else if (ch !== '\r') state.field += ch;
+  switch (ch) {
+    case '"': {
+      state.quoted = true;
+      break;
+    }
+    case ',': {
+      endField(state);
+      break;
+    }
+    case '\n': {
+      endRow(state);
+      break;
+    }
+    case '\r': {
+      break;
+    }
+    default: {
+      state.field += ch;
+    }
+  }
 }
 
 /**

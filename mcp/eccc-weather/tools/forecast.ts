@@ -160,9 +160,9 @@ export const forecast: ToolDefinition = {
 
     const periods = arrayProp(prop(properties, 'forecastGroup'), 'forecasts').map((entry) => {
       const temperatures = arrayProp(prop(entry, 'temperatures'), 'temperature');
-      const first = temperatures.length > 0 ? temperatures[0] : undefined;
+      const first = temperatures[0];
       const windPeriods = arrayProp(prop(entry, 'winds'), 'periods');
-      const wind = windPeriods.length > 0 ? windPeriods[0] : undefined;
+      const wind = windPeriods[0];
       return {
         name: textOf(en(prop(prop(entry, 'period'), 'textForecastName'))),
         summary: textOf(en(prop(entry, 'textSummary'))),
