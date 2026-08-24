@@ -7,11 +7,6 @@ import unicorn from 'eslint-plugin-unicorn';
 // than formatting. Both presets are opinionated, and a handful of their rules
 // are wrong about these repos rather than about the code — those are turned off
 // below, each with the reason. Everything else is expected to stay at zero.
-// The twenty-nine rules that used to sit here as "deferred, not settled" were
-// worked off rather than argued away: twenty-four are gone, four are held only
-// until `trove-matt-helm` finishes them, and exactly one — `prefer-number-
-// coercion` — was argued and accepted. All five are already at zero in
-// `trove-integrations`, which is why their counts below read `(0 + n)`.
 //
 // THIS FILE IS SHARED, BYTE FOR BYTE, between `trove-integrations` and
 // `trove-matt-helm`. The two catalogs meet the same platform and are written to
@@ -93,15 +88,17 @@ export default [
       // belongs.
       'unicorn/prefer-https': 'off',
 
-      // A schema IS a tree of calls. `z.array(z.object({ values: z.array(
-      // z.union([z.number(), z.string(), z.null()])) }))` is one shape written
-      // once, and every tool's argument and result contract is spelled that
-      // way — 2,412 sites here, 86 of the 91 files production rather than
-      // tests. The limit of three cannot be met without hoisting a named
-      // constant for each interior node, which would scatter one schema over a
-      // dozen single-use bindings and put the shape back together only in the
-      // reader's head. (An earlier note here blamed test fixture builders. It
-      // was measured wrong: they are 5 of the 91 files.)
+      // Fixture builders compose: `ok(rss(rssItem({ title: 'A' })))` is one
+      // recorded response spelled in the vocabulary of the format, and
+      // `feed([entry({ id })])` is one Atom document. The rule's limit of three
+      // is right about production call chains and wrong about a test suite
+      // whose whole idiom is small named builders nested to the depth of the
+      // document they describe — 72 sites across the two repos, and hoisting an
+      // intermediate `const` at each one makes every test longer and none of
+      // them clearer. Genuine assertion plumbing —
+      // `expect(String(at(mock.calls)[0]))` — reads better hoisted, and is,
+      // because that was worth doing on its own merits rather than to satisfy
+      // a counter.
       'unicorn/max-nested-calls': 'off',
 
       // Flags every `.sort()`/`.toSorted()` without a comparator, because it
@@ -167,12 +164,12 @@ export default [
       // (`BusinessNumber`); where it need only be *read*, plain is right.
       'sonarjs/redundant-type-aliases': 'off',
 
-      // One regex here scores 21 against a limit of 20: `ISO_DATE` in
-      // `taddy/params.ts`, which accepts a bare `YYYY-MM-DD` or a full ISO
-      // instant because Taddy's callers send both. It is exactly as complex as
-      // the format it mirrors, and splitting it in two moves the complexity
-      // into the code that joins them back up. (The other catalog carries the
-      // same rule off for its own publisher-shaped patterns.)
+      // Counts three regexes as too complex at 21, 23 and 30 against a limit of
+      // 20. All three mirror something a publisher emits — an ISO-8601 date, a
+      // price cell in Ship & Bunker's markup, the ways a T3010 spells "total
+      // gifts" — and are exactly as complex as the format they mirror.
+      // Splitting one in three moves the complexity into the code that joins
+      // them back up.
       'sonarjs/regex-complexity': 'off',
 
       // Wants `Object.hasOwn(obj, key)` in place of `obj[key] ? … : …`. Under
@@ -186,9 +183,9 @@ export default [
       // Right about JavaScript, redundant here. It exists because
       // `['1','2'].map(parseInt)` passes the index as a radix; in strict
       // TypeScript the callee's signature is checked against `map`'s callback
-      // type, so an unexpected parameter is a compile error. All 21 sites left
-      // here are named unary renderers — `rows.map(toEntity)` — and every one
-      // was checked for a second parameter.
+      // type, so an unexpected parameter is a compile error. All 76 sites are
+      // named unary renderers — `rows.map(toEntity)` — and every one was checked
+      // for a second parameter before this went in.
       'unicorn/no-array-callback-reference': 'off',
 
       // Wants `for…of` over the string. The one site walks a Gutenberg book by
@@ -198,18 +195,15 @@ export default [
       'unicorn/no-for-loop': 'off',
 
       // Type-blind, and these repos compare ISO date strings as often as
-      // numbers: `row.publishedAt > newest` picks the newest model run, and
-      // `Math.max` on those strings is `NaN`. Zero sites remain in this
-      // catalog; the line stays because the file is shared and the other one
-      // still has them.
+      // numbers: `row.publishedAt > newest ? …` picks the newest model run, and
+      // `Math.max` on those strings is `NaN`. The genuinely numeric sites were
+      // rewritten.
       'unicorn/prefer-math-min-max': 'off',
 
       // Reads `Number.parseInt(String(x), 10)` as a number being truncated. It
       // is not: `x` is an `unknown` from a remote payload and `parseInt` is
       // there for its leniency about what follows the digits, where `Math.trunc`
-      // returns `NaN`. Zero sites remain in this catalog — the guards were
-      // written out under `prefer-number-coercion` — and the line stays only
-      // because the file is shared with the other one.
+      // returns `NaN`.
       'unicorn/prefer-math-trunc': 'off',
 
       // Wants `subtype` for `subType`. `AccountSubType` is QuickBooks' own field
@@ -242,48 +236,39 @@ export default [
       'unicorn/no-useless-undefined': ['error', { checkArrowFunctionBody: false }],
 
       // Biome's formatter normalises hex literals to lowercase; this rule wants
-      // uppercase digits. They cannot both be satisfied — writing `0xFE_FF` in
-      // `owid/csv.ts` makes `biome check` fail on formatting — and `bun run
-      // lint` (Biome) is the gate that runs first, so Biome wins.
+      // uppercase digits. They cannot both be satisfied, and `bun run lint`
+      // (Biome) is the gate that runs first, so Biome wins.
       'unicorn/number-literal-case': 'off',
+
+      // Reads `Number.parseInt(x, 10)` and `Number.parseFloat(x)` as long-hand
+      // for `Number(x)`. They are different functions, and both differences are
+      // things these repos do all day. `Number('')` is 0 where `parseInt('')`
+      // is NaN — every scraper reads cells that are sometimes blank, and "the
+      // publisher reported nothing" arriving as a reported zero is the failure
+      // mode the comments here keep warning about. `Number('750 mL')` is NaN
+      // where `parseFloat` is 750 — BC Liquor prints volumes that way. That
+      // leniency is why the parse family is called at all; sites wanting
+      // whole-string coercion already say `Number(...)`. Same argument as
+      // `prefer-math-trunc` above; the plugin agrees, and offers no autofix.
+      'unicorn/prefer-number-coercion': 'off',
     },
   },
   {
-    // ---- Still open in the other catalog (task #170) ----
+    // ---- Deferred, not settled (task #170) ----
     //
-    // Every one of these is at ZERO in `trove-integrations`: the sites were
-    // read and rewritten one at a time, not swept. They stay switched off
-    // because this file governs both catalogs and `trove-matt-helm` has not
-    // finished. Counts are `(trove-integrations + trove-matt-helm)`; retire a
-    // line when the second figure reaches zero too.
-    //
-    // The first three are ONE IDIOM SEEN FROM THREE ANGLES. A tool's text
-    // output written as a single expression, with each optional clause inline
-    // as `${x ? ` — ${x}` : ''}`, is simultaneously a nested template literal,
-    // a nested conditional and a nested ternary. Retiring them means giving
-    // every optional clause a name — which is the same refactor that brings
-    // the oversized files under Biome's `noExcessiveLinesPerFile`. Done as a
-    // standalone rename pass it would be thrown away, so they land with the
-    // file splits. (This catalog did the rename pass first, hoisting each
-    // clause to a local `const`; that is the precedent, not a second idiom.)
+    // What is left of a block that held twenty-nine rules. These three are one
+    // idiom from three angles: a tool's text output is one expression, its
+    // optional clauses inline as `${x ? `…` : ''}`. Naming every clause is the
+    // same refactor that brings the oversized files under
+    // `noExcessiveLinesPerFile` — `charitydata/extension.ts` was done that way
+    // and lost all 34 of its findings to seven named row renderers — so the
+    // rest should land with those splits rather than ahead of them. Counts are
+    // `trove-matt-helm` on this commit; retire a line at zero in BOTH repos.
     files: SOURCES,
     rules: {
-      'sonarjs/no-nested-template-literals': 'off', // (0 + 261)
-      'unicorn/consistent-boolean-name': 'off', //      (0 + 120)
-      'sonarjs/no-nested-conditional': 'off', //         (0 + 76)
-      'unicorn/no-nested-ternary': 'off', //             (0 + 35)
-
-      // Accepted, not deferred — the one rule that is wrong rather than
-      // unfinished. Its rewrite is semantic, not mechanical: `Number('')` is
-      // `0` where `Number.parseInt('')` is `NaN`, and these scrapers read
-      // blank cells on every request, so "the publisher reported nothing"
-      // would start arriving as a reported zero. `Number('750 mL')` is `NaN`
-      // where `parseFloat` gives `750`, and BC Liquor prints volumes that way.
-      // The plugin ships suggestions and no autofix, which is its own authors
-      // agreeing it cannot be applied blind. `trove-integrations` is at zero
-      // because each of its fourteen sites was read: every one was already
-      // digit-constrained, or was made stricter on purpose.
-      'unicorn/prefer-number-coercion': 'off', //        (0 + 25)
+      'sonarjs/no-nested-template-literals': 'off', // 227 — the render idiom: one sentence, one expression
+      'sonarjs/no-nested-conditional': 'off', //        74 — nested ternaries, mostly inside the render idiom
+      'unicorn/no-nested-ternary': 'off', //            35 — a subset of no-nested-conditional
     },
   },
   {
@@ -333,6 +318,22 @@ export default [
       // machine; pinning an absolute path would break the moment they moved it.
       'sonarjs/no-os-command-from-path': 'off',
     },
+  },
+  {
+    // `curl` is reached through PATH deliberately, and the rule's objection —
+    // that a PATH lookup can be hijacked — does not apply here: the arguments
+    // are an array (no shell), and every URL is host-allowlisted via
+    // `assertAllowedUrl`. curl, not `fetch`, because the council site answers
+    // only to its TLS fingerprint.
+    files: ['sources/wv-council-meetings/curl-transport.ts'],
+    rules: { 'sonarjs/no-os-command-from-path': 'off' },
+  },
+  {
+    // `Math.random()` here is jitter on a retry backoff — it spreads a fleet of
+    // channel syncs across the hour so they do not all wake together. It picks
+    // no secret, id or key; a stronger source would buy only a slower loop.
+    files: ['sources/youtube-videos/extension.ts'],
+    rules: { 'sonarjs/pseudo-random': 'off' },
   },
   {
     // The SHA-256 constant tables are transcribed from FIPS 180-4, eight
