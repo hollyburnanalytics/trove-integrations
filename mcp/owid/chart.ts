@@ -11,7 +11,13 @@ import {
   GRAPHER,
 } from './client.ts';
 import { type CsvRow, type CsvTable, parseChartCsv } from './csv.ts';
-import { chartEntities, diagnoseMissing, selectEntities, unmatchedRequests } from './entities.ts';
+import {
+  chartEntities,
+  diagnoseMissing,
+  quotedList,
+  selectEntities,
+  unmatchedRequests,
+} from './entities.ts';
 import { columnCitations } from './metadata.ts';
 import { noteTimeSnap, timeRange } from './time.ts';
 
@@ -233,7 +239,7 @@ async function resolveRows(
   const stillMissing = unmatchedRequests(rows, countries);
   if (stillMissing.length > 0) {
     await diagnoseMissing(ctx, metadata, stillMissing, notes).catch(() => {
-      notes.push(`No data returned for: ${stillMissing.map((m) => `"${m}"`).join(', ')}.`);
+      notes.push(`No data returned for: ${quotedList(stillMissing)}.`);
     });
   }
   return { table, rows };
@@ -260,15 +266,15 @@ export async function getChartData(
   const selected = resolved.rows;
   noteTimeSnap(selected, table.timeUnit, time, notes);
 
-  const truncated = selected.length > maxRows;
-  if (truncated) {
+  const isTruncated = selected.length > maxRows;
+  if (isTruncated) {
     notes.push(
       `Showing the first ${String(maxRows)} of ${String(selected.length)} rows. Narrow \`countries\`/\`time\` to see fewer — or, for the whole dataset, download \`downloads.csv\` rather than paging it through the context window.`,
     );
   }
   // Truncate AFTER selecting: capping first would drop the requested entity
   // whenever the upstream leads with the other 200.
-  const rows = truncated ? selected.slice(0, maxRows) : selected;
+  const rows = isTruncated ? selected.slice(0, maxRows) : selected;
   const columns = joinColumns(table.columns, metadata);
 
   // Coverage is described from the SELECTION, not the page of it that fits.
@@ -300,7 +306,7 @@ export async function getChartData(
     // note count against. The upstream total is reported separately; conflating
     // the two would claim 197 rows for a chart that returned one country.
     totalRows: selected.length,
-    truncated,
+    truncated: isTruncated,
     totalRowsBeforeSelection: table.rows.length,
     timeRange: timeRange(selected),
     citation: short.length > 0 ? short.join('; ') : (metadata?.chart?.citation ?? null),

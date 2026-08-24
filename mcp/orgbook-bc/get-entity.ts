@@ -22,14 +22,14 @@ export const getEntityTool = tool({
     ctx.log('get_entity', { registrationNumber: args.registrationNumber });
     const row = await findByRegistrationNumber(args.registrationNumber, ctx);
     const entity = toEntity(row);
+    const businessNumber = entity.businessNumber ? ` · BN ${entity.businessNumber}` : '';
+    const jurisdiction = entity.homeJurisdiction ? ` in ${entity.homeJurisdiction}` : '';
+    const url = entity.url ? `\n  ${entity.url}` : '';
     return {
       text:
         `${entity.entityName ?? '?'} (${entity.registrationNumber ?? '?'})\n` +
-        `  Status: ${entity.entityStatus ?? '?'} · Type: ${entity.entityType ?? '?'}` +
-        `${entity.businessNumber ? ` · BN ${entity.businessNumber}` : ''}\n` +
-        `  Registered: ${entity.registrationDate?.slice(0, 10) ?? '?'}` +
-        `${entity.homeJurisdiction ? ` in ${entity.homeJurisdiction}` : ''}` +
-        `${entity.url ? `\n  ${entity.url}` : ''}`,
+        `  Status: ${entity.entityStatus ?? '?'} · Type: ${entity.entityType ?? '?'}${businessNumber}\n` +
+        `  Registered: ${entity.registrationDate?.slice(0, 10) ?? '?'}${jurisdiction}${url}`,
       structured: entity,
     };
   },

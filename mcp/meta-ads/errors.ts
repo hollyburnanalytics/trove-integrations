@@ -29,8 +29,10 @@ interface GraphError {
  * (613), and the business-use-case block (80000–80014, one per product).
  * Everything here is "come back later", never "fix your request".
  */
+const RATE_LIMIT_CODES = new Set([4, 17, 32, 341, 613]);
+
 function isRateLimitCode(code: number, subcode: number): boolean {
-  if (code === 4 || code === 17 || code === 32 || code === 613 || code === 341) return true;
+  if (RATE_LIMIT_CODES.has(code)) return true;
   if (code >= 80_000 && code <= 80_014) return true;
   // The ads-specific "too many calls" subcode, seen under code 100.
   return code === 100 && subcode === 2_446_079;
@@ -111,10 +113,8 @@ function errorForCode(code: number, subcode: number, reason: string): ToolError 
       { retryable: false },
     );
   }
-  return new ToolError(
-    `Meta rejected the request (code ${code}${subcode ? `/${subcode}` : ''})${detail}`,
-    { retryable: false },
-  );
+  const codes = subcode ? `${code}/${subcode}` : `${code}`;
+  return new ToolError(`Meta rejected the request (code ${codes})${detail}`, { retryable: false });
 }
 
 /**
@@ -133,7 +133,6 @@ export function metaError(result: FetchResult): ToolError {
   }
   const code = typeof error.code === 'number' ? error.code : 0;
   const subcode = typeof error.error_subcode === 'number' ? error.error_subcode : 0;
-  const reason = errorText(error);
   if (isRateLimitCode(code, subcode)) {
     return new ToolError(
       `Meta is rate-limiting this ad account (code ${code}). Ad insights budget is ` +
@@ -142,12 +141,12 @@ export function metaError(result: FetchResult): ToolError {
       { retryable: true },
     );
   }
+  const reason = errorText(error);
   // Codes 1 and 2 are Meta's own "unknown/temporary" pair: nothing about the
   // request is wrong, so they must not be reported as the caller's mistake.
   if (code === 1 || code === 2) {
-    return new ToolError(`Meta had a transient error${reason ? `: ${reason}` : '.'}`, {
-      retryable: true,
-    });
+    const because = reason ? `: ${reason}` : '.';
+    return new ToolError(`Meta had a transient error${because}`, { retryable: true });
   }
   return errorForCode(code, subcode, reason);
 }

@@ -90,10 +90,10 @@ function toObservations(rows: unknown[]): {
       country: name,
     };
   });
-  const multi = countries.size > 1;
+  const isMulti = countries.size > 1;
   return {
     observations: raw.map(({ year, value, country }) =>
-      multi && country ? { year, value, country } : { year, value },
+      isMulti && country ? { year, value, country } : { year, value },
     ),
     indicatorName,
     countries: [...countries],
@@ -144,12 +144,12 @@ async function getWb(
   if (!res.ok) {
     // 429 + 5xx are transient (service-side); other 4xx mean the request itself
     // was rejected (e.g. a bad country/indicator code) and a retry won't help.
-    const transient = res.status === 429 || res.status >= 500;
+    const isTransient = res.status === 429 || res.status >= 500;
     throw new ToolError(
-      transient
+      isTransient
         ? `The World Bank API is temporarily unavailable (HTTP ${res.status}).`
         : `The World Bank API rejected the request (HTTP ${res.status}); check the country and indicator codes.`,
-      { retryable: transient },
+      { retryable: isTransient },
     );
   }
   let parsed: unknown;
@@ -239,14 +239,14 @@ export default defineToolkit({
           note:
             typeof r.sourceNote === 'string' && r.sourceNote ? r.sourceNote.slice(0, 200) : null,
         }));
-        const truncated = hits.length > matches.length;
         if (matches.length === 0) {
           return {
             text: `No World Bank indicators matching "${query}"${partial}.`,
             structured: { query, count: 0, totalMatches: 0, truncated: false, indicators: [] },
           };
         }
-        const of = truncated ? ` of ${hits.length}` : '';
+        const isTruncated = hits.length > matches.length;
+        const of = isTruncated ? ` of ${hits.length}` : '';
         const lines = matches.map((m) => `  ${m.id} — ${m.name}`).join('\n');
         return {
           text: `${matches.length}${of} indicator(s) for "${query}"${partial}:\n${lines}`,
@@ -254,7 +254,7 @@ export default defineToolkit({
             query,
             count: matches.length,
             totalMatches: hits.length,
-            truncated,
+            truncated: isTruncated,
             indicators: matches,
           },
         };
@@ -328,18 +328,19 @@ export default defineToolkit({
         // Derived from rows consumed rather than `page < pages`, so a missing or
         // stale `pages` can't make a partial result claim to be complete.
         const consumed = (page - 1) * limit + observations.length;
-        const truncated = consumed < total;
+        const isTruncated = consumed < total;
         const sizing = {
           total,
-          truncated,
+          truncated: isTruncated,
           page,
           pages,
-          nextPage: truncated ? page + 1 : null,
+          nextPage: isTruncated ? page + 1 : null,
           countries,
         };
+        const inRange = range ? ` in ${range}` : '';
         if (observations.length === 0) {
           return {
-            text: `No World Bank data for ${indicator} / ${country}${range ? ` in ${range}` : ''}.`,
+            text: `No World Bank data for ${indicator} / ${country}${inRange}.`,
             structured: {
               country,
               indicator,
@@ -354,16 +355,17 @@ export default defineToolkit({
         // for the current year means "not published yet", which is an answer.
         const lines = observations
           .slice(0, 12)
-          .map((o) => `  ${o.country ? `${o.country}, ` : ''}${o.year}: ${o.value ?? 'n/a'}`)
+          .map((o) => {
+            const where = o.country ? `${o.country}, ` : '';
+            return `  ${where}${o.year}: ${o.value ?? 'n/a'}`;
+          })
           .join('\n');
         // `countries` is what this PAGE contained, not what the indicator covers —
         // say "on this page" when there is more, so it can't read as the total.
-        const scope =
-          countries.length > 1
-            ? ` across ${countries.length} entities${truncated ? ' on this page' : ''}`
-            : '';
+        const thisPage = isTruncated ? ' on this page' : '';
+        const scope = countries.length > 1 ? ` across ${countries.length} entities${thisPage}` : '';
         const header = `${indicatorName ?? indicator} — ${country}: ${observations.length} of ${total} point(s)${scope}`;
-        const more = truncated
+        const more = isTruncated
           ? `\n  TRUNCATED: page ${page} of ${pages}. Re-call with page=${page + 1}, ` +
             'or narrow with start/end or a single country.'
           : '';

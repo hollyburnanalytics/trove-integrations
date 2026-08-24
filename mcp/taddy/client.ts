@@ -166,7 +166,7 @@ function toolErrorFor(code: string | undefined, message: string): ToolError {
  * The substring pre-check keeps this cheap: a transcript body runs to megabytes
  * and must not be parsed twice just to learn it is fine.
  */
-function carriesGraphQLErrors(body: string): boolean {
+function hasGraphQLErrors(body: string): boolean {
   if (!body.includes('"errors"')) return false;
   try {
     const parsed = envelopeWire.safeParse(JSON.parse(body));
@@ -236,7 +236,7 @@ export async function graphql<S extends z.ZodTypeAny>(
     // the cross-tenant sharing that was never ours to give away.
     cacheKeySalt: ctx.userId,
     // Taddy answers failures with 200, so the cache cannot decide on status alone.
-    retainIf: (result) => !carriesGraphQLErrors(result.body),
+    retainIf: (result) => !hasGraphQLErrors(result.body),
     overallTimeoutMs: options.overallTimeoutMs,
     timeoutMs: options.overallTimeoutMs,
   });

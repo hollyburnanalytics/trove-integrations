@@ -68,7 +68,6 @@ function mapXHttpError(
   body: string,
   unauthorizedMessage?: string,
 ): ToolError | undefined {
-  const reason = parseXError(body);
   if (status === 401 || status === 403) {
     return new ToolError(
       unauthorizedMessage ??
@@ -76,18 +75,16 @@ function mapXHttpError(
       { retryable: false },
     );
   }
+  const reason = parseXError(body);
+  const because = reason ? `: ${reason}` : '.';
   if (status === 404) {
-    return new ToolError(`X resource not found${reason ? `: ${reason}` : '.'}`, {
-      retryable: false,
-    });
+    return new ToolError(`X resource not found${because}`, { retryable: false });
   }
   if (status === 429) {
     return new ToolError('X rate limit hit; try again shortly.', { retryable: true });
   }
   if (status >= 400 && status < 500) {
-    return new ToolError(`X rejected the request${reason ? `: ${reason}` : '.'}`, {
-      retryable: false,
-    });
+    return new ToolError(`X rejected the request${because}`, { retryable: false });
   }
   return undefined;
 }

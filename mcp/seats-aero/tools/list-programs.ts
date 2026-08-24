@@ -1,6 +1,13 @@
 import { tool, z } from '@ontrove/extend/toolkit';
 import { PROGRAMS } from '../programs.ts';
 
+/** What a program publishes about remaining seats. */
+function seatCountText(seatCounts: string): string {
+  if (seatCounts === 'yes') return 'seat counts';
+  if (seatCounts === 'partial') return 'seat counts only when low';
+  return 'NO seat counts';
+}
+
 /**
  * `list_programs` — the mileage-program catalogue, answered locally.
  *
@@ -40,19 +47,15 @@ export const listPrograms = tool({
   async handler(args, _ctx) {
     const programs = PROGRAMS.filter((p) => !args.cabin || p.cabins.includes(args.cabin));
     const lines = programs.map((p) => {
-      const seats =
-        p.seatCounts === 'yes'
-          ? 'seat counts'
-          : p.seatCounts === 'partial'
-            ? 'seat counts only when low'
-            : 'NO seat counts';
+      const seats = seatCountText(p.seatCounts);
       return `  ${p.source.padEnd(15)} ${p.name.padEnd(28)} ${p.cabins.join('/')} · ${seats}${
         p.taxes ? '' : ' · NO taxes/surcharges'
       }`;
     });
+    const searchableIn = args.cabin ? ` searchable in ${args.cabin}` : '';
     return {
       text: [
-        `${programs.length} mileage program(s)${args.cabin ? ` searchable in ${args.cabin}` : ''}:`,
+        `${programs.length} mileage program(s)${searchableIn}:`,
         ...lines,
         '',
         'Where a program does not publish seat counts or taxes, a zero in a result is missing data — not "none left" or "no taxes".',

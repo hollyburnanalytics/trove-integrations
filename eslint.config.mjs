@@ -239,52 +239,36 @@ export default [
       // uppercase digits. They cannot both be satisfied, and `bun run lint`
       // (Biome) is the gate that runs first, so Biome wins.
       'unicorn/number-literal-case': 'off',
+
+      // Reads `Number.parseInt(x, 10)` and `Number.parseFloat(x)` as long-hand
+      // for `Number(x)`. They are different functions, and both differences are
+      // things these repos do all day. `Number('')` is 0 where `parseInt('')`
+      // is NaN — every scraper reads cells that are sometimes blank, and "the
+      // publisher reported nothing" arriving as a reported zero is the failure
+      // mode the comments here keep warning about. `Number('750 mL')` is NaN
+      // where `parseFloat` is 750 — BC Liquor prints volumes that way. That
+      // leniency is why the parse family is called at all; sites wanting
+      // whole-string coercion already say `Number(...)`. Same argument as
+      // `prefer-math-trunc` above; the plugin agrees, and offers no autofix.
+      'unicorn/prefer-number-coercion': 'off',
     },
   },
   {
     // ---- Deferred, not settled (task #170) ----
     //
-    // These twenty-nine rules are off because the gate has to run, not because
-    // anyone has decided they are wrong. All of them arrived the day `.ts` came
-    // into scope, and between the two catalogs they carry 1,532 findings across
-    // code no linter had read. That is a sweep of its own; landing the parser
-    // should not wait for it, and turning them off silently would repeat the
-    // mistake this file exists to prevent.
-    //
-    // Counts are `(trove-integrations + trove-matt-helm)` as measured on the
-    // commit that added this block. Retire a line by getting its rule to zero in
-    // BOTH repos; there is no baseline file to raise.
+    // What is left of a block that held twenty-nine rules. These three are one
+    // idiom from three angles: a tool's text output is one expression, its
+    // optional clauses inline as `${x ? `…` : ''}`. Naming every clause is the
+    // same refactor that brings the oversized files under
+    // `noExcessiveLinesPerFile` — `charitydata/extension.ts` was done that way
+    // and lost all 34 of its findings to seven named row renderers — so the
+    // rest should land with those splits rather than ahead of them. Counts are
+    // `trove-matt-helm` on this commit; retire a line at zero in BOTH repos.
     files: SOURCES,
     rules: {
-      'sonarjs/no-nested-template-literals': 'off', // 405 (144+261) — the render idiom: one sentence, one expression
-      'unicorn/consistent-boolean-name': 'off', //     178  (58+120) — includes `structured` result fields, which are the wire contract
-      'unicorn/prefer-string-replace-all': 'off', //   137   (63+74) — mechanical; `.replace(/x/g)` → `.replaceAll`
-      'sonarjs/no-nested-conditional': 'off', //       126   (50+76) — nested ternaries
-      'unicorn/no-array-sort': 'off', //                80   (13+67) — `.sort()` → `.toSorted()`; check each for an intended mutation
-      'unicorn/no-nested-ternary': 'off', //            56   (21+35) — overlaps no-nested-conditional
-      'sonarjs/super-linear-regex': 'off', //           53   (11+42) — backtracking risk in scraper patterns; worth reading, not sweeping
-      'unicorn/consistent-conditional-object-spread': 'off', // 47 (13+34)
-      'unicorn/prefer-number-coercion': 'off', //       39   (14+25)
-      'unicorn/consistent-function-scoping': 'off', //  39    (5+34) — production copies of what tests are already excused
-      'unicorn/no-negated-condition': 'off', //         38   (19+19)
-      'unicorn/no-unreadable-for-of-expression': 'off', // 37 (8+29) — a ternary in the `for…of` head
-      'unicorn/prefer-simple-condition-first': 'off', // 34   (8+26)
-      'unicorn/prefer-global-number-constants': 'off', // 28  (5+23)
-      'unicorn/prefer-split-limit': 'off', //           27   (13+14)
-      'unicorn/no-break-in-nested-loop': 'off', //      26    (5+21)
-      'unicorn/explicit-length-check': 'off', //        25   (13+12)
-      'unicorn/prefer-url-href': 'off', //              20    (5+15)
-      'unicorn/numeric-separators-style': 'off', //     18    (10+8) — conflicts with Biome's useSimpleNumberKeys on numeric object keys, and with the FIPS table below
-      'unicorn/no-await-expression-member': 'off', //   18    (4+14)
-      'unicorn/no-declarations-before-early-exit': 'off', // 18 (10+8)
-      'unicorn/switch-case-braces': 'off', //           15     (8+7)
-      'unicorn/prefer-string-raw': 'off', //            12     (3+9)
-      'unicorn/catch-error-name': 'off', //             10     (2+8)
-      'unicorn/prefer-includes-over-repeated-comparisons': 'off', // 10 (2+8)
-      'unicorn/prefer-single-call': 'off', //            9     (3+6)
-      'unicorn/no-array-reduce': 'off', //               8     (1+7)
-      'unicorn/prefer-direct-iteration': 'off', //       8     (1+7)
-      'sonarjs/use-type-alias': 'off', //                6     (1+5)
+      'sonarjs/no-nested-template-literals': 'off', // 227 — the render idiom: one sentence, one expression
+      'sonarjs/no-nested-conditional': 'off', //        74 — nested ternaries, mostly inside the render idiom
+      'unicorn/no-nested-ternary': 'off', //            35 — a subset of no-nested-conditional
     },
   },
   {
@@ -334,6 +318,22 @@ export default [
       // machine; pinning an absolute path would break the moment they moved it.
       'sonarjs/no-os-command-from-path': 'off',
     },
+  },
+  {
+    // `curl` is reached through PATH deliberately, and the rule's objection —
+    // that a PATH lookup can be hijacked — does not apply here: the arguments
+    // are an array (no shell), and every URL is host-allowlisted via
+    // `assertAllowedUrl`. curl, not `fetch`, because the council site answers
+    // only to its TLS fingerprint.
+    files: ['sources/wv-council-meetings/curl-transport.ts'],
+    rules: { 'sonarjs/no-os-command-from-path': 'off' },
+  },
+  {
+    // `Math.random()` here is jitter on a retry backoff — it spreads a fleet of
+    // channel syncs across the hour so they do not all wake together. It picks
+    // no secret, id or key; a stronger source would buy only a slower loop.
+    files: ['sources/youtube-videos/extension.ts'],
+    rules: { 'sonarjs/pseudo-random': 'off' },
   },
   {
     // The SHA-256 constant tables are transcribed from FIPS 180-4, eight

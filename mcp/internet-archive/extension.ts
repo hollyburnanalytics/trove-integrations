@@ -181,7 +181,8 @@ export default defineToolkit({
           .slice(0, 10)
           .map((r) => {
             const meta = [r.creator, r.year, r.mediatype].filter(Boolean).join(' · ');
-            return `  ${r.title}${meta ? ` — ${meta}` : ''} [${r.identifier}]`;
+            const about = meta ? ` — ${meta}` : '';
+            return `  ${r.title}${about} [${r.identifier}]`;
           })
           .join('\n');
 
@@ -289,12 +290,13 @@ export default defineToolkit({
           itemUrl,
         ].filter(Boolean);
         const descLine = description ? `\n\n${description.slice(0, 500)}` : '';
-        const fileLines =
-          files.length > 0
-            ? `\n\nFiles:\n${files
-                .map((f) => `  ${f.name}${f.format ? ` (${f.format})` : ''} — ${f.downloadUrl}`)
-                .join('\n')}`
-            : '';
+        const fileList = files
+          .map((f) => {
+            const format = f.format ? ` (${f.format})` : '';
+            return `  ${f.name}${format} — ${f.downloadUrl}`;
+          })
+          .join('\n');
+        const fileLines = files.length > 0 ? `\n\nFiles:\n${fileList}` : '';
 
         return {
           text: headerLines.join('\n') + descLine + fileLines,

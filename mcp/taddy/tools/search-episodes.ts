@@ -54,10 +54,11 @@ export const searchEpisodesTool = tool({
     ctx.log('search_episodes', { term: args.term, page: args.page });
     const result = await searchEpisodes(ctx, args);
     const filters = renderFilters(result.filters);
+    const outOf = result.totalCount === null ? '' : ` of ${String(result.totalCount)}`;
     const heading =
       result.count === 0
         ? `No episodes on Taddy matching "${args.term}".`
-        : `${String(result.count)}${result.totalCount === null ? '' : ` of ${String(result.totalCount)}`} episode(s) for "${args.term}" (page ${String(result.page)}):`;
+        : `${String(result.count)}${outOf} episode(s) for "${args.term}" (page ${String(result.page)}):`;
     return {
       text: renderList(
         filters ? `${filters}\n${heading}` : heading,

@@ -1,8 +1,8 @@
 import { ToolError } from '@ontrove/extend/toolkit';
 import {
+  areFiscalStampsTrusted,
   type Fact,
   factsForUnit,
-  fiscalStampsTrusted,
   kindOf,
   latestFiledByPeriod,
   periodKey,
@@ -57,6 +57,23 @@ export interface Financials {
 type TaxonomyFacts = Record<string, { units?: Record<string, unknown> } | undefined>;
 
 /**
+ * Give one tag's facts the periods no better-ranked tag has already claimed.
+ * `rank` is the tag's position in the fallback list, so lower wins.
+ */
+function claimPeriods(
+  latest: Map<string, Fact>,
+  rank: number,
+  byPeriod: Map<string, Fact>,
+  claimed: Map<string, number>,
+): void {
+  for (const [key, fact] of latest) {
+    if ((claimed.get(key) ?? Infinity) < rank) continue;
+    byPeriod.set(key, fact);
+    claimed.set(key, rank);
+  }
+}
+
+/**
  * Merge a metric's facts across its fallback tags: an earlier (preferred) tag
  * wins a period outright; within one tag the latest-filed fact wins.
  */
@@ -73,11 +90,7 @@ function metricFactsByPeriod(
     if (!units) continue;
     const unitKey = pickUnitKey(units, unitPreference(def, currency));
     if (!unitKey) continue;
-    for (const [key, fact] of latestFiledByPeriod(factsForUnit(units, unitKey))) {
-      if ((claimed.get(key) ?? Number.POSITIVE_INFINITY) < rank) continue;
-      byPeriod.set(key, fact);
-      claimed.set(key, rank);
-    }
+    claimPeriods(latestFiledByPeriod(factsForUnit(units, unitKey)), rank, byPeriod, claimed);
   }
   return byPeriod;
 }
@@ -92,15 +105,19 @@ function metricFactsByPeriod(
  */
 function annualFiscalYear(fact: Fact): number | null {
   if (fact.fiscalYear === null) return null;
-  const endYear = Number.parseInt(fact.end.slice(0, 4), 10);
-  const endMonth = Number.parseInt(fact.end.slice(5, 7), 10);
+  const endYear = Number(fact.end.slice(0, 4));
+  const endMonth = Number(fact.end.slice(5, 7));
   if (endMonth >= 7) return endYear;
   return fact.fiscalYear === endYear || fact.fiscalYear === endYear - 1 ? fact.fiscalYear : null;
 }
 
 /** Human period label from the original filing's fiscal-year/period stamps. */
 function periodLabel(kind: 'annual' | 'quarterly', fact: Fact): string {
-  if (fact.fiscalYear !== null && fact.fiscalPeriod !== null && fiscalStampsTrusted(kind, fact)) {
+  if (
+    fact.fiscalYear !== null &&
+    fact.fiscalPeriod !== null &&
+    areFiscalStampsTrusted(kind, fact)
+  ) {
     if (kind === 'annual') {
       const fy = annualFiscalYear(fact);
       return fy === null ? `FY ending ${fact.end}` : `FY${fy}`;
@@ -108,6 +125,24 @@ function periodLabel(kind: 'annual' | 'quarterly', fact: Fact): string {
     return `${fact.fiscalPeriod} FY${fact.fiscalYear}`;
   }
   return `${kind === 'annual' ? 'FY' : 'Q'} ending ${fact.end}`;
+}
+
+/**
+ * Record the earliest-filed fact for each reporting window of the wanted kind:
+ * that is the filing where the window WAS the current period, before later
+ * filings restated it.
+ */
+function recordWindows(
+  facts: Fact[],
+  kind: 'annual' | 'quarterly',
+  windows: Map<string, Fact>,
+): void {
+  for (const fact of facts) {
+    if (kindOf(fact) !== kind) continue;
+    const key = periodKey(fact.start, fact.end);
+    const existing = windows.get(key);
+    if (!existing || fact.filed < existing.filed) windows.set(key, fact);
+  }
 }
 
 /**
@@ -129,13 +164,7 @@ function discoverPeriods(
     if (!units) continue;
     const unitKey = pickUnitKey(units, [currency]);
     if (!unitKey) continue;
-    for (const fact of factsForUnit(units, unitKey)) {
-      if (kindOf(fact) !== kind) continue;
-      const key = periodKey(fact.start, fact.end);
-      const existing = windows.get(key);
-      // Earliest filed = the filing where this window was the current period.
-      if (!existing || fact.filed < existing.filed) windows.set(key, fact);
-    }
+    recordWindows(factsForUnit(units, unitKey), kind, windows);
   }
   return [...windows.values()]
     .filter((fact) => {
@@ -145,18 +174,17 @@ function discoverPeriods(
       // as a quarter.
       if (kind !== 'annual') return true;
       return (
-        !fiscalStampsTrusted(kind, fact) || fact.fiscalPeriod === null || fact.fiscalPeriod === 'FY'
+        !areFiscalStampsTrusted(kind, fact) ||
+        fact.fiscalPeriod === null ||
+        fact.fiscalPeriod === 'FY'
       );
     })
-    .sort((a, b) => b.end.localeCompare(a.end))
+    .toSorted((a, b) => b.end.localeCompare(a.end))
     .slice(0, limit)
     .map((fact) => {
-      const trusted = fiscalStampsTrusted(kind, fact);
-      const fiscalYear = !trusted
-        ? null
-        : kind === 'annual'
-          ? annualFiscalYear(fact)
-          : fact.fiscalYear;
+      const trusted = areFiscalStampsTrusted(kind, fact);
+      const stamped = kind === 'annual' ? annualFiscalYear(fact) : fact.fiscalYear;
+      const fiscalYear = trusted ? stamped : null;
       return {
         label: periodLabel(kind, fact),
         start: fact.start ?? fact.end,
@@ -170,6 +198,15 @@ function discoverPeriods(
     });
 }
 
+/** Tally how many facts each bare unit (a currency, before any `/shares`) carries. */
+function tallyUnits(units: Record<string, unknown>, counts: Map<string, number>): void {
+  for (const [key, facts] of Object.entries(units)) {
+    if (!Array.isArray(facts)) continue;
+    const bare = key.split('/', 1)[0] ?? key;
+    counts.set(bare, (counts.get(bare) ?? 0) + facts.length);
+  }
+}
+
 /**
  * The reporting currency: the unit the anchor concept reports MOST facts in
  * (USD on ties). Foreign filers often carry a handful of convenience-USD facts
@@ -181,11 +218,7 @@ function detectCurrency(taxFacts: TaxonomyFacts, taxonomy: Taxonomy): string {
   for (const tag of tagsFor(ANCHOR, taxonomy)) {
     const units = taxFacts[tag]?.units;
     if (!units) continue;
-    for (const [key, facts] of Object.entries(units)) {
-      if (!Array.isArray(facts)) continue;
-      const bare = key.split('/')[0] ?? key;
-      counts.set(bare, (counts.get(bare) ?? 0) + facts.length);
-    }
+    tallyUnits(units, counts);
   }
   let best = 'USD';
   let bestCount = 0;

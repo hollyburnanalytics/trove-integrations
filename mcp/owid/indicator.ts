@@ -1,7 +1,7 @@
 import { ToolError, z } from '@ontrove/extend/toolkit';
 import { type Ctx, catalogParquet, fetchIndicatorData, fetchIndicatorMetadata } from './client.ts';
 import type { CsvRow } from './csv.ts';
-import { selectEntities, unmatchedRequests } from './entities.ts';
+import { quotedList, selectEntities, unmatchedRequests } from './entities.ts';
 import { timeRange } from './time.ts';
 
 /**
@@ -92,17 +92,17 @@ export async function getIndicatorData(
   }
 
   const all = buildRows(data, entityIndex(metadata));
-  const withinTime = all.filter((row) => inRange(row.time, options.from, options.to));
+  const withinTime = all.filter((row) => isInRange(row.time, options.from, options.to));
   const selected = selectEntities(withinTime, countries);
   const notes = explain({ all, withinTime, selected, countries, timespan: metadata.timespan });
 
-  const truncated = selected.length > maxRows;
-  if (truncated) {
+  const isTruncated = selected.length > maxRows;
+  if (isTruncated) {
     notes.push(
       `Showing the first ${String(maxRows)} of ${String(selected.length)} observations. Narrow \`countries\`/\`from\`/\`to\`, or query \`parquetUrl\` directly for the whole series.`,
     );
   }
-  const rows = truncated ? selected.slice(0, maxRows) : selected;
+  const rows = isTruncated ? selected.slice(0, maxRows) : selected;
   const table = catalogParquet(metadata.catalogPath);
 
   return {
@@ -120,7 +120,7 @@ export async function getIndicatorData(
       value: row.values[0] ?? null,
     })),
     totalRows: selected.length,
-    truncated,
+    truncated: isTruncated,
     timeRange: timeRange(selected),
     citation: citationFor(metadata),
     attribution: metadata.origins?.[0]?.citationFull ?? null,
@@ -143,7 +143,7 @@ function explain(state: {
     const missing = unmatchedRequests(state.selected, state.countries);
     if (missing.length > 0) {
       notes.push(
-        `No observations for: ${missing.map((m) => `"${m}"`).join(', ')}. Names are Our World in Data's own ("United States", "World") or ISO-3 codes ("USA"); matching here is case-insensitive.`,
+        `No observations for: ${quotedList(missing)}. Names are Our World in Data's own ("United States", "World") or ISO-3 codes ("USA"); matching here is case-insensitive.`,
       );
     }
   }
@@ -161,7 +161,8 @@ type Data = NonNullable<Awaited<ReturnType<typeof fetchIndicatorData>>>;
 /** Numeric entity id → its name and code. */
 function entityIndex(metadata: Metadata): Map<number, { name: string; code: string | null }> {
   const index = new Map<number, { name: string; code: string | null }>();
-  for (const value of metadata.dimensions?.entities?.values ?? []) {
+  const entities = metadata.dimensions?.entities?.values ?? [];
+  for (const value of entities) {
     if (typeof value.id !== 'number' || typeof value.name !== 'string') continue;
     index.set(value.id, { name: value.name, code: value.code ?? null });
   }
@@ -201,7 +202,7 @@ function buildRows(
  * filter: there is no snapping to the nearest available year, so an empty
  * result means the indicator genuinely has nothing in that window.
  */
-function inRange(time: string, from: number | undefined, to: number | undefined): boolean {
+function isInRange(time: string, from: number | undefined, to: number | undefined): boolean {
   const year = Number(time);
   if (!Number.isFinite(year)) return true;
   if (from !== undefined && year < from) return false;

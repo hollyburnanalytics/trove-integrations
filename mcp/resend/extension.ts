@@ -29,7 +29,7 @@ const BASE_URL = 'https://api.resend.com';
 const DEFAULT_FROM = 'Trove <onboarding@resend.dev>';
 
 /** Bare email address shape (no display name). */
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const EMAIL_RE = /^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$/;
 
 /**
  * Accept a bare address (`you@example.com`) or an RFC-5322 display form
@@ -37,7 +37,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * model from injecting header-spoofing junk into the owner's own inbox.
  */
 function isValidAddress(value: string): boolean {
-  const match = value.match(/<([^>]+)>\s*$/);
+  const match = value.match(/<([^<>]+)>\s*$/);
   return EMAIL_RE.test((match?.[1] ?? value).trim());
 }
 
@@ -144,8 +144,9 @@ export default defineToolkit({
         });
 
         const id = body.id ?? null;
+        const idNote = id ? ` (id ${id})` : '';
         return {
-          text: `Sent email to ${to} — "${subject}"${id ? ` (id ${id})` : ''}.`,
+          text: `Sent email to ${to} — "${subject}"${idNote}.`,
           structured: { sent: true, id, to, subject },
         };
       },

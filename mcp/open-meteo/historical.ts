@@ -75,7 +75,7 @@ export const historicalTool = tool({
         { retryable: false },
       );
     }
-    const imperial = units === 'imperial';
+    const isImperial = units === 'imperial';
     const params = new URLSearchParams({
       latitude: String(latitude),
       longitude: String(longitude),
@@ -84,7 +84,7 @@ export const historicalTool = tool({
       daily: 'temperature_2m_max,temperature_2m_min,precipitation_sum',
       timezone: 'auto',
     });
-    if (imperial) {
+    if (isImperial) {
       params.set('temperature_unit', 'fahrenheit');
       params.set('precipitation_unit', 'inch');
     }
@@ -101,7 +101,7 @@ export const historicalTool = tool({
       temperatureMin: numAt(daily.temperature_2m_min, i),
       precipitation: numAt(daily.precipitation_sum, i),
     }));
-    const u = { temperature: imperial ? '°F' : '°C', precipitation: imperial ? 'in' : 'mm' };
+    const u = { temperature: isImperial ? '°F' : '°C', precipitation: isImperial ? 'in' : 'mm' };
 
     // Range summary over days that actually have data.
     const mean = (vals: Array<number | null>): number | null => {

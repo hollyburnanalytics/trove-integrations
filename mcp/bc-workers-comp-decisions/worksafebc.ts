@@ -21,7 +21,7 @@ const RESULT_CAP = 1000; // WorkSafeBC's hard per-query maximum
 const TOKEN_RE = /name="__RequestVerificationToken"[^>]*value="([^"]*)"/;
 const ROW_RE = /<tr id="row-\d+">([\s\S]*?)<\/tr>/g;
 const CELL_RE = /<td[^>]*>([\s\S]*?)<\/td>/g;
-const TOTAL_RE = /([\d,]+)\s+results?/i;
+const TOTAL_RE = /(\d[\d,]{0,15})\s+results?/i;
 
 /** Parse a WorkSafeBC "YYYY-MM-DD" date to an ISO string (parsed as UTC per spec). */
 function isoDate(raw: string | null): string | null {
@@ -49,7 +49,7 @@ async function getSession(ctx: ToolContext): Promise<{ token: string; cookie: st
   const html = await res.text();
   const token = TOKEN_RE.exec(html)?.[1];
   const cookie = (res.headers.getSetCookie?.() ?? [])
-    .map((value) => value.split(';')[0])
+    .map((value) => value.split(';', 1)[0])
     .join('; ');
   if (!token || !cookie) {
     throw new ToolError('WorkSafeBC Review search did not return a usable session.', {
@@ -67,7 +67,7 @@ function mergeCookies(cookieHeader: string, setCookies: string[]): string {
     if (eq > 0) jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1));
   };
   for (const pair of cookieHeader.split('; ')) add(pair);
-  for (const setCookie of setCookies) add(setCookie.split(';')[0] ?? '');
+  for (const setCookie of setCookies) add(setCookie.split(';', 1)[0] ?? '');
   return [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
 }
 
@@ -81,7 +81,7 @@ function mergeCookies(cookieHeader: string, setCookies: string[]): string {
 async function fetchResultsHtml(post: Response, cookie: string, ctx: ToolContext): Promise<string> {
   if (post.status >= 300 && post.status < 400) {
     const merged = mergeCookies(cookie, post.headers.getSetCookie?.() ?? []);
-    const location = new URL(post.headers.get('location') ?? '/', BASE_URL).toString();
+    const location = new URL(post.headers.get('location') ?? '/', BASE_URL).href;
     const res = await ctx.fetch(location, { headers: { ...HTML_HEADERS, cookie: merged } });
     if (!res.ok) {
       throw new ToolError(`WorkSafeBC Review results are unavailable (HTTP ${res.status}).`, {
@@ -142,7 +142,7 @@ export async function searchReview(
     if (decisions.length >= limit) break;
   }
 
-  const totalRaw = TOTAL_RE.exec(html)?.[1];
-  const total = totalRaw ? Number.parseInt(totalRaw.replace(/,/g, ''), 10) : null;
+  const totalDigits = TOTAL_RE.exec(html)?.[1]?.replaceAll(',', '');
+  const total = totalDigits ? Number(totalDigits) : null;
   return { decisions, total, truncated: total !== null && total >= RESULT_CAP };
 }

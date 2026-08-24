@@ -1,9 +1,9 @@
 import {
   csv,
   fmtDuration,
+  hasPublishedSeats,
   miles,
   num,
-  publishesSeats,
   seatsText,
   str,
   type Taxes,
@@ -115,7 +115,7 @@ export function localTime(value: unknown): string | undefined {
 function orderSegments(segments: readonly WireSegment[]): WireSegment[] {
   return segments
     .map((segment, index) => ({ segment, order: num(segment.Order) ?? index }))
-    .sort((a, b) => a.order - b.order)
+    .toSorted((a, b) => a.order - b.order)
     .map(({ segment }) => segment);
 }
 
@@ -216,7 +216,7 @@ export function toTrip(wire: WireTrip, context: TripContext = {}): Trip {
       source,
     ),
     remainingSeats: seats !== undefined && seats > 0 ? seats : undefined,
-    seatsPublished: publishesSeats(source),
+    seatsPublished: hasPublishedSeats(source),
     stops: num(wire.Stops) ?? (legs > 0 ? legs - 1 : undefined),
     durationMinutes: num(wire.TotalDuration),
     duration: fmtDuration(num(wire.TotalDuration)),
@@ -242,7 +242,7 @@ export function toTrip(wire: WireTrip, context: TripContext = {}): Trip {
     arrivesLocal: localTime(wire.ArrivesAt) ?? segments.at(-1)?.arrivesLocal,
     distance: num(wire.TotalSegmentDistance) ?? total(segments.map((leg) => leg.distance)),
     cardRates: cardRates(wire),
-    ...(wire.Filtered === true ? { filtered: true } : {}),
+    ...(wire.Filtered === true && { filtered: true }),
     segments,
   };
 }
@@ -255,34 +255,36 @@ export function toBookingLinks(wire: readonly WireBookingLink[] | null | undefin
   }));
 }
 
+/**
+ * Name the routing from whichever fact the API gave us. `minify_trips` supplies
+ * `Stops` but no connection airports, so falling through to "" there would
+ * silently drop the one routing fact a minified trip does carry.
+ */
+function routeText(trip: Trip): string {
+  if (trip.connections.length > 0) return ` via ${trip.connections.join(', ')}`;
+  if (trip.stops === 0) return ' non-stop';
+  if (trip.stops === undefined) return '';
+  return ` · ${trip.stops} stop${trip.stops === 1 ? '' : 's'}`;
+}
+
 /** The text mirror for one trip: a summary line plus one line per leg. */
 export function tripLines(trip: Trip): string[] {
-  // Name the routing from whichever the API gave us. `minify_trips` supplies
-  // `Stops` but no connection airports, so falling through to "" there would
-  // silently drop the one routing fact a minified trip does carry.
-  const route =
-    trip.connections.length > 0
-      ? ` via ${trip.connections.join(', ')}`
-      : trip.stops === 0
-        ? ' non-stop'
-        : trip.stops === undefined
-          ? ''
-          : ` · ${trip.stops} stop${trip.stops === 1 ? '' : 's'}`;
-  const head = `▸ ${trip.cabin ?? 'cabin?'} ${miles(trip.mileageCost)} + ${taxesText(
-    trip.taxes,
-    trip.source,
-  )} · ${seatsText(trip.remainingSeats, trip.seatsPublished)}${route}${
-    trip.duration ? ` · ${trip.duration}` : ''
-  }${trip.filtered ? ' · [dynamically priced / filtered]' : ''}${trip.id ? ` [${trip.id}]` : ''}`;
+  const route = routeText(trip);
+  const duration = trip.duration ? ` · ${trip.duration}` : '';
+  const dynamic = trip.filtered ? ' · [dynamically priced / filtered]' : '';
+  const id = trip.id ? ` [${trip.id}]` : '';
+  const cost = `${miles(trip.mileageCost)} + ${taxesText(trip.taxes, trip.source)}`;
+  const seats = seatsText(trip.remainingSeats, trip.seatsPublished);
+  const head = `▸ ${trip.cabin ?? 'cabin?'} ${cost} · ${seats}${route}${duration}${dynamic}${id}`;
   const cards = trip.cardRates
     .filter((rate) => !rate.filtered)
     .map((rate) => `    with ${rate.card}: ${miles(rate.mileageCost)}`);
-  const legs = trip.segments.map(
-    (leg) =>
-      `    ${leg.flightNumber ?? '??'} ${leg.origin ?? '???'}→${leg.destination ?? '???'} ${
-        leg.departsLocal ?? '?'
-      } → ${leg.arrivesLocal ?? '?'} (local)${leg.aircraft ? ` · ${leg.aircraft}` : ''}`,
-  );
+  const legs = trip.segments.map((leg) => {
+    const aircraft = leg.aircraft ? ` · ${leg.aircraft}` : '';
+    const route2 = `${leg.origin ?? '???'}→${leg.destination ?? '???'}`;
+    const when = `${leg.departsLocal ?? '?'} → ${leg.arrivesLocal ?? '?'} (local)`;
+    return `    ${leg.flightNumber ?? '??'} ${route2} ${when}${aircraft}`;
+  });
   return [head, ...cards, ...legs];
 }
 

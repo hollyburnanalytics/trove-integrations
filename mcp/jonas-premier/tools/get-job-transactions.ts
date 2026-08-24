@@ -97,12 +97,13 @@ export const getJobTransactions = tool({
     }
     const lines = transactions
       .slice(0, 15)
-      .map(
-        (t) =>
+      .map((t) => {
+        const vendor = t.vendorName ? ` · ${t.vendorName}` : '';
+        return (
           `  ${t.transactionDate?.slice(0, 10) ?? '?'} ${t.jobNumber ?? '?'} ` +
-          `${t.costItemCode ?? '?'}/${t.costTypeCode ?? '?'} — ${fmt(t.cost)}` +
-          `${t.vendorName ? ` · ${t.vendorName}` : ''}`,
-      )
+          `${t.costItemCode ?? '?'}/${t.costTypeCode ?? '?'} — ${fmt(t.cost)}${vendor}`
+        );
+      })
       .join('\n');
     return {
       text:

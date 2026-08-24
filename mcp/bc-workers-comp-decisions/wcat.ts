@@ -57,6 +57,25 @@ export function parseWcatPage(html: string): WcatDecision[] {
 }
 
 /**
+ * Append one page's decisions, skipping any decision number already collected
+ * and stopping at `limit`. The caller compares `out.length` to decide whether
+ * to fetch another page.
+ */
+function absorbPage(
+  pageDecisions: WcatDecision[],
+  seen: Set<string>,
+  out: WcatDecision[],
+  limit: number,
+): void {
+  for (const decision of pageDecisions) {
+    if (seen.has(decision.number)) continue;
+    seen.add(decision.number);
+    out.push(decision);
+    if (out.length >= limit) return;
+  }
+}
+
+/**
  * Fetch and parse WCAT decisions for the given search params, newest-first,
  * paging (10/page) until `limit` is reached or results run out. Deduped by
  * decision number.
@@ -75,12 +94,8 @@ export async function collectWcatDecisions(
     if (status !== 200) break; // 400/404 → no more results (429/5xx already threw)
     const pageDecisions = parseWcatPage(body);
     if (pageDecisions.length === 0) break;
-    for (const decision of pageDecisions) {
-      if (seen.has(decision.number)) continue;
-      seen.add(decision.number);
-      out.push(decision);
-      if (out.length >= limit) return out;
-    }
+    absorbPage(pageDecisions, seen, out, limit);
+    if (out.length >= limit) break;
   }
   return out;
 }

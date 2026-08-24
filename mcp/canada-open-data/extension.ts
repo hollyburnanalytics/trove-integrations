@@ -114,15 +114,16 @@ export default defineToolkit({
             landingUrl: landingUrl(o.name),
           };
         });
-        const total = typeof result.count === 'number' ? result.count : datasets.length;
         if (datasets.length === 0) {
           return { text: 'No datasets matched.', structured: { total: 0, count: 0, datasets: [] } };
         }
+        const total = typeof result.count === 'number' ? result.count : datasets.length;
         const lines = datasets
-          .map(
-            (d) =>
-              `  ${d.title}${d.organization ? ` — ${d.organization}` : ''} [${d.formats.join(', ') || 'no files'}] (${d.slug})`,
-          )
+          .map((d) => {
+            const org = d.organization ? ` — ${d.organization}` : '';
+            const formats = d.formats.join(', ') || 'no files';
+            return `  ${d.title}${org} [${formats}] (${d.slug})`;
+          })
           .join('\n');
         return {
           text: `${datasets.length} of ${total} dataset(s):\n${lines}`,
@@ -186,7 +187,7 @@ export default defineToolkit({
           structured: {
             title,
             organization: englishHalf((o.organization as { title?: unknown } | undefined)?.title),
-            description: description ? description.replace(/\s+/g, ' ').slice(0, 400) : null,
+            description: description ? description.replaceAll(/\s+/g, ' ').slice(0, 400) : null,
             landingUrl: landingUrl(o.name),
             resources: projected,
           },
@@ -224,10 +225,10 @@ export default defineToolkit({
         let result: { total?: unknown; fields?: unknown; records?: unknown };
         try {
           result = (await ckanGet('datastore_search', params, ctx)) as typeof result;
-        } catch (err) {
+        } catch (error) {
           // A non-DataStore resource yields a CKAN "not found" error — guide the
           // caller to the file URL instead of leaving an opaque failure.
-          const msg = err instanceof ToolError ? err.message : 'lookup failed';
+          const msg = error instanceof ToolError ? error.message : 'lookup failed';
           throw new ToolError(
             `Resource ${resourceId} is not row-queryable (not in the DataStore). Use its download URL from get_dataset. (${msg})`,
             { retryable: false },
@@ -241,13 +242,13 @@ export default defineToolkit({
         const records = Array.isArray(result.records)
           ? (result.records as Array<Record<string, unknown>>)
           : [];
-        const total = typeof result.total === 'number' ? result.total : records.length;
         if (records.length === 0) {
           return {
             text: `No rows in resource ${resourceId}.`,
             structured: { resourceId, total: 0, fields, records: [] },
           };
         }
+        const total = typeof result.total === 'number' ? result.total : records.length;
         const preview = records
           .slice(0, 5)
           .map(

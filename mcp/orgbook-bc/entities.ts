@@ -161,9 +161,10 @@ export const entityShape = {
 };
 
 /** One text line summarizing an entity. */
-export const entityLine = (e: EntityRecord): string =>
-  `  ${e.registrationNumber ?? '?'} — ${e.entityName ?? '?'} ` +
-  `[${e.entityStatus ?? '?'}${e.entityType ? ` · ${e.entityType}` : ''}]`;
+export const entityLine = (e: EntityRecord): string => {
+  const kind = e.entityType ? ` · ${e.entityType}` : '';
+  return `  ${e.registrationNumber ?? '?'} — ${e.entityName ?? '?'} [${e.entityStatus ?? '?'}${kind}]`;
+};
 
 /** Map one raw credential entry (from a credential-set) to the tool-facing shape. */
 export function mapCredential(entry: unknown) {

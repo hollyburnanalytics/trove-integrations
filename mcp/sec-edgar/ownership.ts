@@ -1,4 +1,4 @@
-import { xmlBlocks, xmlFlag, xmlNumber, xmlValue } from './client.ts';
+import { hasXmlFlag, xmlBlocks, xmlNumber, xmlValue } from './client.ts';
 
 /**
  * Form 3/4/5 ownership-document parsing. The SEC's ownership XML schema has
@@ -68,7 +68,7 @@ export interface OwnershipFiling {
   transactions: InsiderTransaction[];
 }
 
-function parseTransaction(block: string, derivative: boolean): InsiderTransaction {
+function parseTransaction(block: string, isDerivative: boolean): InsiderTransaction {
   const code = xmlValue(block, 'transactionCode');
   const shares = xmlNumber(block, 'transactionShares');
   const price = xmlNumber(block, 'transactionPricePerShare');
@@ -83,9 +83,9 @@ function parseTransaction(block: string, derivative: boolean): InsiderTransactio
     value: shares !== null && price !== null ? shares * price : null,
     sharesOwnedAfter: xmlNumber(block, 'sharesOwnedFollowingTransaction'),
     ownership: xmlValue(block, 'directOrIndirectOwnership'),
-    derivative,
-    underlyingSecurity: derivative ? xmlValue(block, 'underlyingSecurityTitle') : null,
-    exercisePrice: derivative ? xmlNumber(block, 'conversionOrExercisePrice') : null,
+    derivative: isDerivative,
+    underlyingSecurity: isDerivative ? xmlValue(block, 'underlyingSecurityTitle') : null,
+    exercisePrice: isDerivative ? xmlNumber(block, 'conversionOrExercisePrice') : null,
   };
 }
 
@@ -101,9 +101,9 @@ export function parseOwnershipXml(xml: string): OwnershipFiling {
     const name = xmlValue(block, 'rptOwnerName');
     if (name) owners.push(name);
     officerTitle ??= xmlValue(block, 'officerTitle');
-    isDirector ||= xmlFlag(block, 'isDirector');
-    isOfficer ||= xmlFlag(block, 'isOfficer');
-    isTenPercentOwner ||= xmlFlag(block, 'isTenPercentOwner');
+    isDirector ||= hasXmlFlag(block, 'isDirector');
+    isOfficer ||= hasXmlFlag(block, 'isOfficer');
+    isTenPercentOwner ||= hasXmlFlag(block, 'isTenPercentOwner');
   }
 
   const transactions = [
@@ -122,7 +122,7 @@ export function parseOwnershipXml(xml: string): OwnershipFiling {
     issuerTicker: xmlValue(xml, 'issuerTradingSymbol'),
     issuerCik: issuerCik === null ? null : issuerCik.padStart(10, '0'),
     periodOfReport: xmlValue(xml, 'periodOfReport'),
-    planned10b5One: xmlFlag(xml, 'aff10b5One'),
+    planned10b5One: hasXmlFlag(xml, 'aff10b5One'),
     transactions,
   };
 }
@@ -154,15 +154,14 @@ function openMarketBucket(txn: InsiderTransaction): 'purchase' | 'sale' | null {
 export function summarizeOpenMarket(filings: OwnershipFiling[]): InsiderSummary {
   const buys = { transactions: 0, shares: 0, value: 0 };
   const sells = { transactions: 0, shares: 0, value: 0 };
-  for (const filing of filings) {
-    for (const txn of filing.transactions) {
-      const kind = openMarketBucket(txn);
-      if (kind === null) continue;
-      const bucket = kind === 'purchase' ? buys : sells;
-      bucket.transactions += 1;
-      bucket.shares += txn.shares ?? 0;
-      bucket.value += txn.value ?? 0;
-    }
+  const transactions = filings.flatMap((filing) => filing.transactions);
+  for (const txn of transactions) {
+    const kind = openMarketBucket(txn);
+    if (kind === null) continue;
+    const bucket = kind === 'purchase' ? buys : sells;
+    bucket.transactions += 1;
+    bucket.shares += txn.shares ?? 0;
+    bucket.value += txn.value ?? 0;
   }
   return {
     openMarketPurchases: buys,

@@ -41,6 +41,17 @@ export function isViewerArtifact(entry: FilingEntry): boolean {
   );
 }
 
+/**
+ * EDGAR spells a directory entry's `size` as a number or as a digit string.
+ * Anything else — absent, empty, unreadable — is no size rather than zero bytes.
+ */
+function entrySize(raw: unknown): number | null {
+  const text = String(raw ?? '').trim();
+  if (text === '') return null;
+  const size = Number(text);
+  return Number.isFinite(size) ? size : null;
+}
+
 /** List a filing's documents from its Archives directory index. */
 export async function listFilingDocuments(
   ctx: ToolContext,
@@ -61,10 +72,9 @@ export async function listFilingDocuments(
     // Skip EDGAR's own wrapper artifacts; keep the filed documents.
     if (item.name.endsWith('-index.html') || item.name.endsWith('-index-headers.html')) continue;
     const extension = item.name.includes('.') ? (item.name.split('.').pop() ?? '') : '';
-    const size = Number.parseInt(String(item.size ?? ''), 10);
     entries.push({
       name: item.name,
-      size: Number.isFinite(size) ? size : null,
+      size: entrySize(item.size),
       extension: extension.toLowerCase(),
     });
   }
@@ -93,7 +103,7 @@ export function pickPrimaryDocument(
         (entry.extension === 'htm' || entry.extension === 'html') &&
         !/^ex[-_]?\d/i.test(entry.name),
     )
-    .sort((a, b) => (b.size ?? 0) - (a.size ?? 0));
+    .toSorted((a, b) => (b.size ?? 0) - (a.size ?? 0));
   if (html[0]) return html[0];
   // Very old filings are a single .txt submission.
   return entries.find((entry) => entry.extension === 'txt') ?? null;
@@ -106,21 +116,21 @@ export function pickPrimaryDocument(
  */
 export function filingHtmlToText(html: string): string {
   const text = html
-    .replace(/<(script|style|head)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replaceAll(/<(script|style|head)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     // Inline-XBRL hidden/header sections hold machine-readable duplicates.
-    .replace(/<ix:(hidden|header)\b[^>]*>[\s\S]*?<\/ix:\1>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replaceAll(/<ix:(hidden|header)\b[^>]*>[\s\S]*?<\/ix:\1>/gi, ' ')
+    .replaceAll(/<!--[\s\S]*?-->/g, ' ')
     // Keep coarse block structure so paragraphs and table rows stay separated.
-    .replace(/<\/(p|div|tr|table|h[1-6]|li|blockquote)>/gi, '\n')
-    .replace(/<(br|hr)\b[^>]*\/?>/gi, '\n')
-    .replace(/<\/t[dh]>/gi, '  ')
-    .replace(/<[^>]+>/g, ' ');
+    .replaceAll(/<\/(p|div|tr|table|h[1-6]|li|blockquote)>/gi, '\n')
+    .replaceAll(/<(br|hr)\b[^>]*\/?>/gi, '\n')
+    .replaceAll(/<\/t[dh]>/gi, '  ')
+    .replaceAll(/<[^<>]+>/g, ' ');
   return decodeXmlEntities(text)
-    .replace(/\u{00A0}/gu, ' ')
-    .replace(/[\u{200B}-\u{200D}\u{FEFF}]/gu, '')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/ ?\n ?/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
+    .replaceAll('\u{00A0}', ' ')
+    .replaceAll(/[\u{200B}-\u{200D}\u{FEFF}]/gu, '')
+    .replaceAll(/[ \t]+/g, ' ')
+    .replaceAll(/ ?\n ?/g, '\n')
+    .replaceAll(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -163,7 +173,7 @@ export async function fetchFilingText(
   );
   if (entry.extension === 'txt') {
     // Old full-text submissions: strip SGML/HTML tags and page markers.
-    return filingHtmlToText(body.replace(/<PAGE>/g, '\n'));
+    return filingHtmlToText(body.replaceAll('<PAGE>', '\n'));
   }
   return filingHtmlToText(body);
 }

@@ -157,11 +157,9 @@ export function mapTweet(
   const user = authorId ? users.get(authorId) : undefined;
   const handle = user?.username ?? null;
   const pm = (raw.public_metrics ?? {}) as Record<string, unknown>;
-  const url = id
-    ? handle
-      ? `https://x.com/${handle}/status/${id}`
-      : `https://x.com/i/status/${id}`
-    : null;
+  // Without a resolved handle X still serves the post from the `/i/` path.
+  const path = handle ?? 'i';
+  const url = id ? `https://x.com/${path}/status/${id}` : null;
 
   // Prefer the untruncated long-form body when present, expanding its t.co links
   // against the matching entities bag (note_tweet's own when long-form is used).

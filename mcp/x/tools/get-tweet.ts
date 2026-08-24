@@ -73,11 +73,13 @@ export const getTweet = tool({
 
     const note = costNote(1 + referenced.length, 0);
     const refLines = referenced.map((r) => `  ↳ ${r.type ?? 'ref'}: ${snippet(r.text)}`).join('\n');
+    const posted = tweet.createdAt ? `[${tweet.createdAt}] ` : '';
+    const references = refLines ? `\n${refLines}` : '';
     return {
       text:
-        `${tweet.author ?? '?'} ${tweet.createdAt ? `[${tweet.createdAt}] ` : ''}${snippet(tweet.text)}\n` +
+        `${tweet.author ?? '?'} ${posted}${snippet(tweet.text)}\n` +
         `  ${tweet.likes ?? 0} likes, ${tweet.reposts ?? 0} reposts, ${tweet.replies ?? 0} replies` +
-        `${refLines ? `\n${refLines}` : ''}\n${note}`,
+        `${references}\n${note}`,
       structured: { tweet, referenced, note },
     };
   },

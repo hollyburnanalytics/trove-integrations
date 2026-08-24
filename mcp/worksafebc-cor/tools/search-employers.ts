@@ -85,11 +85,11 @@ export const searchEmployers = tool({
         tradeName: details.tradeName,
         url: `${BASE_URL}/Home/EmployerDetails?employerId=${result.employerId}`,
       };
+      const tradeName = only.tradeName ? ` (trading as ${only.tradeName})` : '';
       return {
         text:
           `1 of 1 COR-certified employer(s) matching "${args.name}":\n` +
-          `  ${only.accountNumber} — ${only.legalName ?? '?'}` +
-          `${only.tradeName ? ` (trading as ${only.tradeName})` : ''}`,
+          `  ${only.accountNumber} — ${only.legalName ?? '?'}${tradeName}`,
         structured: { total: 1, count: 1, page: 1, employers: [only] },
       };
     }
@@ -105,11 +105,10 @@ export const searchEmployers = tool({
       };
     }
     const lines = employers
-      .map(
-        (e) =>
-          `  ${e.accountNumber ?? '?'} — ${e.legalName ?? '?'}` +
-          `${e.tradeName ? ` (trading as ${e.tradeName})` : ''}`,
-      )
+      .map((e) => {
+        const tradeName = e.tradeName ? ` (trading as ${e.tradeName})` : '';
+        return `  ${e.accountNumber ?? '?'} — ${e.legalName ?? '?'}${tradeName}`;
+      })
       .join('\n');
     return {
       text:

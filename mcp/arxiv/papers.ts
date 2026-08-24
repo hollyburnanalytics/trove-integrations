@@ -32,7 +32,8 @@ export async function resolvePaperHtml(ctx: ToolContext, id: string): Promise<Pa
 
 /** Fetch a paper's LaTeXML HTML body. See {@link resolvePaperHtml} for the URL too. */
 export async function fetchPaperHtml(ctx: ToolContext, id: string): Promise<string | null> {
-  return (await resolvePaperHtml(ctx, id))?.html ?? null;
+  const resolved = await resolvePaperHtml(ctx, id);
+  return resolved?.html ?? null;
 }
 
 // ---------------------------------------------------------------------------

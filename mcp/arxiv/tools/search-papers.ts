@@ -108,8 +108,6 @@ export const searchPapers = tool({
 
     const papers = parseFeed(body);
     const total = totalResults(body);
-    const nextOffset = start + papers.length;
-    const hasMore = papers.length === maxResults && (total === 0 || nextOffset < total);
 
     if (papers.length === 0) {
       return {
@@ -117,6 +115,8 @@ export const searchPapers = tool({
         structured: { count: 0, total, start, nextStart: null, hasMore: false, papers: [] },
       };
     }
+    const nextOffset = start + papers.length;
+    const hasMore = papers.length === maxResults && (total === 0 || nextOffset < total);
 
     const lines = papers
       .slice(0, 10)
@@ -129,8 +129,11 @@ export const searchPapers = tool({
       .join('\n');
     const more = hasMore ? `\n(more results — call again with start=${nextOffset})` : '';
 
+    const heading = total
+      ? `${total} match(es); showing ${papers.length}`
+      : `${papers.length} paper(s)`;
     return {
-      text: `${total ? `${total} match(es); showing ${papers.length}` : `${papers.length} paper(s)`}:\n${lines}${more}`,
+      text: `${heading}:\n${lines}${more}`,
       structured: {
         count: papers.length,
         total,

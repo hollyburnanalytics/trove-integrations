@@ -25,6 +25,33 @@ import {
  * 200 status.
  */
 
+/**
+ * Why some hours came back empty: nothing when they all arrived, "outside the
+ * domain" when none did, and the horizon otherwise.
+ */
+function horizonText(missingHours: number, totalHours: number, isOutsideDomain: boolean): string {
+  if (missingHours === 0) return '';
+  if (isOutsideDomain) {
+    return (
+      '\nNo data at this coordinate — HRDPS covers Canada and nearby waters, ' +
+      'so this point is likely outside the model domain.'
+    );
+  }
+  return (
+    `\n${missingHours} of ${totalHours} hour(s) returned no data — past the ` +
+    '~48 h HRDPS horizon.'
+  );
+}
+
+/** The structured spelling of the same fact. */
+function coverageOf(
+  missingHours: number,
+  isOutsideDomain: boolean,
+): 'outsideDomain' | 'complete' | 'partial' {
+  if (isOutsideDomain) return 'outsideDomain';
+  return missingHours === 0 ? 'complete' : 'partial';
+}
+
 /** ISO hour stamps at `startHour`..`startHour + hours - 1` from a base time. */
 function hourStamps(from: Date, startHour: number, hours: number): string[] {
   return Array.from({ length: hours }, (_unused, index) => {
@@ -192,15 +219,8 @@ export const modelPoint: ToolDefinition = {
     // the caller a confident falsehood. The first requested hour is always
     // inside the model horizon, so if even that is empty the coordinate is
     // outside the HRDPS domain; losing only later hours is the horizon.
-    const outsideDomain = missingHours === rows.length;
-    const horizonNote =
-      missingHours === 0
-        ? ''
-        : outsideDomain
-          ? '\nNo data at this coordinate — HRDPS covers Canada and nearby waters, ' +
-            'so this point is likely outside the model domain.'
-          : `\n${missingHours} of ${rows.length} hour(s) returned no data — past the ` +
-            '~48 h HRDPS horizon.';
+    const isOutsideDomain = missingHours === rows.length;
+    const horizonNote = horizonText(missingHours, rows.length, isOutsideDomain);
     return {
       text:
         `HRDPS 2.5 km at ${latitude},${longitude} (run ${referenceTime ?? 'unknown'}):\n` +
@@ -213,7 +233,7 @@ export const modelPoint: ToolDefinition = {
         units,
         hours: rows,
         missingHours,
-        coverage: outsideDomain ? 'outsideDomain' : missingHours === 0 ? 'complete' : 'partial',
+        coverage: coverageOf(missingHours, isOutsideDomain),
         attribution: ATTRIBUTION,
       },
     };

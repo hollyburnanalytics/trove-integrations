@@ -92,19 +92,19 @@ export const searchBooks = tool({
         hasFullText: b.textUrl !== null,
       };
     });
-    const total = typeof body.count === 'number' ? body.count : books.length;
     if (books.length === 0) {
       return {
         text: 'No Gutenberg books matched.',
         structured: { total: 0, count: 0, books: [] },
       };
     }
+    const total = typeof body.count === 'number' ? body.count : books.length;
     const lines = books
-      .map(
-        (b) =>
-          `  [${b.bookId}] "${b.title}"${b.authors.length ? ` — ${b.authors.map(authorLabel).join(', ')}` : ''}` +
-          `${b.downloadCount !== null ? ` · ${b.downloadCount} dl` : ''}`,
-      )
+      .map((b) => {
+        const authors = b.authors.length > 0 ? ` — ${b.authors.map(authorLabel).join(', ')}` : '';
+        const downloads = b.downloadCount === null ? '' : ` · ${b.downloadCount} dl`;
+        return `  [${b.bookId}] "${b.title}"${authors}${downloads}`;
+      })
       .join('\n');
     return {
       text: `${books.length} of ${total} Gutenberg book(s):\n${lines}`,

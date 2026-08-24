@@ -1,5 +1,6 @@
 import { defineToolkit, tool, z } from '@ontrove/extend/toolkit';
 import {
+  authHeader,
   dateRangeFor,
   fmtDuration,
   type HydratedEntry,
@@ -35,9 +36,9 @@ function summarise(entries: HydratedEntry[]): { label: string; seconds: number }
     const label = e.clientName ?? e.projectName ?? e.workspaceName ?? 'Unassigned';
     totals.set(label, (totals.get(label) ?? 0) + e.duration);
   }
-  return [...totals.entries()]
+  return [...totals]
     .map(([label, seconds]) => ({ label, seconds }))
-    .sort((a, b) => b.seconds - a.seconds);
+    .toSorted((a, b) => b.seconds - a.seconds);
 }
 
 export default defineToolkit({
@@ -69,7 +70,7 @@ export default defineToolkit({
       async handler(_args, ctx) {
         const token = await ctx.requireSecret('TOGGL_API_TOKEN');
         const response = await ctx.fetch('https://api.track.toggl.com/api/v9/me', {
-          headers: { Authorization: `Basic ${btoa(`${token}:api_token`)}` },
+          headers: { Authorization: authHeader(token) },
         });
         // A rate limit or an outage says nothing about the token's validity —
         // only an actual rejection means "not authenticated".
@@ -87,10 +88,11 @@ export default defineToolkit({
           | TogglWorkspace[]
           | undefined;
         const workspaces = (list ?? []).map((w) => ({ id: w.id, name: w.name }));
+        const named = workspaces.map((w) => `${w.name} (${w.id})`).join(', ');
         return {
-          text: `Authenticated as ${me.fullname} (${maskEmail(me.email)}) — ${
-            workspaces.length
-          } workspace(s): ${workspaces.map((w) => `${w.name} (${w.id})`).join(', ')}`,
+          text:
+            `Authenticated as ${me.fullname} (${maskEmail(me.email)}) — ` +
+            `${workspaces.length} workspace(s): ${named}`,
           structured: {
             authenticated: true,
             id: me.id,
@@ -113,10 +115,12 @@ export default defineToolkit({
           | TogglWorkspace[]
           | undefined;
         const workspaces = (list ?? []).map((w) => ({ id: w.id, name: w.name }));
+        const named = workspaces.map((w) => `${w.name} (${w.id})`).join(', ');
         return {
-          text: workspaces.length
-            ? `${workspaces.length} workspace(s): ${workspaces.map((w) => `${w.name} (${w.id})`).join(', ')}`
-            : 'No workspaces found.',
+          text:
+            workspaces.length > 0
+              ? `${workspaces.length} workspace(s): ${named}`
+              : 'No workspaces found.',
           structured: { workspaces },
         };
       },
@@ -199,14 +203,15 @@ export default defineToolkit({
           );
         const rollup = byClient.map((c) => `  ${c.label}: ${fmtDuration(c.seconds)}`);
 
+        const plural = entries.length === 1 ? 'y' : 'ies';
+        const heading =
+          `${entries.length} entr${plural} from ${range.start} to ${range.end} ` +
+          `(end exclusive) · ${fmtDuration(totalSeconds)} tracked`;
         return {
-          text: entries.length
-            ? `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} from ${range.start} to ${
-                range.end
-              } (end exclusive) · ${fmtDuration(totalSeconds)} tracked\n${lines.join(
-                '\n',
-              )}\n\nBy client:\n${rollup.join('\n')}`
-            : `No time entries between ${range.start} and ${range.end}.`,
+          text:
+            entries.length > 0
+              ? `${heading}\n${lines.join('\n')}\n\nBy client:\n${rollup.join('\n')}`
+              : `No time entries between ${range.start} and ${range.end}.`,
           structured: {
             count: entries.length,
             totalSeconds,

@@ -128,9 +128,9 @@ export async function calJson(
         accept: 'application/json',
         authorization: `Bearer ${key}`,
         'cal-api-version': version,
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(body !== undefined && { 'content-type': 'application/json' }),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body !== undefined && { body: JSON.stringify(body) }),
     },
     errorMap: (response, text) => calError(what, response, text),
   })) as CalEnvelope | undefined;
@@ -157,9 +157,10 @@ export function bookingLine(b: Booking): string {
     .filter(Boolean)
     .join(', ');
   const when = b.start ? b.start.replace('.000Z', 'Z') : 'unscheduled';
-  return `• ${b.title ?? '(untitled)'} — ${when}${who ? ` with ${who}` : ''}${
-    b.status ? ` [${b.status}]` : ''
-  }${b.uid ? ` (uid: ${b.uid})` : ''}`;
+  const attendees = who ? ` with ${who}` : '';
+  const status = b.status ? ` [${b.status}]` : '';
+  const uid = b.uid ? ` (uid: ${b.uid})` : '';
+  return `• ${b.title ?? '(untitled)'} — ${when}${attendees}${status}${uid}`;
 }
 
 /**
@@ -229,11 +230,11 @@ export function bookingBody(input: BookingInput): Record<string, unknown> {
     attendee: {
       name: input.attendee_name,
       timeZone: input.attendee_time_zone,
-      ...(input.attendee_email ? { email: input.attendee_email } : {}),
+      ...(input.attendee_email && { email: input.attendee_email }),
     },
     ...(selector.eventTypeId ? { eventTypeId: Number(selector.eventTypeId) } : selector),
-    ...(input.guests?.length ? { guests: input.guests } : {}),
-    ...(input.length_in_minutes === undefined ? {} : { lengthInMinutes: input.length_in_minutes }),
+    ...(input.guests?.length && { guests: input.guests }),
+    ...(input.length_in_minutes !== undefined && { lengthInMinutes: input.length_in_minutes }),
   };
 }
 

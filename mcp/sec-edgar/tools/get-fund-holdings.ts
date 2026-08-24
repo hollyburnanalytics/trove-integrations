@@ -185,10 +185,8 @@ export const getFundHoldings = tool({
     const table = parseInfoTable(tableXml, cover.periodOfReport);
     const aggregated = aggregateHoldings(table.holdings);
     const totalValue = aggregated.reduce((sum, h) => sum + h.value, 0);
-    const declaredTotal =
-      cover.tableValueTotal === null
-        ? null
-        : cover.tableValueTotal * (table.valueUnits === 'thousands' ? 1000 : 1);
+    const unitScale = table.valueUnits === 'thousands' ? 1000 : 1;
+    const declaredTotal = cover.tableValueTotal === null ? null : cover.tableValueTotal * unitScale;
     const totalCheckOk =
       declaredTotal === null || totalValue === 0
         ? null

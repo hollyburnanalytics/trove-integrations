@@ -132,7 +132,7 @@ export function fieldsFor(
   groups: readonly MetricGroup[],
   extra: readonly string[] = [],
 ): string[] {
-  if (groups.includes('quality') && level !== 'ad') {
+  if (level !== 'ad' && groups.includes('quality')) {
     throw new ToolError(
       `The quality metrics (quality_ranking, engagement_rate_ranking, conversion_rate_ranking) ` +
         `exist per AD only — Meta ranks each ad against its auction competitors. Ask for them ` +
@@ -336,17 +336,33 @@ const WHOLE_UNIT_CURRENCIES = new Set(['JPY', 'KRW', 'VND', 'CLP', 'ISK', 'TWD']
 
 /** Convert a Meta minor-unit money string into major units of `currency`. */
 export function fromMinorUnits(raw: unknown, currency: string | undefined): number | undefined {
-  const value = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : Number.NaN;
+  const value = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN;
   if (!Number.isFinite(value)) return undefined;
   return WHOLE_UNIT_CURRENCIES.has((currency ?? '').toUpperCase()) ? value : value / 100;
 }
 
-/** Group a number with thousands separators, fixed to `decimals` places. */
+/**
+ * Group a number with thousands separators, fixed to `decimals` places.
+ *
+ * Sliced rather than matched. The idiomatic `/\B(?=(\d{3})+(?!\d))/g` lookahead
+ * backtracks super-linearly in the digit count, and slicing gives the same
+ * string for a constant cost.
+ */
 export function group(value: number, decimals = 0): string {
   const fixed = Math.abs(value).toFixed(decimals);
-  const [whole = '0', fraction] = fixed.split('.');
-  const grouped = whole.replaceAll(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `${value < 0 ? '-' : ''}${grouped}${fraction ? `.${fraction}` : ''}`;
+  // `toFixed` gives exponential notation past 1e21, and the words `NaN` and
+  // `Infinity` for the non-finite cases. None of those have digits to group.
+  if (!Number.isFinite(value) || Math.abs(value) >= 1e21) {
+    return `${value < 0 ? '-' : ''}${fixed}`;
+  }
+  const [whole = '0', fraction] = fixed.split('.', 2);
+  const lead = whole.length % 3 || 3;
+  const groups = [whole.slice(0, lead)];
+  for (let index = lead; index < whole.length; index += 3) {
+    groups.push(whole.slice(index, index + 3));
+  }
+  const decimalPart = fraction ? `.${fraction}` : '';
+  return `${value < 0 ? '-' : ''}${groups.join(',')}${decimalPart}`;
 }
 
 /**
@@ -358,5 +374,6 @@ export function group(value: number, decimals = 0): string {
  */
 export function money(value: number | undefined, currency: string | undefined): string {
   if (value === undefined) return 'n/a';
-  return `${currency ? `${currency} ` : ''}${group(value, 2)}`;
+  const prefix = currency ? `${currency} ` : '';
+  return `${prefix}${group(value, 2)}`;
 }

@@ -8,8 +8,17 @@ import {
   isViewerArtifact,
   listFilingDocuments,
   pickPrimaryDocument,
+  type TextMatch,
 } from '../documents.ts';
 import { recentFilings } from '../submissions.ts';
+
+/** What the `find` search turned up, or nothing at all when none was asked for. */
+function matchReport(find: string | undefined, matches: TextMatch[]): string {
+  if (find === undefined) return '';
+  if (matches.length === 0) return `\nNo matches for "${find}".\n`;
+  const lines = matches.map((m) => `  [offset ${m.offset}] ${m.context}`).join('\n');
+  return `\n${matches.length} match(es) for "${find}":\n${lines}\n`;
+}
 
 /**
  * `get_filing_document` — read one filing document as clean, paginated,
@@ -117,14 +126,7 @@ export const getFilingDocument = tool({
       extension,
     }));
 
-    const matchText =
-      find === undefined
-        ? ''
-        : matches.length > 0
-          ? `\n${matches.length} match(es) for "${find}":\n${matches
-              .map((m) => `  [offset ${m.offset}] ${m.context}`)
-              .join('\n')}\n`
-          : `\nNo matches for "${find}".\n`;
+    const matchText = matchReport(find, matches);
     const moreText = nextOffset === null ? '' : `\n(more — call again with offset=${nextOffset})`;
     return {
       text:

@@ -80,7 +80,7 @@ export function toAvailability(wire: WireAvailability): Availability {
     distance: num(route.Distance),
     updatedAt: str(wire.UpdatedAt),
     cabins: cabinOffers(wire),
-    ...(trips.length > 0 ? { trips } : {}),
+    ...(trips.length > 0 && { trips }),
   };
 }
 
@@ -97,7 +97,7 @@ export function toPage(
       returned: results.length,
       hasMore,
       cursor: body?.cursor ?? undefined,
-      ...(hasMore ? { nextSkip: skip + results.length } : {}),
+      ...(hasMore && { nextSkip: skip + results.length }),
       moreUrl: str(body?.moreURL),
       reportedCount: num(body?.count),
     },
@@ -106,9 +106,9 @@ export function toPage(
 
 /** The text mirror for one availability, plus its trips when they were fetched. */
 export function availabilityLines(item: Availability): string[] {
-  const header = `• ${item.date ?? 'unknown date'}  ${item.origin ?? '???'}→${
-    item.destination ?? '???'
-  }  ${item.program}${item.id ? `  [${item.id}]` : ''}`;
+  const id = item.id ? `  [${item.id}]` : '';
+  const route = `${item.origin ?? '???'}→${item.destination ?? '???'}`;
+  const header = `• ${item.date ?? 'unknown date'}  ${route}  ${item.program}${id}`;
   return [
     header,
     ...item.cabins.flatMap((offer) => cabinLines(offer, item.source)),
@@ -161,14 +161,15 @@ export function renderPage(
     results.length > shown.length
       ? [`… ${results.length - shown.length} more in this page omitted from the summary.`]
       : [];
-  const body = results.length
-    ? shown.flatMap((item) => availabilityLines(item))
-    : [
-        'No award availability matched this search.',
-        'Every filter narrows silently — a mileage program that does not serve the',
-        'region, a cabin it does not sell, or dates outside its booking window all',
-        'return an empty result rather than an error. Widen one filter at a time.',
-      ];
+  const body =
+    results.length > 0
+      ? shown.flatMap((item) => availabilityLines(item))
+      : [
+          'No award availability matched this search.',
+          'Every filter narrows silently — a mileage program that does not serve the',
+          'region, a cabin it does not sell, or dates outside its booking window all',
+          'return an empty result rather than an error. Widen one filter at a time.',
+        ];
   return [
     heading,
     ...notes.map((note) => `NOTE: ${note}`),

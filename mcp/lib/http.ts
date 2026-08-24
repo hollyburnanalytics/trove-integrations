@@ -33,7 +33,7 @@ export async function getJson(
       errorMap ??
       ((res, body) =>
         new ToolError(
-          res.status === 404 && notFound
+          notFound && res.status === 404
             ? notFound
             : `${service} returned ${res.status}: ${body.slice(0, 100)}`,
           { retryable: isTransient(res.status) },

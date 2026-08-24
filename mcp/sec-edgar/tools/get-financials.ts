@@ -8,6 +8,19 @@ import { assembleFinancials, type StatementPeriod } from '../xbrl.ts';
  * company's XBRL facts (see `xbrl.ts` for the assembly rules).
  */
 
+/** Join the readable parts of one statement line, or drop the line entirely. */
+function line(parts: (string | null)[]): string | null {
+  const kept = parts.filter((part): part is string => part !== null);
+  return kept.length > 0 ? `  ${kept.join(' · ')}` : null;
+}
+
+/** Whether assets = liabilities + equity for the period, when it can be checked. */
+function identityText(period: StatementPeriod, currency: string): string | null {
+  if (period.identityOk === null) return null;
+  if (period.identityOk) return 'A=L+E ✓';
+  return `A≠L+E (Δ ${fmtMoney(period.identityDelta ?? 0, currency)})`;
+}
+
 /** One compact text block per period for the human-readable summary. */
 function renderPeriod(period: StatementPeriod, currency: string): string {
   const v = period.values;
@@ -15,16 +28,7 @@ function renderPeriod(period: StatementPeriod, currency: string): string {
     const value = v[key];
     return value === null || value === undefined ? null : fmtMoney(value, currency);
   };
-  const line = (parts: (string | null)[]): string | null => {
-    const kept = parts.filter((part): part is string => part !== null);
-    return kept.length > 0 ? `  ${kept.join(' · ')}` : null;
-  };
-  const identity =
-    period.identityOk === null
-      ? null
-      : period.identityOk
-        ? 'A=L+E ✓'
-        : `A≠L+E (Δ ${fmtMoney(period.identityDelta ?? 0, currency)})`;
+  const identity = identityText(period, currency);
   const lines = [
     `${period.label} (ending ${period.end}; ${period.form} filed ${period.filed}):`,
     line([
@@ -204,7 +208,7 @@ export const getFinancials = tool({
     // reporting cycle old. Anything much older signals missing coverage
     // (delisting, identifier change) and must never read as current.
     const latestPeriodEnd = financials.periods[0]?.end ?? null;
-    const stale =
+    const isStale =
       latestPeriodEnd !== null && Date.now() - Date.parse(latestPeriodEnd) > 548 * 86_400_000;
 
     const blocks = financials.periods.map((p) => renderPeriod(p, financials.currency)).join('\n');
@@ -213,7 +217,7 @@ export const getFinancials = tool({
         `${name} (CIK ${resolved.cik}) — ${period} financials, ${financials.currency} ` +
         '(as reported; latest amendments preferred):\n' +
         blocks +
-        (stale
+        (isStale
           ? `\n⚠ The newest available period ends ${latestPeriodEnd} — more than one ` +
             'reporting cycle old. Coverage may be incomplete for this filer.'
           : '') +
@@ -226,7 +230,7 @@ export const getFinancials = tool({
         periodType: period,
         count: financials.periods.length,
         latestPeriodEnd,
-        stale,
+        stale: isStale,
         periods: financials.periods.map(shapePeriod),
       },
     };

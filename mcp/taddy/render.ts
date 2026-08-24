@@ -21,7 +21,8 @@ export function renderPodcastLine(podcast: Podcast): string {
     // series is the default and would be noise on every second line.
     podcast.transcribeStatus === 'TRANSCRIBING' ? 'auto-transcribed' : undefined,
   ].filter((bit): bit is string => typeof bit === 'string' && bit !== '');
-  return `  ${podcast.name}${bits.length > 0 ? ` — ${bits.join(' · ')}` : ''}\n    uuid: ${podcast.uuid ?? '(none)'}`;
+  const facts = bits.length > 0 ? ` — ${bits.join(' · ')}` : '';
+  return `  ${podcast.name}${facts}\n    uuid: ${podcast.uuid ?? '(none)'}`;
 }
 
 /** One line per episode. */
@@ -32,7 +33,8 @@ export function renderEpisodeLine(episode: Episode): string {
     episode.duration,
     episode.transcribeStatus === 'COMPLETED' ? 'transcript ready' : undefined,
   ].filter((bit): bit is string => typeof bit === 'string' && bit !== '');
-  return `  ${episode.name}${bits.length > 0 ? ` — ${bits.join(' · ')}` : ''}\n    uuid: ${episode.uuid ?? '(none)'}`;
+  const facts = bits.length > 0 ? ` — ${bits.join(' · ')}` : '';
+  return `  ${episode.name}${facts}\n    uuid: ${episode.uuid ?? '(none)'}`;
 }
 
 /**
@@ -115,8 +117,10 @@ export function renderEpisode(episode: Episode): string {
   if (episode.podcast?.name) rows.push(`from ${episode.podcast.name}`);
   const facts = episodeFacts(episode);
   if (facts.length > 0) rows.push(facts.join(' · '));
-  rows.push(`uuid: ${episode.uuid ?? '(none)'}`);
-  rows.push(`transcript: ${describeEpisodeTranscript(episode.transcribeStatus)}`);
+  rows.push(
+    `uuid: ${episode.uuid ?? '(none)'}`,
+    `transcript: ${describeEpisodeTranscript(episode.transcribeStatus)}`,
+  );
   if (episode.persons.length > 0) rows.push(`people: ${renderPersons(episode.persons)}`);
   if (episode.audioUrl) rows.push(`audio: ${episode.audioUrl}`);
   if (episode.description) rows.push('', episode.description);

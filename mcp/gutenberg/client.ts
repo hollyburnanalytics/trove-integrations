@@ -76,7 +76,7 @@ function stringArray(value: unknown): string[] {
 function textFormat(formats: Record<string, unknown>): string | null {
   // Prefer UTF-8 plain text; never the zipped `application/octet-stream`.
   for (const [mime, url] of Object.entries(formats)) {
-    if (mime.startsWith('text/plain') && typeof url === 'string' && !url.endsWith('.zip'))
+    if (typeof url === 'string' && mime.startsWith('text/plain') && !url.endsWith('.zip'))
       return url;
   }
   return null;
@@ -157,7 +157,7 @@ export async function fetchBookText(book: Book, ctx: ToolContext): Promise<strin
     candidates.push(textUrl);
   }
   let res: Response | null = null;
-  let transientFailure = false;
+  let isTransientFailure = false;
   for (const url of candidates) {
     try {
       const r = await ctx.fetch(url);
@@ -167,13 +167,13 @@ export async function fetchBookText(book: Book, ctx: ToolContext): Promise<strin
       }
       // A 5xx is a source problem (retryable); a 404 just means this source
       // lacks the file, so fall through to the next candidate.
-      if (r.status >= 500) transientFailure = true;
+      if (r.status >= 500) isTransientFailure = true;
     } catch {
-      transientFailure = true;
+      isTransientFailure = true;
     }
   }
   if (!res) {
-    if (transientFailure) {
+    if (isTransientFailure) {
       throw new ToolError('Gutenberg text is temporarily unavailable.', { retryable: true });
     }
     return null; // No plain-text edition retrievable from any source.
@@ -182,7 +182,7 @@ export async function fetchBookText(book: Book, ctx: ToolContext): Promise<strin
   const text = raw.length > MAX_TEXT_BYTES ? raw.slice(0, MAX_TEXT_BYTES) : raw;
   const start = text.match(/\*\*\* START OF THE PROJECT GUTENBERG EBOOK[^*]*\*\*\*/i);
   const end = text.match(/\*\*\* END OF THE PROJECT GUTENBERG EBOOK[^*]*\*\*\*/i);
-  const from = start?.index !== undefined ? start.index + start[0].length : 0;
+  const from = start?.index === undefined ? 0 : start.index + start[0].length;
   const to = end?.index ?? text.length;
   return text.slice(from, to).trim();
 }

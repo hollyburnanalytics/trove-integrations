@@ -170,27 +170,27 @@ interface Sizing {
  */
 function sizing(all: Row[], body: Record<string, unknown>, args: ObservationArgs): Sizing {
   if (args.frequency) {
-    const more = all.length > args.limit;
-    const rows = more ? all.slice(0, args.limit) : all;
+    const isMore = all.length > args.limit;
+    const rows = isMore ? all.slice(0, args.limit) : all;
     return {
       rows,
       returned: rows.length,
-      availableInRange: more ? null : args.offset + rows.length,
-      truncated: more,
-      nextOffset: more ? args.offset + rows.length : null,
+      availableInRange: isMore ? null : args.offset + rows.length,
+      truncated: isMore,
+      nextOffset: isMore ? args.offset + rows.length : null,
     };
   }
   const returned = all.length;
   const available = typeof body.count === 'number' ? body.count : args.offset + returned;
-  const truncated = args.offset + returned < available;
+  const isTruncated = args.offset + returned < available;
   return {
     rows: all,
     returned,
     availableInRange: available,
-    truncated,
+    truncated: isTruncated,
     // Only advertise a next page when this one actually moved forward, so a
     // caller looping on `nextOffset` cannot spin on an out-of-range offset.
-    nextOffset: truncated && returned > 0 ? args.offset + returned : null,
+    nextOffset: isTruncated && returned > 0 ? args.offset + returned : null,
   };
 }
 

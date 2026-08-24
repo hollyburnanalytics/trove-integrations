@@ -100,7 +100,7 @@ export default defineToolkit({
         radiusKm: z
           .number()
           .min(1)
-          .max(20000)
+          .max(20_000)
           .default(500)
           .describe('Search radius in km around the center point. Used only with lat/long.'),
         limit: z.number().int().min(1).max(100).default(20).describe('Max quakes to return.'),

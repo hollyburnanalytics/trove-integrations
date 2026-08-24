@@ -24,10 +24,12 @@ export interface ArchiveRef {
   to: string;
 }
 
+/** One cell of a filing block: a non-empty string, or nothing. */
+const str = (row: unknown): string | null => (typeof row === 'string' && row ? row : null);
+
 /** Flatten one parallel-array filing block (`filings.recent` or an archive file). */
 function flattenFilingBlock(block: Record<string, unknown> | undefined): RecentFiling[] {
   const column = (key: string): unknown[] => (Array.isArray(block?.[key]) ? block[key] : []);
-  const str = (row: unknown): string | null => (typeof row === 'string' && row ? row : null);
   const forms = column('form');
   const dates = column('filingDate');
   const accessions = column('accessionNumber');
@@ -60,7 +62,8 @@ export async function recentFilings(
   const filingsBlock = (body.filings ?? {}) as Record<string, unknown>;
   const filings = flattenFilingBlock(filingsBlock.recent as Record<string, unknown> | undefined);
   const archives: ArchiveRef[] = [];
-  for (const raw of Array.isArray(filingsBlock.files) ? filingsBlock.files : []) {
+  const files = Array.isArray(filingsBlock.files) ? filingsBlock.files : [];
+  for (const raw of files) {
     const file = raw as { name?: unknown; filingFrom?: unknown; filingTo?: unknown };
     if (typeof file.name !== 'string') continue;
     archives.push({
@@ -82,18 +85,18 @@ export async function withArchivedFilings(
   ctx: ToolContext,
   base: RecentFiling[],
   archives: ArchiveRef[],
-  matches: (filing: RecentFiling) => boolean,
+  isMatch: (filing: RecentFiling) => boolean,
   limit: number,
   startDate?: string,
   endDate?: string,
 ): Promise<{ pool: RecentFiling[]; historyComplete: boolean }> {
   const relevant = archives
     .filter((a) => (!startDate || a.to >= startDate) && (!endDate || a.from <= endDate))
-    .sort((a, b) => b.to.localeCompare(a.to));
+    .toSorted((a, b) => b.to.localeCompare(a.to));
   let pool = base;
   let used = 0;
   for (const archive of relevant) {
-    if (pool.filter(matches).length >= limit || used >= 4) break;
+    if (pool.filter(isMatch).length >= limit || used >= 4) break;
     used += 1;
     const block = await edgarJson(
       ctx,

@@ -56,6 +56,17 @@ function str(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
+/**
+ * Strip an identifier down to the characters its type allows. HathiTrust's
+ * `htid` carries dots, colons and slashes that the API path requires literally,
+ * so the key cannot simply be percent-encoded whole.
+ */
+function sanitizeId(idType: string, rawId: string): string {
+  if (idType === 'isbn') return rawId.replaceAll(/[^0-9Xx]/g, '');
+  if (idType === 'htid') return rawId.trim().replaceAll(/[^A-Za-z0-9.:/_-]/g, '');
+  return rawId.trim().replaceAll(/[^A-Za-z0-9-]/g, '');
+}
+
 export default defineToolkit({
   id: 'hathitrust',
   name: 'HathiTrust',
@@ -123,7 +134,7 @@ export default defineToolkit({
           ['htid', htid],
         ].filter(([, v]) => typeof v === 'string' && v.length > 0) as [string, string][];
         const only = provided[0];
-        if (provided.length !== 1 || !only) {
+        if (!only || provided.length !== 1) {
           throw new ToolError('Provide exactly one of isbn, oclc, lccn, or htid.', {
             retryable: false,
           });
@@ -132,12 +143,7 @@ export default defineToolkit({
         // HathiTrust ids carry meaningful punctuation (htid arks contain ":" and
         // "/", which the API path requires literally — they must NOT be percent-
         // encoded), so sanitise per type rather than URL-encoding the whole key.
-        const idValue =
-          idType === 'isbn'
-            ? rawId.replace(/[^0-9Xx]/g, '')
-            : idType === 'htid'
-              ? rawId.trim().replace(/[^A-Za-z0-9.:/_-]/g, '')
-              : rawId.trim().replace(/[^A-Za-z0-9-]/g, '');
+        const idValue = sanitizeId(idType, rawId);
         const key = `${idType}:${idValue}`;
         ctx.log('lookup_volume', { key });
 
@@ -166,25 +172,25 @@ export default defineToolkit({
           const code = str(o.rightsCode);
           // HathiTrust rights codes beginning "pd" (pd, pdus, ...) are public
           // domain → readable in full; everything else is limited/search-only.
-          const fullView = code !== null && /^pd/i.test(code);
+          const isFullView = code !== null && /^pd/i.test(code);
           return {
             htid: str(o.htid),
             source: str(o.orig),
             rightsCode: code,
             rights: str(o.usRightsString),
-            fullView,
+            fullView: isFullView,
             url: str(o.itemURL),
           };
         });
 
-        const found = records.length > 0 || items.length > 0;
-        const catalogUrl = records[0]?.recordURL ?? null;
-        if (!found) {
+        const isFound = records.length > 0 || items.length > 0;
+        if (!isFound) {
           return {
             text: `HathiTrust has no digitised copy for ${key}.`,
             structured: { identifier: key, found: false, catalogUrl: null, records: [], items: [] },
           };
         }
+        const catalogUrl = records[0]?.recordURL ?? null;
         const title = records[0]?.title ?? '(untitled record)';
         const readable = items.filter((i) => i.fullView).length;
         const itemLines = items

@@ -21,7 +21,7 @@ export function decodeEntities(text: string): string {
 
 /** Reduce an HTML fragment to trimmed plain text (`null` when nothing is left). */
 export function cellText(html: string): string | null {
-  const text = decodeEntities(html.replaceAll(/<[^>]*>/g, ' '))
+  const text = decodeEntities(html.replaceAll(/<[^<>]*>/g, ' '))
     .replaceAll(/\s+/g, ' ')
     .trim();
   return text === '' ? null : text;

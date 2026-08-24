@@ -17,21 +17,21 @@ export function timeRange(rows: CsvRow[]): { first: string; last: string } | nul
   let low = first;
   let high = first;
   for (const row of rows) {
-    if (earlier(row.time, low)) low = row.time;
-    if (earlier(high, row.time)) high = row.time;
+    if (isEarlier(row.time, low)) low = row.time;
+    if (isEarlier(high, row.time)) high = row.time;
   }
   return { first: low, last: high };
 }
 
 /**
- * Is `a` an earlier time than `b`?
+ * Is `a` an isEarlier time than `b`?
  *
  * Years are compared as numbers, not text. OWID charts reach back past year
  * zero — population series start at -10000 — and lexically "-10000" sorts
  * after "1750", which would report a range running backwards.  `YYYY-MM-DD`
  * days are fixed-width, so string order is already chronological.
  */
-function earlier(a: string, b: string): boolean {
+function isEarlier(a: string, b: string): boolean {
   const na = Number(a);
   const nb = Number(b);
   if (Number.isFinite(na) && Number.isFinite(nb)) return na < nb;
@@ -49,7 +49,7 @@ function timeValue(point: string): number | undefined {
 
 /** The same, for a row's time cell — years compare as years, days as `YYYYMMDD`. */
 function rowValue(time: string, timeUnit: 'year' | 'day'): number | undefined {
-  return timeValue(timeUnit === 'day' ? time : (time.split('-')[0] ?? time));
+  return timeValue(timeUnit === 'day' ? time : (time.split('-', 1)[0] ?? time));
 }
 
 /**

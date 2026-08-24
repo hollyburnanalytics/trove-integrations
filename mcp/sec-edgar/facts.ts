@@ -105,7 +105,10 @@ export function latestFiledByPeriod(facts: Fact[]): Map<string, Fact> {
  * carries the later filing's fy/fp — only facts filed shortly after their
  * window end (an original report or its amendment window) are trusted.
  */
-export function fiscalStampsTrusted(kind: 'annual' | 'quarterly' | 'instant', fact: Fact): boolean {
+export function areFiscalStampsTrusted(
+  kind: 'annual' | 'quarterly' | 'instant',
+  fact: Fact,
+): boolean {
   const gapDays = (Date.parse(fact.filed) - Date.parse(fact.end)) / DAY_MS;
   return gapDays <= (kind === 'annual' ? 365 : 180);
 }

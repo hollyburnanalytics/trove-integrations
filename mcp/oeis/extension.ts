@@ -129,10 +129,8 @@ export default defineToolkit({
       async handler(args, ctx) {
         const id = normalizeId(args.id);
         ctx.log('get_sequence', { id });
-        const data = await getJson(
-          `${BASE_URL}/search?${new URLSearchParams({ q: `id:${id}`, fmt: 'json' })}`,
-          ctx,
-        );
+        const params = new URLSearchParams({ q: `id:${id}`, fmt: 'json' });
+        const data = await getJson(`${BASE_URL}/search?${params}`, ctx);
         const results = Array.isArray(data) ? data : [];
         const record = results[0] as Record<string, unknown> | undefined;
         if (!record) {
@@ -150,7 +148,8 @@ export default defineToolkit({
           author: str(record.author),
           url: `${BASE_URL}/${canonical}`,
         };
-        const text = `${sequence.id} — ${sequence.name}\n  ${sequence.terms}${sequence.formula ? `\n\nFormula:\n${sequence.formula}` : ''}`;
+        const formula = sequence.formula ? `\n\nFormula:\n${sequence.formula}` : '';
+        const text = `${sequence.id} — ${sequence.name}\n  ${sequence.terms}${formula}`;
         return { text, structured: sequence };
       },
     }),

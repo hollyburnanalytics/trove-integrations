@@ -132,15 +132,16 @@ export const liveSearch = tool({
     const heading = `${programName(source)} live search — ${origin}→${destination} on ${date}, ${args.seat_count} passenger(s)`;
 
     return {
-      text: trips.length
-        ? [
-            heading,
-            '',
-            ...trips.flatMap((trip) => tripLines(trip)),
-            ...bookingLinkLines(links),
-            ...quotaNote(quota).map((line) => `\n${line}`),
-          ].join('\n')
-        : `${heading}\n\nNo award space found. This is a live answer from ${programName(source)}, not a cache miss.`,
+      text:
+        trips.length > 0
+          ? [
+              heading,
+              '',
+              ...trips.flatMap((trip) => tripLines(trip)),
+              ...bookingLinkLines(links),
+              ...quotaNote(quota).map((line) => `\n${line}`),
+            ].join('\n')
+          : `${heading}\n\nNo award space found. This is a live answer from ${programName(source)}, not a cache miss.`,
       structured: {
         quota,
         source,

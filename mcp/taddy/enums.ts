@@ -340,4 +340,4 @@ function titleCase(part: string): string {
  */
 const GENRE_BODIES: string[] = PODCAST_GENRES.map((genre) =>
   genre.replace(/^PODCASTSERIES_/, ''),
-).sort((a, b) => b.length - a.length);
+).toSorted((a, b) => b.length - a.length);

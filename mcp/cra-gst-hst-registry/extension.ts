@@ -59,7 +59,7 @@ type Verdict = 'registered' | 'notRegisteredOnDate' | 'unconfirmed';
 /** Strip tags/entities from an HTML fragment down to one line of text. */
 function plainText(html: string): string {
   return html
-    .replaceAll(/<[^>]*>/g, ' ')
+    .replaceAll(/<[^<>]*>/g, ' ')
     .replaceAll(/&#(\d+);/g, (_m, code: string) => String.fromCodePoint(Number(code)))
     .replaceAll('&nbsp;', ' ')
     .replaceAll('&quot;', '"')
@@ -123,7 +123,7 @@ function mergeCookies(cookieHeader: string, setCookies: string[]): string {
     if (eq > 0) jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1));
   };
   for (const pair of cookieHeader.split('; ')) add(pair);
-  for (const setCookie of setCookies) add(setCookie.split(';')[0] ?? '');
+  for (const setCookie of setCookies) add(setCookie.split(';', 1)[0] ?? '');
   return [...jar]
     .filter(([name]) => name !== '')
     .map(([name, value]) => `${name}=${value}`)
@@ -141,7 +141,7 @@ async function getSession(ctx: ToolContext): Promise<{ token: string; cookie: st
   const html = await res.text();
   const token = TOKEN_RE.exec(html)?.[1];
   const cookie = (res.headers.getSetCookie?.() ?? [])
-    .map((value) => value.split(';')[0])
+    .map((value) => value.split(';', 1)[0])
     .filter((pair): pair is string => Boolean(pair))
     .join('; ');
   // Both halves are required — the submit is answered with "Invalid Form Submission"
@@ -158,9 +158,9 @@ async function getSession(ctx: ToolContext): Promise<{ token: string; cookie: st
 async function readResultPage(post: Response, cookie: string, ctx: ToolContext): Promise<string> {
   if (post.status >= 300 && post.status < 400) {
     const merged = mergeCookies(cookie, post.headers.getSetCookie?.() ?? []);
-    const location = new URL(post.headers.get('location') ?? '/', BASE_URL).toString();
+    const location = new URL(post.headers.get('location') ?? '/', BASE_URL).href;
     const res = await ctx.fetch(location, {
-      headers: { ...HTML_HEADERS, ...(merged === '' ? {} : { cookie: merged }) },
+      headers: { ...HTML_HEADERS, ...(merged !== '' && { cookie: merged }) },
     });
     if (!res.ok) {
       throw new ToolError(`The CRA GST/HST Registry returned HTTP ${res.status}.`, {

@@ -72,13 +72,12 @@ export const exploreAvailability = tool({
     ]
       .filter(Boolean)
       .join(' · ');
+    const scoped = scope ? ` — ${scope}` : '';
     return {
-      text: renderPage(
-        `${params.get('source')} availability${scope ? ` — ${scope}` : ''}`,
-        results,
-        page,
-        [...notes, ...quotaNote(quota)],
-      ),
+      text: renderPage(`${params.get('source')} availability${scoped}`, results, page, [
+        ...notes,
+        ...quotaNote(quota),
+      ]),
       structured: { page, notes, quota, results },
     };
   },

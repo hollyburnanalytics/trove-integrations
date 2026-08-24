@@ -56,9 +56,8 @@ export const getEmployerCertificates = tool({
       count: details.certificates.length,
       certificates: details.certificates,
     };
-    const header =
-      `${details.legalName ?? '?'} (${structured.accountNumber})` +
-      `${details.tradeName ? ` — trading as ${details.tradeName}` : ''}`;
+    const tradeName = details.tradeName ? ` — trading as ${details.tradeName}` : '';
+    const header = `${details.legalName ?? '?'} (${structured.accountNumber})${tradeName}`;
     if (details.certificates.length === 0) {
       return {
         text: `${header}\n  No Certificate of Recognition on file.\n  ${url}`,

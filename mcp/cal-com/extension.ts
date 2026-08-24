@@ -82,9 +82,10 @@ export default defineToolkit({
             }${t.hidden ? ' [hidden]' : ''}`,
         );
         return {
-          text: types.length
-            ? `${types.length} event type(s):\n${lines.join('\n')}`
-            : 'No event types found on this account.',
+          text:
+            types.length > 0
+              ? `${types.length} event type(s):\n${lines.join('\n')}`
+              : 'No event types found on this account.',
           structured: { count: types.length, eventTypes: types },
         };
       },
@@ -147,17 +148,14 @@ export default defineToolkit({
           slots: (slots ?? []).map((s) => s.start).filter((s): s is string => Boolean(s)),
         }));
         const total = days.reduce((n, d) => n + d.slots.length, 0);
-        const lines = days
-          .slice(0, 14)
-          .map(
-            (d) =>
-              `• ${d.date}: ${d.slots.length} slot(s)${d.slots[0] ? ` from ${d.slots[0]}` : ''}`,
-          );
+        const lines = days.slice(0, 14).map((d) => {
+          const first = d.slots[0] ? ` from ${d.slots[0]}` : '';
+          return `• ${d.date}: ${d.slots.length} slot(s)${first}`;
+        });
+        const zone = time_zone ? ` (${time_zone})` : ' (UTC)';
         return {
           text: total
-            ? `${total} open slot(s) across ${days.length} day(s)${
-                time_zone ? ` (${time_zone})` : ' (UTC)'
-              }:\n${lines.join('\n')}`
+            ? `${total} open slot(s) across ${days.length} day(s)${zone}:\n${lines.join('\n')}`
             : 'No open slots in that window.',
           structured: { totalSlots: total, timeZone: time_zone ?? 'UTC', days },
         };
@@ -217,12 +215,15 @@ export default defineToolkit({
             timeZone: a.timeZone,
           })),
         }));
+        const status = filters.status ? ` (${filters.status})` : '';
+        const withStatus = filters.status ? ` with status "${filters.status}"` : '';
+        const more = pagination?.hasMore ? '\n(more available — pass the cursor)' : '';
+        const rendered = bookings.map((b) => bookingLine(b)).join('\n');
         return {
-          text: bookings.length
-            ? `${bookings.length} booking(s)${filters.status ? ` (${filters.status})` : ''}:\n${bookings
-                .map((b) => bookingLine(b))
-                .join('\n')}${pagination?.hasMore ? '\n(more available — pass the cursor)' : ''}`
-            : `No bookings found${filters.status ? ` with status "${filters.status}"` : ''}.`,
+          text:
+            bookings.length > 0
+              ? `${bookings.length} booking(s)${status}:\n${rendered}${more}`
+              : `No bookings found${withStatus}.`,
           structured: {
             count: bookings.length,
             bookings,
@@ -291,11 +292,11 @@ export default defineToolkit({
           key,
         );
         const booking = (Array.isArray(data) ? data[0] : data) as Booking | undefined;
+        const bookedStatus = booking?.status ? ` [${booking.status}]` : '';
         return {
           text: booking
-            ? `Booked "${booking.title ?? 'meeting'}" for ${booking.start ?? startUtc}${
-                booking.status ? ` [${booking.status}]` : ''
-              }. Booking uid: ${booking.uid ?? '(none returned)'}`
+            ? `Booked "${booking.title ?? 'meeting'}" for ${booking.start ?? startUtc}` +
+              `${bookedStatus}. Booking uid: ${booking.uid ?? '(none returned)'}`
             : `Booking request accepted for ${startUtc}, but Cal.com returned no booking payload.`,
           structured: {
             uid: booking?.uid,
@@ -336,10 +337,10 @@ export default defineToolkit({
           key,
         );
         const booking = (Array.isArray(data) ? data[0] : data) as Booking | undefined;
+        const title = booking?.title ? ` ("${booking.title}")` : '';
+        const nowStatus = booking?.status ? ` — status now ${booking.status}` : '';
         return {
-          text: `Cancelled booking ${booking_uid}${
-            booking?.title ? ` ("${booking.title}")` : ''
-          }${booking?.status ? ` — status now ${booking.status}` : ''}.`,
+          text: `Cancelled booking ${booking_uid}${title}${nowStatus}.`,
           structured: {
             uid: booking?.uid ?? booking_uid,
             title: booking?.title,

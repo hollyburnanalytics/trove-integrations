@@ -191,18 +191,19 @@ export function comparePairs(
   const keys = new Set([...before.keys(), ...after.keys()]);
   return [...keys]
     .map((key) => compareOne(before.get(key), after.get(key), truncated))
-    .sort((a, b) => Math.abs(b.spend.change ?? 0) - Math.abs(a.spend.change ?? 0));
+    .toSorted((a, b) => Math.abs(b.spend.change ?? 0) - Math.abs(a.spend.change ?? 0));
 }
+
+/** A rate as a two-decimal percentage — the CTR spelling. */
+const percent = (value: number): string => `${value.toFixed(2)}%`;
 
 /** Render a delta as `before → after (+x%)`. */
 function deltaText(value: Delta, format: (n: number) => string): string {
   if (value.before === undefined && value.after === undefined) return 'n/a';
   const beforeText = value.before === undefined ? '—' : format(value.before);
   const afterText = value.after === undefined ? '—' : format(value.after);
-  const pct =
-    value.changePct === undefined
-      ? ''
-      : ` (${value.changePct >= 0 ? '+' : ''}${value.changePct.toFixed(1)}%)`;
+  const sign = (value.changePct ?? 0) >= 0 ? '+' : '';
+  const pct = value.changePct === undefined ? '' : ` (${sign}${value.changePct.toFixed(1)}%)`;
   return `${beforeText} → ${afterText}${pct}`;
 }
 
@@ -212,7 +213,7 @@ export function comparisonLine(row: Comparison): string {
   const bits = [
     `spend ${deltaText(row.spend, asMoney)}`,
     `clicks ${deltaText(row.clicks, (value) => group(value))}`,
-    `CTR ${deltaText(row.ctr, (value) => `${value.toFixed(2)}%`)}`,
+    `CTR ${deltaText(row.ctr, percent)}`,
   ];
   if (row.purchases.before !== undefined || row.purchases.after !== undefined) {
     bits.push(`purchases ${deltaText(row.purchases, (value) => group(value))}`);

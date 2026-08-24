@@ -112,16 +112,17 @@ export default defineToolkit({
           isbn: d.isbn[0] ?? null,
           key: d.key ?? null,
           coverUrl:
-            d.cover_i != null ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
+            d.cover_i == null ? null : `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`,
         }));
         if (books.length === 0) {
           return { text: 'No books matched.', structured: { total: 0, count: 0, books: [] } };
         }
         const lines = books
-          .map(
-            (b) =>
-              `  "${b.title}"${b.authors.length ? ` — ${b.authors.join(', ')}` : ''}${b.firstPublishYear ? ` (${b.firstPublishYear})` : ''}`,
-          )
+          .map((b) => {
+            const authors = b.authors.length > 0 ? ` — ${b.authors.join(', ')}` : '';
+            const year = b.firstPublishYear ? ` (${b.firstPublishYear})` : '';
+            return `  "${b.title}"${authors}${year}`;
+          })
           .join('\n');
         return {
           text: `${books.length} of ${body.numFound} result(s):\n${lines}`,
@@ -152,7 +153,7 @@ export default defineToolkit({
         url: z.string().nullable(),
       }),
       async handler(args, ctx) {
-        const isbn = args.isbn.replace(/[^0-9Xx]/g, '');
+        const isbn = args.isbn.replaceAll(/[^0-9Xx]/g, '');
         ctx.log('get_book', { isbn });
         const params = new URLSearchParams({
           bibkeys: `ISBN:${isbn}`,
@@ -192,11 +193,12 @@ export default defineToolkit({
           coverUrl: entry.cover?.medium ?? null,
           url: entry.url ?? null,
         };
+        const authors = result.authors.length > 0 ? ` — ${result.authors.join(', ')}` : '';
+        const pages = result.numberOfPages ? `, ${result.numberOfPages} pages` : '';
         return {
           text:
-            `"${result.title ?? 'Untitled'}"${result.authors.length ? ` — ${result.authors.join(', ')}` : ''}\n` +
-            `  ${result.publishers.join(', ') || '?'}, ${result.publishDate ?? '?'}` +
-            `${result.numberOfPages ? `, ${result.numberOfPages} pages` : ''}`,
+            `"${result.title ?? 'Untitled'}"${authors}\n` +
+            `  ${result.publishers.join(', ') || '?'}, ${result.publishDate ?? '?'}${pages}`,
           structured: result,
         };
       },

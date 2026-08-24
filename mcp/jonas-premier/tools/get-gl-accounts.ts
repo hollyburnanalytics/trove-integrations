@@ -67,11 +67,10 @@ export const getGlAccounts = tool({
     }
     const lines = accounts
       .slice(0, 25)
-      .map(
-        (a) =>
-          `  ${a.accountNumber ?? '?'} — ${a.accountName ?? '?'} ` +
-          `[${a.accountType ?? '?'}${a.currency ? ` · ${a.currency}` : ''}]`,
-      )
+      .map((a) => {
+        const currency = a.currency ? ` · ${a.currency}` : '';
+        return `  ${a.accountNumber ?? '?'} — ${a.accountName ?? '?'} [${a.accountType ?? '?'}${currency}]`;
+      })
       .join('\n');
     return {
       text:

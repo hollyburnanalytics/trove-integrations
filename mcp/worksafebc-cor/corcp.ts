@@ -74,7 +74,7 @@ export async function getSession(
   const html = await res.text();
   const token = TOKEN_RE.exec(html)?.[1];
   const cookie = (res.headers.getSetCookie?.() ?? [])
-    .map((value) => value.split(';')[0])
+    .map((value) => value.split(';', 1)[0])
     .filter((pair): pair is string => Boolean(pair))
     .join('; ');
   if (!token || !cookie) {

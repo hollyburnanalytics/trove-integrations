@@ -55,7 +55,7 @@ export const forecastTool = tool({
   }),
   async handler(args, ctx) {
     const { latitude, longitude, days, units } = args;
-    const imperial = units === 'imperial';
+    const isImperial = units === 'imperial';
     const params = new URLSearchParams({
       latitude: String(latitude),
       longitude: String(longitude),
@@ -64,7 +64,7 @@ export const forecastTool = tool({
       timezone: 'auto',
       forecast_days: String(days),
     });
-    if (imperial) {
+    if (isImperial) {
       params.set('temperature_unit', 'fahrenheit');
       params.set('wind_speed_unit', 'mph');
       params.set('precipitation_unit', 'inch');
@@ -85,9 +85,9 @@ export const forecastTool = tool({
       weather: describeWeather((daily.weather_code as unknown[] | undefined)?.[i]),
     }));
     const u = {
-      temperature: imperial ? '°F' : '°C',
-      wind: imperial ? 'mph' : 'km/h',
-      precipitation: imperial ? 'in' : 'mm',
+      temperature: isImperial ? '°F' : '°C',
+      wind: isImperial ? 'mph' : 'km/h',
+      precipitation: isImperial ? 'in' : 'mm',
     };
     const curTemp = typeof cur.temperature_2m === 'number' ? cur.temperature_2m : null;
     const curWind = typeof cur.wind_speed_10m === 'number' ? cur.wind_speed_10m : null;

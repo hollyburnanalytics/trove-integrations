@@ -51,7 +51,7 @@ export const companyConceptUrl = (cik: string, taxonomy: string, concept: string
 
 /** Archives directory for one filing (CIK unpadded, accession without dashes). */
 export const filingDirUrl = (cik: string, accession: string): string =>
-  `https://www.sec.gov/Archives/edgar/data/${Number.parseInt(cik, 10)}/${accession.replaceAll('-', '')}`;
+  `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accession.replaceAll('-', '')}`;
 
 /** Fetch + parse an EDGAR JSON body, mapping 400/404 to `notFound` (non-retryable). */
 export async function edgarJson(
@@ -187,19 +187,19 @@ export function normalizeAccession(accession: string): string {
 
 // --- Formatting -------------------------------------------------------------
 
+/** An absolute amount at its natural magnitude: trillions down to plain units. */
+function scaleMagnitude(abs: number): string {
+  if (abs >= 1e12) return `${(abs / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${(abs / 1e6).toFixed(2)}M`;
+  if (abs >= 1e4) return `${(abs / 1e3).toFixed(1)}K`;
+  return abs.toFixed(2);
+}
+
 /** Compact money rendering: 416160000000 → "$416.16B" (or "1.23B CAD"). */
 export function fmtMoney(value: number, currency: string): string {
   const abs = Math.abs(value);
-  const scaled =
-    abs >= 1e12
-      ? `${(abs / 1e12).toFixed(2)}T`
-      : abs >= 1e9
-        ? `${(abs / 1e9).toFixed(2)}B`
-        : abs >= 1e6
-          ? `${(abs / 1e6).toFixed(2)}M`
-          : abs >= 1e4
-            ? `${(abs / 1e3).toFixed(1)}K`
-            : abs.toFixed(2);
+  const scaled = scaleMagnitude(abs);
   const signed = value < 0 ? `-${scaled}` : scaled;
   return currency === 'USD' ? `$${signed}` : `${signed} ${currency}`;
 }
@@ -209,7 +209,7 @@ export function fmtMoney(value: number, currency: string): string {
 /** Every `<tag>…</tag>` inner body in `xml`, namespace-prefix-agnostic. */
 export function xmlBlocks(xml: string, tag: string): string[] {
   const out: string[] = [];
-  const re = new RegExp(`<(?:\\w+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</(?:\\w+:)?${tag}>`, 'g');
+  const re = new RegExp(String.raw`<(?:\w+:)?${tag}(?:\s[^>]*)?>([\s\S]*?)</(?:\w+:)?${tag}>`, 'g');
   for (let m = re.exec(xml); m !== null; m = re.exec(xml)) {
     out.push(m[1] ?? '');
   }
@@ -219,21 +219,21 @@ export function xmlBlocks(xml: string, tag: string): string[] {
 /** Decode the numeric + basic named entities SEC XML/HTML uses. */
 export function decodeXmlEntities(value: string): string {
   return value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#x([\da-fA-F]+);/g, (_, hex: string) => {
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&apos;', "'")
+    .replaceAll('&nbsp;', ' ')
+    .replaceAll(/&#x([\da-fA-F]+);/g, (_, hex: string) => {
       const n = Number.parseInt(hex, 16);
       return Number.isFinite(n) && n >= 0 && n <= 0x10_ff_ff ? String.fromCodePoint(n) : '';
     })
-    .replace(/&#(\d+);/g, (_, dec: string) => {
-      const n = Number.parseInt(dec, 10);
+    .replaceAll(/&#(\d+);/g, (_, dec: string) => {
+      const n = Number(dec);
       return Number.isFinite(n) && n >= 0 && n <= 0x10_ff_ff ? String.fromCodePoint(n) : '';
     })
-    .replace(/&amp;/g, '&');
+    .replaceAll('&amp;', '&');
 }
 
 /**
@@ -245,7 +245,7 @@ export function xmlValue(xml: string, tag: string): string | null {
   const block = xmlBlocks(xml, tag)[0];
   if (block === undefined) return null;
   const value = xmlBlocks(block, 'value')[0] ?? block;
-  const text = decodeXmlEntities(value.replace(/<[^>]*>/g, ' ')).trim();
+  const text = decodeXmlEntities(value.replaceAll(/<[^<>]*>/g, ' ')).trim();
   return text === '' ? null : text;
 }
 
@@ -253,12 +253,12 @@ export function xmlValue(xml: string, tag: string): string | null {
 export function xmlNumber(xml: string, tag: string): number | null {
   const text = xmlValue(xml, tag);
   if (text === null) return null;
-  const n = Number.parseFloat(text.replaceAll(',', ''));
+  const n = Number(text.replaceAll(',', ''));
   return Number.isFinite(n) ? n : null;
 }
 
 /** `xmlValue` interpreted as an SEC boolean ("1"/"true" → true). */
-export function xmlFlag(xml: string, tag: string): boolean {
+export function hasXmlFlag(xml: string, tag: string): boolean {
   const text = xmlValue(xml, tag);
   return text === '1' || text?.toLowerCase() === 'true';
 }

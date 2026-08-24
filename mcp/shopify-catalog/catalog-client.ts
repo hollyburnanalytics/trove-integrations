@@ -59,8 +59,9 @@ export async function ucpCall(
   if (body.error) {
     const detail = body.error.data?.content ?? body.error.message ?? 'unknown error';
     const code = body.error.data?.code ?? String(body.error.code ?? '');
-    throw new ToolError(`Shopify catalog error${code ? ` (${code})` : ''}: ${detail}`, {
-      retryable: body.error.code === -32000,
+    const coded = code ? ` (${code})` : '';
+    throw new ToolError(`Shopify catalog error${coded}: ${detail}`, {
+      retryable: body.error.code === -32_000,
     });
   }
   return body.result?.structuredContent ?? {};

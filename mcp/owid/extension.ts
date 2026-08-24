@@ -39,7 +39,7 @@ import { renderData, renderIndicator, renderMetadata } from './render.ts';
  * `-10000`. A four-digit cap rejects a range the upstream answers happily.
  */
 const TIME_POINT = String.raw`(?:latest|earliest|-?\d{1,6}(?:-\d{2}-\d{2})?)`;
-const TIME_PATTERN = new RegExp(`^${TIME_POINT}(?:\\.\\.${TIME_POINT})?$`);
+const TIME_PATTERN = new RegExp(String.raw`^${TIME_POINT}(?:\.\.${TIME_POINT})?$`);
 
 export default defineToolkit({
   id: 'owid',
@@ -129,10 +129,11 @@ export default defineToolkit({
           return { text: `No Our World in Data charts matching "${query}".`, structured };
         }
         const lines = charts
-          .map(
-            (c) =>
-              `  ${c.slug} — ${c.title}${c.variantName ? ` [${c.variantName}]` : ''}${c.subtitle ? ` (${c.subtitle})` : ''}`,
-          )
+          .map((c) => {
+            const variant = c.variantName ? ` [${c.variantName}]` : '';
+            const subtitle = c.subtitle ? ` (${c.subtitle})` : '';
+            return `  ${c.slug} — ${c.title}${variant}${subtitle}`;
+          })
           .join('\n');
         return {
           text: `${String(charts.length)} of ${String(structured.totalHits)} chart(s) for "${query}":\n${lines}`,

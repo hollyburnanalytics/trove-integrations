@@ -81,17 +81,27 @@ function nestedStr(obj: unknown, ...path: string[]): string | null {
   return typeof cur === 'string' ? cur : null;
 }
 
+/** eBay spells amounts as numeric strings; anything unreadable is no amount. */
+function amount(raw: unknown): number | null {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** The first of `values` that is a string, or null when none is. */
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string') return value;
+  }
+  return null;
+}
+
 /** Parse an eBay `{value, currency}` money object to a number, or null. */
 function money(obj: unknown): { value: number | null; currency: string | null } {
   const o = (obj ?? {}) as Record<string, unknown>;
-  const value =
-    typeof o.value === 'string'
-      ? Number.parseFloat(o.value)
-      : typeof o.value === 'number'
-        ? o.value
-        : null;
   return {
-    value: value !== null && Number.isFinite(value) ? value : null,
+    value: amount(o.value),
     currency: typeof o.currency === 'string' ? o.currency : null,
   };
 }
@@ -124,12 +134,7 @@ function mapItemDetail(body: Record<string, unknown>, itemId: string) {
     price: price.value,
     currency: price.currency,
     condition: typeof body.condition === 'string' ? body.condition : null,
-    shortDescription:
-      typeof body.shortDescription === 'string'
-        ? body.shortDescription
-        : typeof body.subtitle === 'string'
-          ? body.subtitle
-          : null,
+    shortDescription: firstString(body.shortDescription, body.subtitle),
     aspects: itemAspects(body),
     seller: nestedStr(body.seller, 'username'),
     sellerFeedbackPct: nestedStr(body.seller, 'feedbackPercentage'),
@@ -148,11 +153,30 @@ function formatItemDetail(result: ReturnType<typeof mapItemDetail>): string {
     .slice(0, 6)
     .map((a) => `${a.name}: ${a.value}`)
     .join(' · ');
-  return (
-    `"${result.title}" — ${result.currency ?? ''}${result.price ?? '?'} [${result.condition ?? '?'}]` +
-    `${result.seller ? `\n  Seller: ${result.seller}${result.sellerFeedbackPct ? ` (${result.sellerFeedbackPct}%)` : ''}` : ''}` +
-    `${aspectLine ? `\n  ${aspectLine}` : ''}`
-  );
+  const feedback = result.sellerFeedbackPct ? ` (${result.sellerFeedbackPct}%)` : '';
+  const seller = result.seller ? `\n  Seller: ${result.seller}${feedback}` : '';
+  const aspects = aspectLine ? `\n  ${aspectLine}` : '';
+  return `"${result.title}" — ${result.currency ?? ''}${result.price ?? '?'} [${result.condition ?? '?'}]${seller}${aspects}`;
+}
+
+/** The listing fields {@link listingLine} reads — a search hit, structurally. */
+interface ListingSummary {
+  title: string;
+  price: number | null;
+  currency: string | null;
+  condition: string | null;
+  seller: string | null;
+  sellerFeedbackPct: string | null;
+  shippingCost: number | null;
+}
+
+/** One search hit as a single line: price, title, condition, shipping, seller. */
+function listingLine(item: ListingSummary): string {
+  const shipping =
+    item.shippingCost === null ? '' : ` +${item.currency ?? ''}${item.shippingCost} ship`;
+  const feedback = item.sellerFeedbackPct ? ` (${item.sellerFeedbackPct}%)` : '';
+  const seller = item.seller ? ` · ${item.seller}${feedback}` : '';
+  return `  ${item.currency ?? ''}${item.price ?? '?'} — ${item.title} [${item.condition ?? '?'}]${shipping}${seller}`;
 }
 
 export default defineToolkit({
@@ -230,15 +254,15 @@ export default defineToolkit({
         const currency = MARKET_CURRENCY[marketplace] ?? 'USD';
         const filters: string[] = [];
         if (minPrice !== undefined || maxPrice !== undefined) {
-          const lo = minPrice !== undefined ? String(minPrice) : '';
-          const hi = maxPrice !== undefined ? String(maxPrice) : '';
+          const lo = minPrice === undefined ? '' : String(minPrice);
+          const hi = maxPrice === undefined ? '' : String(maxPrice);
           filters.push(`price:[${lo}..${hi}],priceCurrency:${currency}`);
         }
         if (condition) filters.push(`conditions:{${condition}}`);
         if (buyingOption) filters.push(`buyingOptions:{${buyingOption}}`);
 
         const params = new URLSearchParams({ q: query, limit: String(limit) });
-        if (filters.length) params.set('filter', filters.join(','));
+        if (filters.length > 0) params.set('filter', filters.join(','));
         const sortParam = SORT_MAP[sort];
         if (sortParam) params.set('sort', sortParam);
         ctx.log('search_items', { query, marketplace, sort, limit });
@@ -271,21 +295,14 @@ export default defineToolkit({
             url: typeof it.itemWebUrl === 'string' ? it.itemWebUrl : null,
           };
         });
-        const total = typeof body.total === 'number' ? body.total : items.length;
         if (items.length === 0) {
           return {
             text: `No eBay listings for "${query}".`,
             structured: { total: 0, count: 0, items: [] },
           };
         }
-        const lines = items
-          .map(
-            (i) =>
-              `  ${i.currency ?? ''}${i.price ?? '?'} — ${i.title} [${i.condition ?? '?'}]` +
-              `${i.shippingCost !== null ? ` +${i.currency ?? ''}${i.shippingCost} ship` : ''}` +
-              `${i.seller ? ` · ${i.seller}${i.sellerFeedbackPct ? ` (${i.sellerFeedbackPct}%)` : ''}` : ''}`,
-          )
-          .join('\n');
+        const total = typeof body.total === 'number' ? body.total : items.length;
+        const lines = items.map((i) => listingLine(i)).join('\n');
         return {
           text: `${items.length} of ${total} eBay listing(s) on ${marketplace}:\n${lines}`,
           structured: { total, count: items.length, items },

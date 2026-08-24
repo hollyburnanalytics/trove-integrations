@@ -89,9 +89,9 @@ export const listCertifiedEmployers = tool({
     const wanted = args.certifyingPartnerId.trim();
     const partners = parsePartners(session.html);
     if (partners.length > 0 && partners.every((partner) => partner.id !== wanted)) {
+      const valid = partners.map((partner) => `${partner.id} (${partner.name})`).join(', ');
       throw new ToolError(
-        `"${wanted}" is not a WorkSafeBC certifying partner id. Valid ids: ` +
-          `${partners.map((partner) => `${partner.id} (${partner.name})`).join(', ')}.`,
+        `"${wanted}" is not a WorkSafeBC certifying partner id. Valid ids: ${valid}.`,
         { retryable: false },
       );
     }

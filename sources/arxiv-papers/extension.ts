@@ -108,7 +108,7 @@ function buildQueryUrl(encodedQuery: string, page: number): string {
  * @param accumulators - State shared across every query in the round.
  * @returns True once the cursor is reached.
  */
-function collectEntries(
+function hasReachedCursor(
   entries: RegExpMatchArray[],
   { lastDate, seenIds, documents, publishedTimes }: Accumulators,
 ): boolean {
@@ -152,7 +152,7 @@ async function syncQuery(
     const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)];
     context.log.info(`  "${query}" page ${page + 1}: ${entries.length} papers`);
 
-    if (collectEntries(entries, accumulators)) return;
+    if (hasReachedCursor(entries, accumulators)) return;
     if (entries.length < PAGE_SIZE) return;
   }
 }

@@ -47,14 +47,16 @@ export const getBook = tool({
     const text = await fetchBookText(b, ctx).catch(() => null);
     if (text) wordCount = text.split(/\s+/).filter(Boolean).length;
     const readingMinutes = wordCount === null ? null : Math.max(1, Math.round(wordCount / 238));
+    const authors = b.authors.length > 0 ? ` — ${b.authors.map(authorLabel).join(', ')}` : '';
+    const reading = readingMinutes ? ` · ~${readingMinutes} min read` : '';
+    const summary = b.summary ? `\n  ${b.summary}` : '';
+    const shelves = b.bookshelves.length > 0 ? `\n  Shelves: ${b.bookshelves.join('; ')}` : '';
+    const fullText = b.textUrl ? `\n  Full text: ${b.textUrl}` : '';
     return {
       text:
-        `[${b.id}] "${b.title}"${b.authors.length ? ` — ${b.authors.map(authorLabel).join(', ')}` : ''}\n` +
+        `[${b.id}] "${b.title}"${authors}\n` +
         `  ${b.languages.join('/') || '?'} · ${b.downloadCount ?? '?'} downloads` +
-        `${readingMinutes ? ` · ~${readingMinutes} min read` : ''}` +
-        `${b.summary ? `\n  ${b.summary}` : ''}` +
-        `${b.bookshelves.length ? `\n  Shelves: ${b.bookshelves.join('; ')}` : ''}` +
-        `${b.textUrl ? `\n  Full text: ${b.textUrl}` : ''}`,
+        `${reading}${summary}${shelves}${fullText}`,
       structured: {
         bookId: b.id,
         title: b.title,

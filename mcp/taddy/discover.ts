@@ -47,13 +47,13 @@ export async function getTopCharts(
 ): Promise<z.infer<typeof chartsOutput>> {
   const country = args.country === undefined ? undefined : resolveCountry(args.country);
   const genres = args.genres === undefined ? undefined : resolveGenres(args.genres);
-  const byGenre = genres !== undefined && genres.length > 0;
-  assertChartScope({ country, byGenre, type: args.type });
+  const isByGenre = genres !== undefined && genres.length > 0;
+  assertChartScope({ country, byGenre: isByGenre, type: args.type });
 
   const data = await graphql(
     ctx,
-    byGenre ? TOP_CHARTS_BY_GENRES : TOP_CHARTS_BY_COUNTRY,
-    byGenre
+    isByGenre ? TOP_CHARTS_BY_GENRES : TOP_CHARTS_BY_COUNTRY,
+    isByGenre
       ? {
           genres,
           taddyType: args.type,
@@ -72,13 +72,12 @@ export async function getTopCharts(
     topChartsWire,
   );
 
+  const inCountry = country ? ` in ${country}` : '';
   const podcasts = (data.topCharts?.podcastSeries ?? []).map((series) => mapPodcast(series));
   const episodes = (data.topCharts?.podcastEpisodes ?? []).map((episode) => mapEpisode(episode));
   return {
     type: args.type,
-    scope: byGenre
-      ? `${(genres ?? []).join(', ')}${country ? ` in ${country}` : ''}`
-      : (country ?? ''),
+    scope: isByGenre ? `${(genres ?? []).join(', ')}${inCountry}` : (country ?? ''),
     source: 'APPLE_PODCASTS',
     page: args.page,
     count: podcasts.length + episodes.length,

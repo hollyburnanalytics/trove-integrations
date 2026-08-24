@@ -1,8 +1,8 @@
 import { tool, z } from '@ontrove/extend/toolkit';
 import {
-  bookmarkOwnerCached,
   getBookmarkOwnerId,
   getUserAccessToken,
+  isBookmarkOwnerCached,
   REAUTH_MESSAGE,
 } from '../auth.ts';
 import { MEDIA_EXPANSION, MEDIA_FIELDS, strOrNull, TWEET_FIELDS, xGet } from '../client.ts';
@@ -60,7 +60,7 @@ export const getBookmarks = tool({
     const accessToken = await getUserAccessToken(ctx);
     // The owner-id `/2/users/me` call is a one-time User:Read ($0.010) per warm
     // isolate; bill for it only when we actually resolve it (cache miss).
-    const ownerCached = bookmarkOwnerCached();
+    const ownerCached = isBookmarkOwnerCached();
     const userId = await getBookmarkOwnerId(ctx, accessToken);
 
     const params = new URLSearchParams({
@@ -105,10 +105,9 @@ export const getBookmarks = tool({
         structured: { bookmarks: [], next_token: nextToken, note },
       };
     }
+    const lines = bookmarks.map((b) => `${b.author ?? '?'}:${tweetLine(b)}`).join('\n');
     return {
-      text:
-        `${bookmarks.length} bookmark(s):\n` +
-        `${bookmarks.map((b) => `${b.author ?? '?'}:${tweetLine(b)}`).join('\n')}\n${note}`,
+      text: `${bookmarks.length} bookmark(s):\n${lines}\n${note}`,
       structured: { bookmarks, next_token: nextToken, note },
     };
   },

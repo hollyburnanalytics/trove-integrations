@@ -46,12 +46,15 @@ function snakValue(snak: Record<string, unknown>): { text: string; ref?: string 
       const id = str((value as { id?: unknown }).id);
       return { text: id, ref: id };
     }
-    case 'time':
+    case 'time': {
       return { text: formatTime((value ?? {}) as Record<string, unknown>) };
-    case 'quantity':
+    }
+    case 'quantity': {
       return { text: str((value as { amount?: unknown }).amount).replace(/^\+/, '') };
-    case 'monolingualtext':
+    }
+    case 'monolingualtext': {
       return { text: str((value as { text?: unknown }).text) };
+    }
     case 'globecoordinate': {
       const coordinate = (value ?? {}) as { latitude?: unknown; longitude?: unknown };
       return {
@@ -61,8 +64,9 @@ function snakValue(snak: Record<string, unknown>): { text: string; ref?: string 
             : '',
       };
     }
-    default:
+    default: {
       return { text: typeof value === 'string' ? value : '' };
+    }
   }
 }
 
@@ -206,7 +210,10 @@ export default defineToolkit({
           };
         }
         const lines = entities
-          .map((e) => `  [${e.id}] ${e.label}${e.description ? ` — ${e.description}` : ''}`)
+          .map((e) => {
+            const description = e.description ? ` — ${e.description}` : '';
+            return `  [${e.id}] ${e.label}${description}`;
+          })
           .join('\n');
         return {
           text: `${entities.length} entity(ies) for "${query}":\n${lines}`,
@@ -275,7 +282,8 @@ export default defineToolkit({
         const factLines = facts
           .map((fact) => `  ${fact.property}: ${fact.values.join(', ')}`)
           .join('\n');
-        const text = `[${result.id}] ${result.label}${result.description ? ` — ${result.description}` : ''}\n${factLines}`;
+        const described = result.description ? ` — ${result.description}` : '';
+        const text = `[${result.id}] ${result.label}${described}\n${factLines}`;
         return { text, structured: result };
       },
     }),

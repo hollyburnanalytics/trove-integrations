@@ -51,7 +51,7 @@ export function __resetBookmarkAuth(): void {
 }
 
 /** Whether the bookmark owner's id is already cached (so it needn't be re-billed). */
-export function bookmarkOwnerCached(): boolean {
+export function isBookmarkOwnerCached(): boolean {
   return Boolean(bookmarkAuth?.userId);
 }
 
@@ -94,7 +94,10 @@ async function refreshUserToken(ctx: ToolContext): Promise<string> {
     accept: 'application/json',
   };
   // Confidential clients additionally authenticate with HTTP Basic.
-  if (clientSecret) headers.authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
+  if (clientSecret) {
+    const credentials = btoa(`${clientId}:${clientSecret}`);
+    headers.authorization = `Basic ${credentials}`;
+  }
 
   const parsed = await ctx.fetchJson(TOKEN_URL, {
     init: { method: 'POST', headers, body: form.toString() },

@@ -59,7 +59,7 @@ function feedLinkUrl(link: HTMLElement, baseUrl: string): string | undefined {
     return;
   }
   if (resolved.protocol !== 'https:' && resolved.protocol !== 'http:') return;
-  return resolved.toString();
+  return resolved.href;
 }
 
 /**

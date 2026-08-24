@@ -198,12 +198,13 @@ export const forecast: ToolDefinition = {
     };
 
     const hourLines = hourly
-      .map(
-        (h) =>
+      .map((h) => {
+        const bearing = h.windDirection ? ` ${h.windDirection}` : '';
+        return (
           `  ${h.time ?? '?'}: ${h.condition ?? '?'}, ${h.temperature ?? '?'}°C, ` +
-          `wind ${h.windSpeed ?? '?'} km/h${h.windDirection ? ` ${h.windDirection}` : ''}, ` +
-          `precip ${h.precipProbability ?? 0}%`,
-      )
+          `wind ${h.windSpeed ?? '?'} km/h${bearing}, precip ${h.precipProbability ?? 0}%`
+        );
+      })
       .join('\n');
     const periodLines = periods.map((p) => `  ${p.name ?? '?'}: ${p.summary ?? '?'}`).join('\n');
     const warningLine =
@@ -211,14 +212,16 @@ export const forecast: ToolDefinition = {
         ? 'No active warnings.'
         : `Warnings: ${warnings.map((w) => w.description ?? w.type ?? '?').join('; ')}`;
 
+    const region = location.region ? `, ${location.region}` : '';
+    // ECCC omits the condition text at some sites/hours; skip it rather than
+    // rendering a bare placeholder.
+    const condition = current.condition === null ? '' : `${current.condition}, `;
+    const bearing = current.windDirection ? ` ${current.windDirection}` : '';
     return {
       text:
-        `${location.name ?? siteId}${location.region ? `, ${location.region}` : ''} — ` +
-        // ECCC omits the condition text at some sites/hours; skip it rather
-        // than rendering a bare placeholder.
-        `now ${current.condition === null ? '' : `${current.condition}, `}` +
-        `${current.temperature ?? '?'}°C, ` +
-        `wind ${current.windSpeed ?? '?'} km/h${current.windDirection ? ` ${current.windDirection}` : ''}.\n` +
+        `${location.name ?? siteId}${region} — ` +
+        `now ${condition}${current.temperature ?? '?'}°C, ` +
+        `wind ${current.windSpeed ?? '?'} km/h${bearing}.\n` +
         `Sunrise ${structured.sunrise ?? '?'} / sunset ${structured.sunset ?? '?'} (UTC).\n` +
         `${warningLine}\n` +
         `Next ${hourly.length} hour(s):\n${hourLines}\n` +
