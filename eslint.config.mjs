@@ -334,4 +334,14 @@ export default [
       'sonarjs/no-os-command-from-path': 'off',
     },
   },
+  {
+    // The SHA-256 constant tables are transcribed from FIPS 180-4, eight
+    // 32-bit words per line exactly as the standard prints them. Byte-grouping
+    // them — `0x428a2f98` → `0x42_8a_2f_98` — makes them unreadable against the
+    // source document, and the reflow that follows breaks the eight-per-line
+    // layout that is how a reader checks the transcription at all. The rule is
+    // right about `120000`; it is wrong about a published table.
+    files: ['sources/lib/sha256.ts'],
+    rules: { 'unicorn/numeric-separators-style': 'off' },
+  },
 ];
