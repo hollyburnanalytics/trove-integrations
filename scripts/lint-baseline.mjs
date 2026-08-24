@@ -24,6 +24,20 @@
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
+// Biome reads `biome.json` in preference to `biome.jsonc` and says nothing when
+// both exist. The catalogs moved to `.jsonc` because a `.json` config cannot
+// carry the reason an exception exists, so the old name is now a file any stale
+// tool will cheerfully recreate — and the config it would win with carries none
+// of the exceptions. That is a silent measurement change under a gate whose
+// whole job is measuring, so it is fatal here rather than a warning.
+if (existsSync('biome.json') && existsSync('biome.jsonc')) {
+  process.stderr.write(
+    'biome.json and biome.jsonc both exist. Biome reads biome.json and ignores the other ' +
+      'without a word, so every count below would come from the wrong config. Delete biome.json.\n',
+  );
+  process.exit(2);
+}
+
 const BASELINE_PATH = 'lint-baseline.json';
 const update = process.argv.includes('--update');
 
@@ -42,12 +56,13 @@ function biomeWarnCounts() {
     process.stderr.write(
       'biome reported error-level diagnostics — fix `bun run lint` first (this tool governs only ratcheted warnings).\n',
     );
-    const stdout = /** @type {{ stdout?: unknown }} */ (error).stdout;
+    const stdout = /** @type {{ stdout?: unknown } | undefined} */ (error)?.stdout;
     process.stderr.write(String(stdout ?? '').slice(0, 400));
     process.exit(2);
   }
-  /** @type {{ severity?: string, category?: string }[]} */
-  const diagnostics = JSON.parse(raw).diagnostics ?? [];
+  /** @type {{ diagnostics?: Array<{ severity?: string, category?: string }> }} */
+  const parsed = JSON.parse(raw);
+  const diagnostics = parsed.diagnostics ?? [];
   /** @type {Record<string, number>} */
   const counts = {};
   for (const diagnostic of diagnostics) {
@@ -71,7 +86,7 @@ function suppressionCount() {
 /**
  * Sort object keys for a stable, diff-friendly baseline file.
  *
- * @param {Record<string, number>} object - The counts to sort.
+ * @param {Record<string, number>} object - The counts.
  * @returns {Record<string, number>} The same counts, key-sorted.
  */
 function sorted(object) {
@@ -106,7 +121,6 @@ if (update) {
   process.exit(0);
 }
 
-/** @type {string[]} */
 const regressions = [];
 const improvable = [];
 const trackedRules = new Set([...Object.keys(current), ...Object.keys(baseline)]);
