@@ -111,6 +111,16 @@
       }
     },
     {
+      // The shared lint config, whose whole content is written justification for
+      // rules held off. Line count is the one metric that runs backwards here:
+      // more lines means more reasons recorded, and a cap the file sits flush
+      // against turns "write down why" into "find four lines to cut". That trade
+      // was nearly made twice tonight — once at 354, where a header paragraph
+      // was dropped to fit, and once at 353. Neither should have been a choice.
+      "includes": ["eslint.config.mjs"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": "off" } } }
+    },
+    {
       // Four files in trove-matt-helm that are data, not code. Present here so the
       // two catalogs' biome configs stay byte-identical; inert in this one.
       //
