@@ -24,7 +24,7 @@ are written to the same conventions, so **a rule that is right about one is righ
 about the other**. These files are shared **byte for byte** and must be changed
 in both in the same pass:
 
-`eslint.config.mjs` · `biome.json` · `vitest.config.mjs` · `tsconfig.sources.json` ·
+`eslint.config.mjs` · `biome.jsonc` · `vitest.config.mjs` · `tsconfig.sources.json` ·
 `mcp/tsconfig.json` · `mise.toml` · `.gitignore`
 
 The same goes for the versions of `typescript`, `vitest`, `@biomejs/biome`,
@@ -337,7 +337,7 @@ export async function sync(ctx) {
 
 This project uses complementary tools, applied per file kind (see the toolchain matrix above): **Biome** lints + formats everything; **ESLint (SonarJS + Unicorn)** adds JS-idiom rules to the hand-written `.mjs` sources; `tsc` type-checks both halves. All new and modified code must pass every gate that applies to it.
 
-**Biome** (`bun run lint`) — formatting and core lint rules for all `.ts`/`.mjs` (configured in `biome.json`).
+**Biome** (`bun run lint`) — formatting and core lint rules for all `.ts`/`.mjs` (configured in `biome.jsonc`).
 
 **ESLint with SonarJS + Unicorn** (`bun run lint:sonar`) — code quality, bug prevention, and modern JS conventions for the `.mjs` files (configured in `eslint.config.mjs`).
 

@@ -7,6 +7,10 @@ import unicorn from 'eslint-plugin-unicorn';
 // than formatting. Both presets are opinionated, and a handful of their rules
 // are wrong about these repos rather than about the code — those are turned off
 // below, each with the reason. Everything else is expected to stay at zero.
+// The twenty-nine that once sat here as "deferred, not settled" were worked off
+// rather than argued away: twenty-five are gone, three remain — the render-idiom
+// cluster, landing with the file splits — and one, `prefer-number-coercion`, was
+// argued and accepted. `trove-integrations` is already at zero on all four.
 //
 // THIS FILE IS SHARED, BYTE FOR BYTE, between `trove-integrations` and
 // `trove-matt-helm`. The two catalogs meet the same platform and are written to
@@ -88,17 +92,14 @@ export default [
       // belongs.
       'unicorn/prefer-https': 'off',
 
-      // Fixture builders compose: `ok(rss(rssItem({ title: 'A' })))` is one
-      // recorded response spelled in the vocabulary of the format, and
-      // `feed([entry({ id })])` is one Atom document. The rule's limit of three
-      // is right about production call chains and wrong about a test suite
-      // whose whole idiom is small named builders nested to the depth of the
-      // document they describe — 72 sites across the two repos, and hoisting an
-      // intermediate `const` at each one makes every test longer and none of
-      // them clearer. Genuine assertion plumbing —
-      // `expect(String(at(mock.calls)[0]))` — reads better hoisted, and is,
-      // because that was worth doing on its own merits rather than to satisfy
-      // a counter.
+      // A schema IS a tree of calls, and every tool's argument and result
+      // contract is one: `z.array(z.object({ v: z.array(z.union([…])) }))`.
+      // 8,396 sites across the two catalogs, 165 of the 173 files production
+      // rather than tests. The limit of three cannot be met without a named
+      // constant per interior node, scattering one shape over a dozen
+      // single-use bindings that the reader must reassemble. (An earlier note
+      // blamed test fixture builders and counted 72. Both were measured
+      // wrong.)
       'unicorn/max-nested-calls': 'off',
 
       // Flags every `.sort()`/`.toSorted()` without a comparator, because it
@@ -164,12 +165,11 @@ export default [
       // (`BusinessNumber`); where it need only be *read*, plain is right.
       'sonarjs/redundant-type-aliases': 'off',
 
-      // Counts three regexes as too complex at 21, 23 and 30 against a limit of
-      // 20. All three mirror something a publisher emits — an ISO-8601 date, a
+      // Three regexes across the catalogs score 21 to 30 against a limit of 20:
+      // an ISO-8601 date that takes a bare `YYYY-MM-DD` or a full instant, a
       // price cell in Ship & Bunker's markup, the ways a T3010 spells "total
-      // gifts" — and are exactly as complex as the format they mirror.
-      // Splitting one in three moves the complexity into the code that joins
-      // them back up.
+      // gifts". Each is exactly as complex as the format it mirrors, and
+      // splitting one moves the complexity into the code that rejoins them.
       'sonarjs/regex-complexity': 'off',
 
       // Wants `Object.hasOwn(obj, key)` in place of `obj[key] ? … : …`. Under
@@ -183,9 +183,9 @@ export default [
       // Right about JavaScript, redundant here. It exists because
       // `['1','2'].map(parseInt)` passes the index as a radix; in strict
       // TypeScript the callee's signature is checked against `map`'s callback
-      // type, so an unexpected parameter is a compile error. All 76 sites are
-      // named unary renderers — `rows.map(toEntity)` — and every one was checked
-      // for a second parameter before this went in.
+      // type, so an unexpected parameter is a compile error. All 85 sites — 21
+      // in `trove-integrations`, 64 here — are named unary renderers,
+      // `rows.map(toEntity)`, each checked for a second parameter.
       'unicorn/no-array-callback-reference': 'off',
 
       // Wants `for…of` over the string. The one site walks a Gutenberg book by
@@ -235,9 +235,9 @@ export default [
       // handed an explicit `undefined` at every optional call site.
       'unicorn/no-useless-undefined': ['error', { checkArrowFunctionBody: false }],
 
-      // Biome's formatter normalises hex literals to lowercase; this rule wants
-      // uppercase digits. They cannot both be satisfied, and `bun run lint`
-      // (Biome) is the gate that runs first, so Biome wins.
+      // Biome's formatter normalises hex to lowercase; this rule wants upper.
+      // They cannot both be satisfied — `0xFE_FF` in `owid/csv.ts` makes
+      // `biome check` fail on formatting — and Biome runs first, so Biome wins.
       'unicorn/number-literal-case': 'off',
 
       // Reads `Number.parseInt(x, 10)` and `Number.parseFloat(x)` as long-hand

@@ -109,6 +109,36 @@
           }
         }
       }
+    },
+    {
+      // Four files in trove-matt-helm that are data, not code. Present here so the
+      // two catalogs' biome configs stay byte-identical; inert in this one.
+      //
+      // Responses captured verbatim from api.charitydata.ca and dated — a recorded
+      // session is one artifact, and split by line count no copy still matches what
+      // the API sent.
+      "includes": ["mcp/charitydata/fixtures.ts"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": "off" } } }
+    },
+    {
+      // The T3010 line-number dictionary, transcribed from the CRA. Split a published
+      // table across files and a reader can no longer check it against its source —
+      // the same reason sha256.ts is excused from numeric-separators-style.
+      "includes": ["mcp/charitydata/lines.ts"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": "off" } } }
+    },
+    {
+      // Thirty-nine interfaces and no functions: one wire vocabulary for an
+      // undocumented API. Halving it by length separates related shapes for no
+      // reason a reader could reconstruct.
+      "includes": ["mcp/charitydata/types.ts"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": "off" } } }
+    },
+    {
+      // Every operation AXSMarine documents, with spec.test.mjs asserting full
+      // coverage against it. The file being one thing is what the test relies on.
+      "includes": ["mcp/axsmarine/catalogue.ts"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": "off" } } }
     }
   ]
 }
