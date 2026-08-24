@@ -6,9 +6,12 @@ import unicorn from 'eslint-plugin-unicorn';
 // at their recommended presets, looking for correctness and complexity rather
 // than formatting. Both presets are opinionated, and a handful of their rules
 // are wrong about these repos rather than about the code — those are turned off
-// below, each with the reason. Everything else is expected to stay at zero, and
-// is: the twenty-nine rules that used to sit here as "deferred, not settled"
-// were worked off rather than argued away, so there is no waiting list.
+// below, each with the reason. Everything else is expected to stay at zero.
+// The twenty-nine rules that used to sit here as "deferred, not settled" were
+// worked off rather than argued away: twenty-four are gone, four are held only
+// until `trove-matt-helm` finishes them, and exactly one — `prefer-number-
+// coercion` — was argued and accepted. All five are already at zero in
+// `trove-integrations`, which is why their counts below read `(0 + n)`.
 //
 // THIS FILE IS SHARED, BYTE FOR BYTE, between `trove-integrations` and
 // `trove-matt-helm`. The two catalogs meet the same platform and are written to
@@ -246,6 +249,44 @@ export default [
     },
   },
   {
+    // ---- Still open in the other catalog (task #170) ----
+    //
+    // Every one of these is at ZERO in `trove-integrations`: the sites were
+    // read and rewritten one at a time, not swept. They stay switched off
+    // because this file governs both catalogs and `trove-matt-helm` has not
+    // finished. Counts are `(trove-integrations + trove-matt-helm)`; retire a
+    // line when the second figure reaches zero too.
+    //
+    // The first three are ONE IDIOM SEEN FROM THREE ANGLES. A tool's text
+    // output written as a single expression, with each optional clause inline
+    // as `${x ? ` — ${x}` : ''}`, is simultaneously a nested template literal,
+    // a nested conditional and a nested ternary. Retiring them means giving
+    // every optional clause a name — which is the same refactor that brings
+    // the oversized files under Biome's `noExcessiveLinesPerFile`. Done as a
+    // standalone rename pass it would be thrown away, so they land with the
+    // file splits. (This catalog did the rename pass first, hoisting each
+    // clause to a local `const`; that is the precedent, not a second idiom.)
+    files: SOURCES,
+    rules: {
+      'sonarjs/no-nested-template-literals': 'off', // (0 + 261)
+      'unicorn/consistent-boolean-name': 'off', //      (0 + 120)
+      'sonarjs/no-nested-conditional': 'off', //         (0 + 76)
+      'unicorn/no-nested-ternary': 'off', //             (0 + 35)
+
+      // Accepted, not deferred — the one rule that is wrong rather than
+      // unfinished. Its rewrite is semantic, not mechanical: `Number('')` is
+      // `0` where `Number.parseInt('')` is `NaN`, and these scrapers read
+      // blank cells on every request, so "the publisher reported nothing"
+      // would start arriving as a reported zero. `Number('750 mL')` is `NaN`
+      // where `parseFloat` gives `750`, and BC Liquor prints volumes that way.
+      // The plugin ships suggestions and no autofix, which is its own authors
+      // agreeing it cannot be applied blind. `trove-integrations` is at zero
+      // because each of its fourteen sites was read: every one was already
+      // digit-constrained, or was made stricter on purpose.
+      'unicorn/prefer-number-coercion': 'off', //        (0 + 25)
+    },
+  },
+  {
     // Test-only relaxations. Each of these is a rule that is right about
     // production code and wrong about the way these tests are written.
     files: TESTS,
@@ -292,15 +333,5 @@ export default [
       // machine; pinning an absolute path would break the moment they moved it.
       'sonarjs/no-os-command-from-path': 'off',
     },
-  },
-  {
-    // The SHA-256 constant tables are transcribed from FIPS 180-4, eight
-    // 32-bit words per line exactly as the standard prints them. Byte-grouping
-    // them — `0x428a2f98` → `0x42_8a_2f_98` — makes them unreadable against the
-    // source document, and the reflow that follows breaks the eight-per-line
-    // layout that is how a reader checks the transcription at all. The rule is
-    // right about `120000`; it is wrong about a published table.
-    files: ['sources/lib/sha256.ts'],
-    rules: { 'unicorn/numeric-separators-style': 'off' },
   },
 ];
