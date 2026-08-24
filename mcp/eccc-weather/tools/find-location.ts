@@ -88,18 +88,20 @@ export const findLocation: ToolDefinition = {
       });
     }
 
-    const url =
+    const url = itemsUrl(
+      CITYPAGE_COLLECTION,
       byCoordinate && latitude !== undefined && longitude !== undefined
-        ? itemsUrl(CITYPAGE_COLLECTION, {
+        ? {
             bbox: boxAround(latitude, longitude, SEARCH_BOX_DEG),
             limit: '200',
             properties: CITYPAGE_FIELDS,
-          })
-        : itemsUrl(CITYPAGE_COLLECTION, {
+          }
+        : {
             q: name ?? '',
             limit: String(NAME_CANDIDATE_POOL),
             properties: CITYPAGE_FIELDS,
-          });
+          },
+    );
     ctx.log('find_location', { name, latitude, longitude, count });
     const body = await ctx.fetchJson(url, { errorMap: ecccError });
     const totalMatched = matchedCount(body);

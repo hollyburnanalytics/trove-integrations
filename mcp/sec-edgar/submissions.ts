@@ -89,7 +89,7 @@ export async function withArchivedFilings(
 ): Promise<{ pool: RecentFiling[]; historyComplete: boolean }> {
   const relevant = archives
     .filter((a) => (!startDate || a.to >= startDate) && (!endDate || a.from <= endDate))
-    .sort((a, b) => (a.to < b.to ? 1 : a.to > b.to ? -1 : 0));
+    .sort((a, b) => b.to.localeCompare(a.to));
   let pool = base;
   let used = 0;
   for (const archive of relevant) {

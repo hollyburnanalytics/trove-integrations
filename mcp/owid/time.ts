@@ -49,7 +49,7 @@ function timeValue(point: string): number | undefined {
 
 /** The same, for a row's time cell — years compare as years, days as `YYYYMMDD`. */
 function rowValue(time: string, timeUnit: 'year' | 'day'): number | undefined {
-  return timeUnit === 'day' ? timeValue(time) : timeValue(time.split('-')[0] ?? time);
+  return timeValue(timeUnit === 'day' ? time : (time.split('-')[0] ?? time));
 }
 
 /**

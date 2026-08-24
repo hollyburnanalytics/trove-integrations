@@ -184,7 +184,7 @@ export default defineToolkit({
         );
 
         const entries = await hydrate(filtered, ctx, token);
-        const totalSeconds = entries.reduce((n, e) => n + (e.duration > 0 ? e.duration : 0), 0);
+        const totalSeconds = entries.reduce((n, e) => n + Math.max(e.duration, 0), 0);
         const byClient = summarise(entries);
 
         const lines = entries

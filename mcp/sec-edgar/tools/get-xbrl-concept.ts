@@ -242,7 +242,7 @@ export const getXbrlConcept = tool({
     const deduped = [...latestFiledByPeriod(factsForUnit(units, unitKey)).values()].filter(
       (fact) => period === 'all' || kindOf(fact) === period,
     );
-    deduped.sort((a, b) => (a.end < b.end ? 1 : a.end > b.end ? -1 : 0));
+    deduped.sort((a, b) => b.end.localeCompare(a.end));
     const facts = deduped.slice(0, limit);
 
     const label = typeof body.label === 'string' ? body.label : null;

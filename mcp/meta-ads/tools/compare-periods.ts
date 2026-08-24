@@ -142,7 +142,7 @@ export const comparePeriods = tool({
   }),
   async handler(args, ctx) {
     const accountId = findAccountId(ctx, args.ad_account_id);
-    if (!args.baseline_since !== !args.baseline_until) {
+    if (Boolean(args.baseline_since) !== Boolean(args.baseline_until)) {
       throw new ToolError(
         'baseline_since and baseline_until go together — give both, or neither.',
         { retryable: false },

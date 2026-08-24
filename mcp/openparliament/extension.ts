@@ -52,7 +52,7 @@ function stripHtml(html: unknown): string | null {
 function slugOf(url: unknown): string | null {
   if (typeof url !== 'string') return null;
   const parts = url.split('/').filter(Boolean);
-  return parts.length > 0 ? (parts[parts.length - 1] ?? null) : null;
+  return parts.at(-1) ?? null;
 }
 
 /** Build a full openparliament.ca URL from an API relative path. */

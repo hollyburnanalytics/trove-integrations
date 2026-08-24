@@ -139,7 +139,7 @@ export default defineToolkit({
                 retryable: false,
               });
             }
-            return undefined; // 429/5xx → SDK default (retryable)
+            // 429/5xx fall through to the SDK default (retryable).
           },
         });
 

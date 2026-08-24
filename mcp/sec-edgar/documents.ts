@@ -116,8 +116,8 @@ export function filingHtmlToText(html: string): string {
     .replace(/<\/t[dh]>/gi, '  ')
     .replace(/<[^>]+>/g, ' ');
   return decodeXmlEntities(text)
-    .replace(/\u00A0/g, ' ')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u{00A0}/gu, ' ')
+    .replace(/[\u{200B}-\u{200D}\u{FEFF}]/gu, '')
     .replace(/[ \t]+/g, ' ')
     .replace(/ ?\n ?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')

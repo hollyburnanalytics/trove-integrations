@@ -21,7 +21,7 @@ import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
 const BASE_URL = 'https://catalog.hathitrust.org';
 
 /** A HathiTrust catalog record (one bibliographic entry). */
-interface Record_ {
+interface HathiRecord {
   recordURL: string | null;
   title: string | null;
   isbns: string[];
@@ -150,7 +150,7 @@ export default defineToolkit({
         const entry = (body?.[key] ?? null) as { records?: unknown; items?: unknown } | null;
 
         const recordsObj = (entry?.records ?? {}) as Record<string, unknown>;
-        const records: Record_[] = Object.values(recordsObj).map((r) => {
+        const records: HathiRecord[] = Object.values(recordsObj).map((r) => {
           const o = r as Record<string, unknown>;
           return {
             recordURL: str(o.recordURL),

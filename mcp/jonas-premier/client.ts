@@ -191,18 +191,19 @@ export async function jonasGet(
   path: string,
   params: Record<string, string | number | undefined>,
   ctx: ToolContext,
-  retried = false,
 ): Promise<Record<string, unknown>[]> {
-  const token = await getToken(ctx);
   const query = buildQuery(params);
-  const res = await ctx.fetch(`${BASE_URL}${path}${query ? `?${query}` : ''}`, {
-    headers: { accept: 'application/json', authorization: `Bearer ${token}` },
-  });
-  if (res.status === 401 && !retried) {
-    tokenCache.delete(ctx.userId);
-    return jonasGet(path, params, ctx, true);
+  for (let attempt = 0; ; attempt++) {
+    const token = await getToken(ctx);
+    const res = await ctx.fetch(`${BASE_URL}${path}${query ? `?${query}` : ''}`, {
+      headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401 && attempt === 0) {
+      tokenCache.delete(ctx.userId);
+      continue;
+    }
+    const body = await res.text();
+    if (!res.ok) throwPremierError(res.status, body);
+    return unwrapList(parsePremierBody(body));
   }
-  const body = await res.text();
-  if (!res.ok) throwPremierError(res.status, body);
-  return unwrapList(parsePremierBody(body));
 }
