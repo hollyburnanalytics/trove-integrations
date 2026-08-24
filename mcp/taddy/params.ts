@@ -46,6 +46,9 @@ export function epochSeconds(
   return Math.floor(parsed / 1000);
 }
 
+/** One candidate identifier as the caller spelled it — absent if unsupplied. */
+type Candidate = string | number | undefined;
+
 /**
  * Pick the one identifier the caller supplied, or explain what went wrong.
  *
@@ -54,10 +57,7 @@ export function epochSeconds(
  * than forwarding an ambiguous request — means a caller who sends two never has
  * to work out which of them the answer came from.
  */
-export function exactlyOne(
-  candidates: Record<string, string | number | undefined>,
-  what: string,
-): void {
+export function exactlyOne(candidates: Record<string, Candidate>, what: string): void {
   const given = Object.entries(candidates).filter(([, value]) => value !== undefined);
   if (given.length === 1) return;
   const names = Object.keys(candidates).join(', ');
@@ -199,8 +199,8 @@ export function assertRange(
   { strict = false }: { strict?: boolean } = {},
 ): void {
   if (low === undefined || high === undefined) return;
-  const inverted = strict ? low >= high : low > high;
-  if (inverted) {
+  const isInverted = strict ? low >= high : low > high;
+  if (isInverted) {
     throw new ToolError(
       `${what}: ${String(low)} is not below ${String(high)}, so nothing can match. Swap them.`,
       { retryable: false },

@@ -93,19 +93,24 @@ function mapEntity(raw: Record<string, unknown>, currency: string | undefined) {
 
 type Entity = ReturnType<typeof mapEntity>;
 
+/** Where an entity's budget lives: on itself, daily or lifetime, else on its parent. */
+function budgetText(entity: Entity): string {
+  if (entity.dailyBudget !== undefined) return `${money(entity.dailyBudget, entity.currency)}/day`;
+  if (entity.lifetimeBudget !== undefined) {
+    return `${money(entity.lifetimeBudget, entity.currency)} lifetime`;
+  }
+  return 'budget at parent';
+}
+
 /** One prose line per entity: what it is, whether it can spend, and its budget. */
 function entityLine(entity: Entity): string {
-  const budget =
-    entity.dailyBudget !== undefined
-      ? `${money(entity.dailyBudget, entity.currency)}/day`
-      : entity.lifetimeBudget !== undefined
-        ? `${money(entity.lifetimeBudget, entity.currency)} lifetime`
-        : 'budget at parent';
+  const budget = budgetText(entity);
   const goal = entity.objective ?? entity.optimizationGoal;
+  const objective = goal ? ` · ${goal}` : '';
+  const ends = entity.endTime ? ` · ends ${entity.endTime.slice(0, 10)}` : '';
   return (
     `• ${entity.name ?? '(unnamed)'} (${entity.id}) — ${entity.effectiveStatus ?? entity.status ?? '?'}` +
-    ` · ${budget}${goal ? ` · ${goal}` : ''}` +
-    (entity.endTime ? ` · ends ${entity.endTime.slice(0, 10)}` : '')
+    ` · ${budget}${objective}${ends}`
   );
 }
 
@@ -199,15 +204,14 @@ export const listEntities = tool({
     const owningAccount = owner === undefined ? accountId : `act_${owner}`;
     const currency = raw.length > 0 ? await accountCurrency(ctx, owningAccount) : undefined;
     const entities = raw.map((entity) => mapEntity(entity, currency));
+    const cursorHint = paging.after ? ` — pass after: "${paging.after}"` : '';
     const notes = [
       owningAccount === accountId
         ? undefined
         : `These belong to ${owningAccount}, not the ${accountId} this call resolved — budgets ` +
           'are shown in ITS currency.',
       paging.hasMore
-        ? `TRUNCATED: ${entities.length} shown and more exist${
-            paging.after ? ` — pass after: "${paging.after}"` : ''
-          }.`
+        ? `TRUNCATED: ${entities.length} shown and more exist${cursorHint}.`
         : undefined,
       rateLimitNote(rateLimit),
     ].filter((note): note is string => note !== undefined);

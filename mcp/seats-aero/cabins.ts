@@ -1,8 +1,8 @@
 import {
   csv,
+  hasPublishedSeats,
   miles,
   num,
-  publishesSeats,
   seatsText,
   str,
   type Taxes,
@@ -127,12 +127,14 @@ function cardRates(wire: WireAvailability, prefix: string): CardRate[] {
 export function cabinOffer(wire: WireAvailability, cabin: Cabin): CabinOffer | undefined {
   const prefix = CABIN_PREFIX[cabin];
   const source = str(wire.Source);
-  const available = wire[`${prefix}Available`] === true;
-  const availableRaw = wire[`${prefix}AvailableRaw`] === true;
-  if (!available && !availableRaw) return undefined;
+  const isAvailable = wire[`${prefix}Available`] === true;
+  const isAvailableRaw = wire[`${prefix}AvailableRaw`] === true;
+  if (!isAvailable && !isAvailableRaw) return undefined;
 
-  const best = available ? offer(wire, prefix, { direct: false, raw: false }, source) : undefined;
-  const nonStop = available ? offer(wire, prefix, { direct: true, raw: false }, source) : undefined;
+  const best = isAvailable ? offer(wire, prefix, { direct: false, raw: false }, source) : undefined;
+  const nonStop = isAvailable
+    ? offer(wire, prefix, { direct: true, raw: false }, source)
+    : undefined;
   const rawBest = offer(wire, prefix, { direct: false, raw: true }, source);
   const rawNonStop = offer(wire, prefix, { direct: true, raw: true }, source);
 
@@ -142,22 +144,22 @@ export function cabinOffer(wire: WireAvailability, cabin: Cabin): CabinOffer | u
   // controls which rows are returned, not which fields they carry. So this block
   // legitimately appears on ordinary searches, and it is how a cabin that exists
   // only at dynamic pricing stops reading as "no availability".
-  const dynamicAdds =
+  const hasDynamicAdds =
     (rawBest !== undefined && rawBest.mileageCost !== best?.mileageCost) ||
     (rawNonStop !== undefined && rawNonStop.mileageCost !== nonStop?.mileageCost);
 
   // A cabin flagged available in neither view with nothing priced in either is
   // not a result; emitting it would render as an empty bullet.
-  if (best === undefined && !dynamicAdds) return undefined;
+  if (best === undefined && !hasDynamicAdds) return undefined;
 
   return {
     cabin,
     best,
     nonStop,
     bestIsNonStop: best !== undefined && best.mileageCost === nonStop?.mileageCost,
-    ...(dynamicAdds ? { dynamic: { best: rawBest, nonStop: rawNonStop } } : {}),
+    ...(hasDynamicAdds && { dynamic: { best: rawBest, nonStop: rawNonStop } }),
     cardRates: cardRates(wire, prefix),
-    seatsPublished: publishesSeats(source),
+    seatsPublished: hasPublishedSeats(source),
   };
 }
 
@@ -169,11 +171,11 @@ export function cabinOffers(wire: WireAvailability): CabinOffer[] {
 }
 
 /** `40,000 mi + $5.60 USD · 9 seats · UA`. */
-function offerText(item: Offer, seatsPublished: boolean, source: string | undefined): string {
+function offerText(item: Offer, arePublishedSeats: boolean, source: string | undefined): string {
   const carriers = item.airlines.length > 0 ? ` · ${item.airlines.join(', ')}` : '';
   return `${miles(item.mileageCost)} + ${taxesText(item.taxes, source)} · ${seatsText(
     item.remainingSeats,
-    seatsPublished,
+    arePublishedSeats,
   )}${carriers}`;
 }
 

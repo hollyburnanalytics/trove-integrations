@@ -228,9 +228,9 @@ export async function seatsJson<S extends z.ZodTypeAny>(
       headers: {
         accept: 'application/json',
         'Partner-Authorization': authorization(key),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(body !== undefined && { 'content-type': 'application/json' }),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body !== undefined && { body: JSON.stringify(body) }),
     });
   } catch {
     throw new ToolError(`Could not reach Seats.aero to ${what}; try again shortly.`, {

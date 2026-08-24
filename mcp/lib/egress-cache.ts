@@ -79,7 +79,7 @@ export function createResponseCache(options: CacheOptions | undefined): Response
       entries.set(key, { at: Date.now(), value });
       totalBytes += value.body.length;
 
-      const maxTotal = options.maxTotalBytes ?? Number.POSITIVE_INFINITY;
+      const maxTotal = options.maxTotalBytes ?? Infinity;
       while (entries.size > options.maxEntries || (totalBytes > maxTotal && entries.size > 1)) {
         const oldest = entries.keys().next().value;
         if (oldest === undefined) break;

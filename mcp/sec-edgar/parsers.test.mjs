@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeAccession, xmlBlocks, xmlFlag, xmlNumber, xmlValue } from './client.ts';
+import { hasXmlFlag, normalizeAccession, xmlBlocks, xmlNumber, xmlValue } from './client.ts';
 import { filingHtmlToText, findInText, pickPrimaryDocument } from './documents.ts';
 import { parseOwnershipXml, summarizeOpenMarket } from './ownership.ts';
 import { aggregateHoldings, parseCoverPage, parseInfoTable } from './thirteenf.ts';
@@ -32,8 +32,8 @@ describe('xml helpers', () => {
   });
 
   it('reads SEC boolean flags', () => {
-    expect(xmlFlag(xml, 'f')).toBe(true);
-    expect(xmlFlag(xml, 'missing')).toBe(false);
+    expect(hasXmlFlag(xml, 'f')).toBe(true);
+    expect(hasXmlFlag(xml, 'missing')).toBe(false);
   });
 });
 

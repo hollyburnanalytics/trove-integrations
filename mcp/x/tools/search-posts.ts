@@ -108,10 +108,9 @@ export const searchPosts = tool({
         structured: { query, count: 0, tweets: [], next_token: nextToken, note },
       };
     }
+    const lines = tweets.map((t) => `${t.author ?? '?'}:${tweetLine(t)}`).join('\n');
     return {
-      text:
-        `${tweets.length} recent post(s) for "${query}":\n` +
-        `${tweets.map((t) => `${t.author ?? '?'}:${tweetLine(t)}`).join('\n')}\n${note}`,
+      text: `${tweets.length} recent post(s) for "${query}":\n${lines}\n${note}`,
       structured: {
         query,
         count: tweets.length,

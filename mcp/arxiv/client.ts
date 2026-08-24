@@ -31,7 +31,7 @@ const USER_AGENT = `Trove MCP (${CONTACT_EMAIL})`;
 const arxiv = createEgressClient({
   service: 'arXiv',
   headers: { 'user-agent': USER_AGENT },
-  throttleMs: 3_000,
+  throttleMs: 3000,
   backoffBaseMs: 50,
   // arXiv signals "you are going too fast" with **503**, not 429 — it is the
   // documented response on the export API. Left out of this list, a 503 was
@@ -42,7 +42,7 @@ const arxiv = createEgressClient({
   // accepts the connection and never answers (see the User-Agent note above) —
   // and an un-deadlined fetch turns that into a hang, then an opaque "tool timed
   // out or crashed", then a session where every retry hangs the same way.
-  timeoutMs: 8_000,
+  timeoutMs: 8000,
   // And a budget for the WHOLE call, retries and throttle waits included. Three
   // attempts of ten seconds behind a three-second throttle is the better part of a
   // minute — every step inside its own reasonable limit, and the caller long gone.

@@ -83,7 +83,7 @@ function toEntry(feed: Record<string, unknown>): DirectoryEntry | undefined {
  * @returns Usable entries.
  */
 async function fetchEntries(context: DirectoryContext, url: URL): Promise<DirectoryEntry[]> {
-  const response = await context.fetch(url.toString());
+  const response = await context.fetch(url.href);
   if (!response.ok) {
     throw new Error(`Podcast Index returned ${String(response.status)} for ${url.pathname}`);
   }

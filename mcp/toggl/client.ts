@@ -16,8 +16,9 @@ import { ToolError } from '@ontrove/extend/toolkit';
 const TOGGL = 'https://api.track.toggl.com/api/v9';
 
 /** Toggl Basic-auth header: `base64("<token>:api_token")`. */
-function authHeader(token: string): string {
-  return `Basic ${btoa(`${token}:api_token`)}`;
+export function authHeader(token: string): string {
+  const credentials = btoa(`${token}:api_token`);
+  return `Basic ${credentials}`;
 }
 
 /** `Retry-After` in seconds, when Toggl sends one (it may be absent on 429). */
@@ -133,7 +134,7 @@ export function fmtDuration(totalSeconds: number): string {
 /** Mask an email for display: `matt@example.com` → `m***t@example.com`. */
 export function maskEmail(email: string | undefined): string | undefined {
   if (!email) return undefined;
-  const [user, domain] = email.split('@');
+  const [user, domain] = email.split('@', 2);
   if (!user || !domain) return '***';
   const masked = user.length <= 2 ? '*'.repeat(user.length) : `${user[0]}***${user.slice(-1)}`;
   return `${masked}@${domain}`;
@@ -195,10 +196,12 @@ export function dateRangeFor(
   const today = Date.UTC(y, m - 1, d);
 
   switch (period) {
-    case 'today':
+    case 'today': {
       return { start: iso(today), end: iso(today + DAY) };
-    case 'yesterday':
+    }
+    case 'yesterday': {
       return { start: iso(today - DAY), end: iso(today) };
+    }
     case 'week':
     case 'lastWeek': {
       // getUTCDay: 0=Sunday. Shift so Monday starts the week.
@@ -207,10 +210,12 @@ export function dateRangeFor(
       const monday = today - sinceMonday * DAY - (period === 'lastWeek' ? 7 * DAY : 0);
       return { start: iso(monday), end: iso(monday + 7 * DAY) };
     }
-    case 'month':
+    case 'month': {
       return { start: iso(Date.UTC(y, m - 1, 1)), end: iso(Date.UTC(y, m, 1)) };
-    case 'lastMonth':
+    }
+    case 'lastMonth': {
       return { start: iso(Date.UTC(y, m - 2, 1)), end: iso(Date.UTC(y, m - 1, 1)) };
+    }
   }
 }
 
@@ -252,7 +257,8 @@ async function collectPerWorkspace<T>(
       ctx,
       token,
     )) as T[] | undefined;
-    for (const item of list ?? []) add(item);
+    const items = list ?? [];
+    for (const item of items) add(item);
   }
 }
 
@@ -274,7 +280,8 @@ async function fetchLookups(
   const all = (await togglJson('/workspaces', 'list workspaces', ctx, token)) as
     | TogglWorkspace[]
     | undefined;
-  for (const w of all ?? []) lookups.workspaces.set(w.id, w.name);
+  const workspaces = all ?? [];
+  for (const w of workspaces) lookups.workspaces.set(w.id, w.name);
 
   if (entries.some((e) => e.project_id)) {
     await collectPerWorkspace<TogglProject>(ids, 'projects', ctx, token, (p) =>

@@ -39,7 +39,7 @@ export function isoDate(epochSeconds: number | null | undefined): string | null 
   // rendering that as 1970-01-01 would be a confidently wrong publication date.
   if (epochSeconds <= 0) return null;
   const date = new Date(epochSeconds * 1000);
-  return Number.isNaN(date.getTime()) ? null : (date.toISOString().split('T')[0] ?? null);
+  return Number.isNaN(date.getTime()) ? null : (date.toISOString().split('T', 1)[0] ?? null);
 }
 
 /** Render a duration in seconds as `1h 23m` / `9m 05s`, or null. */
@@ -143,15 +143,15 @@ export const podcastSchema = z.object({
 
 export type Podcast = z.infer<typeof podcastSchema>;
 
-/** Map a wire series to the output shape. `full` widens the description cap. */
-export function mapPodcast(series: PodcastSeriesWire, full = false): Podcast {
+/** Map a wire series to the output shape. `isFull` widens the description cap. */
+export function mapPodcast(series: PodcastSeriesWire, isFull = false): Podcast {
   return {
     uuid: orNull(series.uuid),
     name: series.name ?? '(untitled podcast)',
     author: orNull(series.authorName),
     description: trimTo(
       series.description,
-      full ? FULL_DESCRIPTION_CHARS : BRIEF_DESCRIPTION_CHARS,
+      isFull ? FULL_DESCRIPTION_CHARS : BRIEF_DESCRIPTION_CHARS,
     ),
     genres: definedStrings(series.genres).map((genre) => formatGenre(genre)),
     language: orNull(series.language),
@@ -222,8 +222,8 @@ export const episodeSchema = z.object({
 
 export type Episode = z.infer<typeof episodeSchema>;
 
-/** Map a wire episode to the output shape. `full` widens the description cap. */
-export function mapEpisode(episode: PodcastEpisodeWire, full = false): Episode {
+/** Map a wire episode to the output shape. `isFull` widens the description cap. */
+export function mapEpisode(episode: PodcastEpisodeWire, isFull = false): Episode {
   const series = episode.podcastSeries;
   return {
     uuid: orNull(episode.uuid),
@@ -231,7 +231,7 @@ export function mapEpisode(episode: PodcastEpisodeWire, full = false): Episode {
     subtitle: trimTo(episode.subtitle, BRIEF_DESCRIPTION_CHARS),
     description: trimTo(
       episode.description,
-      full ? FULL_DESCRIPTION_CHARS : BRIEF_DESCRIPTION_CHARS,
+      isFull ? FULL_DESCRIPTION_CHARS : BRIEF_DESCRIPTION_CHARS,
     ),
     datePublished: isoDate(episode.datePublished),
     duration: humanDuration(episode.duration),

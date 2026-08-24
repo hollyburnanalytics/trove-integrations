@@ -35,13 +35,14 @@ async function getJson(url: string, ctx: ToolContext): Promise<Record<string, un
       } catch {
         upstream = body.slice(0, 120);
       }
+      const detail = upstream ? `: ${upstream}` : '';
       if (res.status === 401 || res.status === 403) {
         return new ToolError(
-          `Mapbox rejected the request (${res.status})${upstream ? `: ${upstream}` : ''} — check MAPBOX_TOKEN.`,
+          `Mapbox rejected the request (${res.status})${detail} — check MAPBOX_TOKEN.`,
           { retryable: false },
         );
       }
-      return new ToolError(`Mapbox API error ${res.status}${upstream ? `: ${upstream}` : ''}.`, {
+      return new ToolError(`Mapbox API error ${res.status}${detail}.`, {
         retryable: res.status === 429 || res.status >= 500,
       });
     },
@@ -91,7 +92,7 @@ export default defineToolkit({
         const { lng, lat, contours_minutes, profile } = args;
         const token = await ctx.requireSecret('MAPBOX_TOKEN');
         const params = new URLSearchParams({
-          contours_minutes: [...contours_minutes].sort((a, b) => a - b).join(','),
+          contours_minutes: contours_minutes.toSorted((a, b) => a - b).join(','),
           polygons: 'true',
           denoise: '1',
           generalize: '25',
@@ -252,8 +253,8 @@ export default defineToolkit({
               : [];
           });
         }
-        const mins = duration !== null ? (duration / 60).toFixed(1) : '?';
-        const km = distance !== null ? (distance / 1000).toFixed(2) : '?';
+        const mins = duration === null ? '?' : (duration / 60).toFixed(1);
+        const km = distance === null ? '?' : (distance / 1000).toFixed(2);
         const structured: {
           found: boolean;
           duration_seconds: number | null;
@@ -262,8 +263,9 @@ export default defineToolkit({
           steps?: string[];
         } = { found: true, duration_seconds: duration, distance_meters: distance, geometry };
         if (stepNames) structured.steps = stepNames;
+        const via = stepNames ? ` via ${stepNames.slice(0, 8).join(' → ')}` : '';
         return {
-          text: `${profile} route: ${mins} min, ${km} km${stepNames ? ` via ${stepNames.slice(0, 8).join(' → ')}` : ''}.`,
+          text: `${profile} route: ${mins} min, ${km} km${via}.`,
           structured,
         };
       },

@@ -68,22 +68,21 @@ function parseCompanyProfile(body: Record<string, unknown>, resolved: Company): 
 function formatCompanyProfile(p: CompanyProfile): string {
   const stateCode = p.stateOfIncorporation;
   const stateLabel = p.stateOfIncorporationLabel;
+  const bracketedCode = stateLabel ? ` (${stateCode})` : '';
+  // A ticker carries its exchange when EDGAR knows one; the two arrays are
+  // parallel, so index rather than zip.
+  const listings = p.tickers.map((t, i) => (p.exchanges[i] ? `${t} (${p.exchanges[i]})` : t));
+  const formerNames = p.formerNames.map((f) => `${f.name} (${f.from} → ${f.to})`);
   const parts = [
     `${p.company} (CIK ${p.cik})`,
-    p.tickers.length > 0
-      ? `Listed: ${p.tickers.map((t, i) => `${t}${p.exchanges[i] ? ` (${p.exchanges[i]})` : ''}`).join(', ')}`
-      : 'No listed tickers',
+    p.tickers.length > 0 ? `Listed: ${listings.join(', ')}` : 'No listed tickers',
     p.sicDescription ? `Industry: ${p.sicDescription} (SIC ${p.sic})` : null,
     p.entityType ? `Entity type: ${p.entityType}` : null,
     p.category ? `Filer category: ${p.category}` : null,
-    stateCode
-      ? `Incorporated: ${stateLabel ?? stateCode}${stateLabel ? ` (${stateCode})` : ''}`
-      : null,
+    stateCode ? `Incorporated: ${stateLabel ?? stateCode}${bracketedCode}` : null,
     p.fiscalYearEnd ? `Fiscal year ends: ${p.fiscalYearEnd}` : null,
     p.website ? `Website: ${p.website}` : null,
-    p.formerNames.length > 0
-      ? `Former names: ${p.formerNames.map((f) => `${f.name} (${f.from} → ${f.to})`).join('; ')}`
-      : null,
+    p.formerNames.length > 0 ? `Former names: ${formerNames.join('; ')}` : null,
   ].filter((part): part is string => part !== null);
   return parts.join('\n');
 }

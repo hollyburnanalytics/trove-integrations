@@ -64,10 +64,9 @@ export const getEntityHistoryTool = tool({
     const lines = credentials
       .map((c) => {
         const name = c.names.map((n) => n.text).join(', ');
-        return (
-          `  ${c.effectiveDate?.slice(0, 10) ?? '?'} ${c.type ?? 'Credential'}` +
-          `${name ? ` — ${name}` : ''}${c.revoked ? ' (superseded)' : ''}`
-        );
+        const named = name ? ` — ${name}` : '';
+        const superseded = c.revoked ? ' (superseded)' : '';
+        return `  ${c.effectiveDate?.slice(0, 10) ?? '?'} ${c.type ?? 'Credential'}${named}${superseded}`;
       })
       .join('\n');
     return {

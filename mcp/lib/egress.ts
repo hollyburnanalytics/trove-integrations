@@ -190,7 +190,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * to stay well inside an MCP client's patience: better a clear "try again in 12s"
  * now than an opaque timeout in a minute.
  */
-const DEFAULT_MAX_QUEUE_MS = 8_000;
+const DEFAULT_MAX_QUEUE_MS = 8000;
 
 /**
  * The default budget for a whole call, retries included. Comfortably inside an MCP
@@ -212,7 +212,7 @@ const DEFAULT_OVERALL_TIMEOUT_MS = 20_000;
  * A deployed toolkit has neither `Bun` nor `process`, so production is
  * unaffected either way: it throttles, which is the point.
  */
-const inTestRuntime = Boolean(
+const isInTestRuntime = Boolean(
   (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.VITEST,
 );
 
@@ -261,6 +261,51 @@ export interface EgressClient {
   fetch(ctx: ToolContext, url: string, options?: EgressRequestOptions): Promise<FetchResult>;
 }
 
+/**
+ * The method, headers and body for one attempt.
+ *
+ * Only a POST carries a body — passing one on a GET is a `fetch` TypeError,
+ * not a no-op — and only a POST needs a `content-type`.
+ */
+function requestInit(
+  requestHeaders: Record<string, string>,
+  request: EgressRequestOptions,
+): { method: string; headers: Record<string, string>; body?: string } {
+  const method = request.method ?? 'GET';
+  if (method !== 'POST') return { method, headers: requestHeaders };
+  return {
+    method,
+    headers: {
+      ...requestHeaders,
+      'content-type': request.contentType ?? 'application/json',
+    },
+    body: request.body ?? '',
+  };
+}
+
+/**
+ * The cache key for a request. It includes the METHOD: a HEAD stores an empty
+ * body, and cached under the bare URL it would be served to a later GET of the
+ * same URL as a 200 with no content — leaving the caller to conclude the page
+ * was blank.
+ *
+ * For a POST it also includes the REQUEST BODY, because the URL alone does not
+ * identify the request: a GraphQL endpoint is one URL serving every query, so
+ * keying on the URL would make the first response the answer to all of them.
+ *
+ * The body goes in verbatim rather than hashed. A hash would be shorter, but a
+ * collision serves one query's data as another's — a silent wrong answer, and
+ * the one failure mode a cache must never have. Keys are bounded by
+ * `maxEntries` anyway, so verbatim costs a few KB per isolate.
+ */
+function cacheKey(url: string, request: EgressRequestOptions): string {
+  const salt = request.cacheKeySalt ? `${request.cacheKeySalt} ` : '';
+  const method = request.method ?? 'GET';
+  if (method === 'GET') return `${salt}${url}`;
+  if (method === 'POST') return `${salt}POST ${url}\n${request.body ?? ''}`;
+  return `${salt}${method} ${url}`;
+}
+
 /** Build an {@link EgressClient}. Call once at module scope per server. */
 export function createEgressClient(options: EgressClientOptions): EgressClient {
   const {
@@ -274,7 +319,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     overallTimeoutMs = DEFAULT_OVERALL_TIMEOUT_MS,
     cache: cacheOptions,
   } = options;
-  const throttleMs = inTestRuntime && !options.forceThrottleInTests ? 0 : options.throttleMs;
+  const throttleMs = isInTestRuntime && !options.forceThrottleInTests ? 0 : options.throttleMs;
   const limitStatuses = new Set([429, ...rateLimitStatuses]);
   // A status cannot both be retried as a rate limit and handed back with its
   // body; the rate-limit reading wins, so a host that signals limits with 403
@@ -321,7 +366,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
 
   /** Deterministic exponential backoff. */
   function backoffMs(attempt: number): number {
-    return Math.min(2_000, backoffBaseMs * 2 ** (attempt - 1));
+    return Math.min(2000, backoffBaseMs * 2 ** (attempt - 1));
   }
 
   /** Rate-limit branch: retry (honoring Retry-After) until the final attempt, then throw. */
@@ -356,7 +401,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
   async function classifyResponse(
     res: Response,
     isLastAttempt: boolean,
-    headOnly = false,
+    isHeadOnly = false,
   ): Promise<ResponseDecision> {
     if (limitStatuses.has(res.status)) return handleRateLimit(res, isLastAttempt);
     if (res.status >= 500) return handleServerError(isLastAttempt);
@@ -377,7 +422,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     return {
       result: {
         status: res.status,
-        body: headOnly ? '' : await res.text(),
+        body: isHeadOnly ? '' : await res.text(),
         url: res.url,
         redirected: res.redirected,
       },
@@ -399,35 +444,13 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
    */
   function fetchFailure(error: unknown, deadlineMs: number): never {
     if (error instanceof ToolError) throw error;
-    const timedOut = error instanceof Error && error.name === 'TimeoutError';
+    const isTimedOut = error instanceof Error && error.name === 'TimeoutError';
     throw new ToolError(
-      timedOut
+      isTimedOut
         ? `${service} did not respond within ${String(Math.round(deadlineMs / 1000))}s. It may be rate-limiting this request; wait a few seconds and try again.`
         : `Could not reach ${service} (network error). Try again shortly.`,
       { retryable: true },
     );
-  }
-
-  /**
-   * The method, headers and body for one attempt.
-   *
-   * Only a POST carries a body — passing one on a GET is a `fetch` TypeError,
-   * not a no-op — and only a POST needs a `content-type`.
-   */
-  function requestInit(
-    requestHeaders: Record<string, string>,
-    request: EgressRequestOptions,
-  ): { method: string; headers: Record<string, string>; body?: string } {
-    const method = request.method ?? 'GET';
-    if (method !== 'POST') return { method, headers: requestHeaders };
-    return {
-      method,
-      headers: {
-        ...requestHeaders,
-        'content-type': request.contentType ?? 'application/json',
-      },
-      body: request.body ?? '',
-    };
   }
 
   async function attemptFetch(
@@ -463,36 +486,13 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
   function servedFromCache(
     ctx: ToolContext,
     url: string,
-    cacheable: boolean,
+    isCacheable: boolean,
   ): FetchResult | undefined {
-    if (!cacheable) return undefined;
+    if (!isCacheable) return undefined;
     const cached = cache.get(url);
     if (!cached) return undefined;
     ctx.log(`${service} cache hit`, { url });
     return cached;
-  }
-
-  /**
-   * The cache key for a request. It includes the METHOD: a HEAD stores an empty
-   * body, and cached under the bare URL it would be served to a later GET of the
-   * same URL as a 200 with no content — leaving the caller to conclude the page
-   * was blank.
-   *
-   * For a POST it also includes the REQUEST BODY, because the URL alone does not
-   * identify the request: a GraphQL endpoint is one URL serving every query, so
-   * keying on the URL would make the first response the answer to all of them.
-   *
-   * The body goes in verbatim rather than hashed. A hash would be shorter, but a
-   * collision serves one query's data as another's — a silent wrong answer, and
-   * the one failure mode a cache must never have. Keys are bounded by
-   * `maxEntries` anyway, so verbatim costs a few KB per isolate.
-   */
-  function cacheKey(url: string, request: EgressRequestOptions): string {
-    const salt = request.cacheKeySalt ? `${request.cacheKeySalt} ` : '';
-    const method = request.method ?? 'GET';
-    if (method === 'GET') return `${salt}${url}`;
-    if (method === 'POST') return `${salt}POST ${url}\n${request.body ?? ''}`;
-    return `${salt}${method} ${url}`;
   }
 
   /**
@@ -539,14 +539,14 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     requestOptions: EgressRequestOptions = {},
   ): Promise<FetchResult> {
     // A POST is a write until its caller says otherwise; see `cacheable`.
-    const cacheable = requestOptions.cacheable ?? requestOptions.method !== 'POST';
+    const isCacheable = requestOptions.cacheable ?? requestOptions.method !== 'POST';
     const key = cacheKey(url, requestOptions);
-    const cached = servedFromCache(ctx, key, cacheable);
+    const cached = servedFromCache(ctx, key, isCacheable);
     if (cached) return cached;
 
     const requestHeaders = {
       ...headers,
-      ...(requestOptions.accept ? { accept: requestOptions.accept } : {}),
+      ...(requestOptions.accept && { accept: requestOptions.accept }),
       ...requestOptions.headers,
     };
 
@@ -554,7 +554,7 @@ export function createEgressClient(options: EgressClientOptions): EgressClient {
     const result = await attemptUntilBudgetSpent(ctx, url, requestHeaders, requestOptions, budget);
 
     const retain = requestOptions.retainIf?.(result) ?? true;
-    if (cacheable && result.status === 200 && retain) cache.set(key, result);
+    if (isCacheable && retain && result.status === 200) cache.set(key, result);
     return result;
   }
 

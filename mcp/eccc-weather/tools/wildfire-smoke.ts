@@ -66,10 +66,11 @@ export const wildfireSmoke: ToolDefinition = {
         },
       };
     }
+    const band = point.band ? ` (${point.band})` : '';
     return {
       text:
         `Wildfire smoke at ${latitude},${longitude}: ${point.value ?? '?'} µg/m³ surface PM2.5` +
-        `${point.band ? ` (${point.band})` : ''}, ${MODEL}.\n\n${ATTRIBUTION}`,
+        `${band}, ${MODEL}.\n\n${ATTRIBUTION}`,
       structured: {
         latitude,
         longitude,

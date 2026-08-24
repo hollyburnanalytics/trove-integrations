@@ -73,10 +73,11 @@ export const geocodePlaceTool = tool({
       };
     }
     const lines = places
-      .map(
-        (p) =>
-          `  ${p.name}${p.admin1 ? `, ${p.admin1}` : ''}${p.country ? `, ${p.country}` : ''} → ${p.latitude},${p.longitude}`,
-      )
+      .map((p) => {
+        const region = p.admin1 ? `, ${p.admin1}` : '';
+        const country = p.country ? `, ${p.country}` : '';
+        return `  ${p.name}${region}${country} → ${p.latitude},${p.longitude}`;
+      })
       .join('\n');
     return {
       text: `${places.length} match(es) for "${name}":\n${lines}`,

@@ -52,7 +52,7 @@ export function renderData(data: ChartData): string {
     // and getting that wrong attaches the wrong unit to a real number.
     const header = [
       data.timeUnit === 'day' ? 'day' : 'year',
-      ...data.columns.map((c) => `${c.title}${c.unit ? ` [${c.unit}]` : ''}`),
+      ...data.columns.map((c) => withUnit(c.title, c.unit)),
     ];
     // Pipe-separated: entity names and indicator titles both contain commas.
     lines.push('', `entity | ${header.join(' | ')}`);
@@ -75,9 +75,21 @@ export function renderData(data: ChartData): string {
   // providers be credited, and citationLong is the string that names them all.
   if (data.attribution) lines.push('', `Source: ${clip(data.attribution, 1200)}`);
   else if (data.citation) lines.push('', `Source: ${data.citation} — via Our World in Data`);
-  lines.push(`Chart: ${data.url}`);
-  lines.push(`Full dataset (all entities and years, CSV): ${data.downloads.csv}`);
+  lines.push(
+    `Chart: ${data.url}`,
+    `Full dataset (all entities and years, CSV): ${data.downloads.csv}`,
+  );
   return lines.join('\n');
+}
+
+/** `title [unit]` — the column-heading spelling, unit omitted when absent. */
+function withUnit(title: string, unit: string | null | undefined): string {
+  return unit ? `${title} [${unit}]` : title;
+}
+
+/** `title — unit` — the heading spelling, unit omitted when absent. */
+function dashUnit(title: string, unit: string | null | undefined): string {
+  return unit ? `${title} — ${unit}` : title;
 }
 
 /**
@@ -87,7 +99,7 @@ export function renderData(data: ChartData): string {
  * unit stated once in the heading rather than repeated per row.
  */
 export function renderIndicator(result: IndicatorResult): string {
-  const lines: string[] = [`${result.title}${result.unit ? ` — ${result.unit}` : ''}`];
+  const lines: string[] = [dashUnit(result.title, result.unit)];
   if (result.description) lines.push(clip(result.description, 300));
   const facts = [
     `indicator #${String(result.indicatorId)}`,
@@ -103,9 +115,8 @@ export function renderIndicator(result: IndicatorResult): string {
   if (result.attribution) lines.push('', `Source: ${clip(result.attribution, 600)}`);
   else if (result.citation) lines.push('', `Source: ${result.citation}`);
   if (result.parquetUrl) {
-    lines.push(
-      `Whole series as Parquet (DuckDB reads it in place): ${result.parquetUrl}${result.parquetColumn ? ` · column ${result.parquetColumn}` : ''}`,
-    );
+    const column = result.parquetColumn ? ` · column ${result.parquetColumn}` : '';
+    lines.push(`Whole series as Parquet (DuckDB reads it in place): ${result.parquetUrl}${column}`);
   }
   return lines.join('\n');
 }
@@ -113,7 +124,7 @@ export function renderIndicator(result: IndicatorResult): string {
 /** The observation table for one indicator, or a plain statement that there is none. */
 function indicatorTable(result: IndicatorResult): string[] {
   if (result.rows.length === 0) return ['', 'No observations returned.'];
-  const lines = ['', `entity | year | value${result.unit ? ` [${result.unit}]` : ''}`];
+  const lines = ['', `entity | year | ${withUnit('value', result.unit)}`];
   for (const row of result.rows.slice(0, MAX_TEXT_ROWS)) {
     lines.push(`  ${row.entity} | ${row.time} | ${cell(row.value)}`);
   }
@@ -122,16 +133,17 @@ function indicatorTable(result: IndicatorResult): string[] {
       `  … ${String(result.rows.length - MAX_TEXT_ROWS)} more — all ${String(result.rows.length)} are in this tool's structured output.`,
     );
   }
+  const outOf = result.truncated ? ` of ${String(result.totalRows)}` : '';
   lines.push(
     '',
-    `${String(result.rows.length)}${result.truncated ? ` of ${String(result.totalRows)}` : ''} observation(s) across ${String(result.entities.length)} entities.`,
+    `${String(result.rows.length)}${outOf} observation(s) across ${String(result.entities.length)} entities.`,
   );
   return lines;
 }
 
 /** One indicator's block: what it measures, in what units, over what period. */
 function renderColumn(column: MetadataView['columns'][number]): string[] {
-  const lines = [`• ${column.title}${column.unit ? ` — ${column.unit}` : ''}`];
+  const lines = [`• ${dashUnit(column.title, column.unit)}`];
   if (column.description) lines.push(`    ${clip(column.description, 300)}`);
   const facts = [
     column.timespan ? `covers ${column.timespan}` : '',
@@ -191,8 +203,7 @@ function renderDownloads(view: MetadataView): string[] {
     lines.push(`  Parquet (DuckDB-queryable in place): ${url}`);
     if (columns.length > 0) lines.push(`    columns: ${columns.join(', ')}`);
   }
-  lines.push(`  CSV + metadata + README, zipped: ${view.downloads.zip}`);
-  lines.push(`  Chart: ${view.url}`);
+  lines.push(`  CSV + metadata + README, zipped: ${view.downloads.zip}`, `  Chart: ${view.url}`);
   return lines;
 }
 

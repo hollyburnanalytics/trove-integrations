@@ -78,7 +78,7 @@ export function keywordsOnly(text: string): string {
 }
 
 /** Does this hit satisfy the caller's seasonal-adjustment / frequency filters? */
-function matchesFilters(s: SeriesMeta, args: SearchArgs): boolean {
+function isMatchingFilters(s: SeriesMeta, args: SearchArgs): boolean {
   if (args.seasonalAdjustment) {
     const code = s.seasonalAdjustment?.toUpperCase() ?? '';
     // A seasonally-adjusted annual rate is still seasonally adjusted; FRED's own
@@ -112,7 +112,7 @@ async function searchOnce(text: string, args: SearchArgs, ctx: ToolContext): Pro
   const raw = Array.isArray(body.seriess) ? body.seriess : [];
   const all = raw.map((s) => mapSeries(s));
   return {
-    hits: all.filter((s) => matchesFilters(s, args)).slice(0, args.limit),
+    hits: all.filter((s) => isMatchingFilters(s, args)).slice(0, args.limit),
     scanned: all.length,
     textMatches: typeof body.count === 'number' ? body.count : all.length,
   };
@@ -133,7 +133,8 @@ function renderHit(s: SeriesMeta): string {
   const facts = [s.units, s.frequency, seasonalPhrase(s.seasonalAdjustment)].filter(Boolean);
   const coverage =
     s.observationStart && s.observationEnd ? ` [${s.observationStart}→${s.observationEnd}]` : '';
-  return `  ${s.id} — ${s.title ?? ''}${facts.length > 0 ? ` (${facts.join(', ')})` : ''}${coverage}`;
+  const about = facts.length > 0 ? ` (${facts.join(', ')})` : '';
+  return `  ${s.id} — ${s.title ?? ''}${about}${coverage}`;
 }
 
 /** The advice attached to a search that matched nothing on the TEXT. */
@@ -180,7 +181,7 @@ export async function runSearch(args: SearchArgs, ctx: ToolContext) {
       page = await searchOnce(stripped, args, ctx);
     }
   }
-  const filtering = isFiltering(args);
+  const areFiltersActive = isFiltering(args);
   const base = {
     text: args.text,
     orderBy: args.orderBy,
@@ -189,24 +190,23 @@ export async function runSearch(args: SearchArgs, ctx: ToolContext) {
     retriedAs: retried,
     textMatches: page.textMatches,
     scanned: page.scanned,
-    filtered: filtering,
+    filtered: areFiltersActive,
   };
   if (page.hits.length === 0) {
-    const emptied = filtering && page.scanned > 0;
+    const isEmptied = areFiltersActive && page.scanned > 0;
     return {
-      text: emptied ? filteredOutText(args, page) : noMatchText(args.text, retried),
-      structured: { ...base, count: 0, totalMatches: filtering ? null : 0, series: [] },
+      text: isEmptied ? filteredOutText(args, page) : noMatchText(args.text, retried),
+      structured: { ...base, count: 0, totalMatches: areFiltersActive ? null : 0, series: [] },
     };
   }
   const via = retried ? ` (matched on "${retried}")` : '';
   // With a filter active, FRED's text-match total is NOT the size of the
   // filtered set — that number is unknown, so it is never used as a
   // denominator. Say what was actually scanned instead.
-  const scope = filtering
+  const ofMatches = page.textMatches > page.hits.length ? ` of ${page.textMatches} matches` : '';
+  const scope = areFiltersActive
     ? ` (filtered from ${page.scanned} scanned of ${page.textMatches} text matches)`
-    : page.textMatches > page.hits.length
-      ? ` of ${page.textMatches} matches`
-      : '';
+    : ofMatches;
   const header = `${page.hits.length}${scope} FRED series for "${args.text}"${via}, by ${args.orderBy}:`;
   return {
     text: `${header}\n${page.hits.map((s) => renderHit(s)).join('\n')}`,
@@ -215,7 +215,7 @@ export async function runSearch(args: SearchArgs, ctx: ToolContext) {
       count: page.hits.length,
       // Null when filtering: the filtered total genuinely isn't knowable from
       // one page, and guessing it is what `count` does wrong upstream.
-      totalMatches: filtering ? null : page.textMatches,
+      totalMatches: areFiltersActive ? null : page.textMatches,
       series: page.hits,
     },
   };

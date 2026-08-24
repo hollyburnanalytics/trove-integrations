@@ -226,11 +226,11 @@ export default defineToolkit({
           .filter((m) => m.code === 'not_found')
           .map((m) => (typeof m.content === 'string' ? m.content : 'unknown id'));
         const structured = { count: products.length, notFound, products };
+        const missing = notFound.length > 0 ? `\nNot found: ${notFound.join(', ')}` : '';
         const text =
           products.length === 0
             ? 'No products found for the given ids.'
-            : products.map(formatProduct).join('\n') +
-              (notFound.length > 0 ? `\nNot found: ${notFound.join(', ')}` : '');
+            : products.map(formatProduct).join('\n') + missing;
         return { structured, text };
       },
     }),
@@ -287,8 +287,9 @@ export default defineToolkit({
           options: options.map((o) => (o ?? {}) as Record<string, unknown>),
           variants: variants.map((v) => (v ?? {}) as Record<string, unknown>),
         };
+        const variants2 = variantLines ? `\n${variantLines}` : '';
         const text = summary
-          ? `${formatProduct(summary)}${variantLines ? `\n${variantLines}` : ''}`
+          ? `${formatProduct(summary)}${variants2}`
           : `No product found for "${args.id}".`;
         return { structured, text };
       },

@@ -29,7 +29,8 @@ async function fetchDescription(cid: number, ctx: ToolContext): Promise<string |
       notFound: 'No PubChem record matched.',
     });
     const info = ((body.InformationList ?? {}) as { Information?: unknown }).Information;
-    for (const entry of Array.isArray(info) ? info : []) {
+    const information = Array.isArray(info) ? info : [];
+    for (const entry of information) {
       const description = str((entry as { Description?: unknown }).Description);
       if (description) return description;
     }
@@ -102,11 +103,11 @@ export default defineToolkit({
           description: await fetchDescription(cid, ctx),
           url: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`,
         };
+        const description = compound.description ? `\n  ${compound.description}` : '';
         const text =
           `${name} (CID ${cid})\n` +
           `  Formula: ${compound.formula ?? '?'} · MW: ${compound.weight ?? '?'}\n` +
-          `  IUPAC: ${compound.iupacName ?? '?'}` +
-          `${compound.description ? `\n  ${compound.description}` : ''}`;
+          `  IUPAC: ${compound.iupacName ?? '?'}${description}`;
         return { text, structured: compound };
       },
     }),
@@ -140,8 +141,9 @@ export default defineToolkit({
             structured: { query, count: 0, names: [] },
           };
         }
+        const lines = names.map((n) => `  ${n}`).join('\n');
         return {
-          text: `${names.length} suggestion(s) for "${query}":\n${names.map((n) => `  ${n}`).join('\n')}`,
+          text: `${names.length} suggestion(s) for "${query}":\n${lines}`,
           structured: { query, count: names.length, names },
         };
       },

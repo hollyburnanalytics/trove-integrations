@@ -98,12 +98,14 @@ export const getApInvoices = tool({
     }
     const lines = invoices
       .slice(0, 15)
-      .map(
-        (i) =>
+      .map((i) => {
+        const job = i.jobNumber ? ` · job ${i.jobNumber}` : '';
+        const due = i.dueDate ? ` · due ${i.dueDate.slice(0, 10)}` : '';
+        return (
           `  ${i.invoiceNumber ?? '?'} · ${i.vendorName ?? '?'} — ${fmt(i.invoiceTotal)} ` +
-          `[${i.invoiceStatus ?? '?'}]${i.jobNumber ? ` · job ${i.jobNumber}` : ''}` +
-          `${i.dueDate ? ` · due ${i.dueDate.slice(0, 10)}` : ''}`,
-      )
+          `[${i.invoiceStatus ?? '?'}]${job}${due}`
+        );
+      })
       .join('\n');
     return {
       text:

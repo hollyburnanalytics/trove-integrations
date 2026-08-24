@@ -114,7 +114,7 @@ export function aggregateHoldings(holdings: Holding[]): Holding[] {
     if (existing) mergeHolding(existing, h);
     else byKey.set(key, { ...h });
   }
-  return [...byKey.values()].sort((a, b) => b.value - a.value);
+  return [...byKey.values()].toSorted((a, b) => b.value - a.value);
 }
 
 export interface CoverPage {

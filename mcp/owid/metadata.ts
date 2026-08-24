@@ -89,7 +89,8 @@ export function columnCitations(
   pick: (column: ChartColumn) => string | null | undefined,
 ): string[] {
   const byShortName = new Map<string, ChartColumn>();
-  for (const column of Object.values(metadata?.columns ?? {})) {
+  const declared = Object.values(metadata?.columns ?? {});
+  for (const column of declared) {
     if (typeof column.shortName === 'string') byShortName.set(column.shortName, column);
   }
   const seen = new Set<string>();
@@ -153,8 +154,8 @@ export async function collectMetadata(
   const longCitations = columnCitations(bare, metadata, (c) => c.citationLong);
 
   const notes: string[] = [];
-  const partial = covered < ids.length;
-  if (partial) {
+  const isPartial = covered < ids.length;
+  if (isPartial) {
     // The redistribution verdict is only as complete as the provenance behind
     // it. Reporting `nonRedistributable: false` after reading 6 of 8
     // indicators states a licence fact that was never checked for the other 2.
@@ -206,7 +207,7 @@ async function collectSources(
   const sources: Source[] = [];
   const seen = new Set<string>();
   const tables = new Map<number, { parquet: string; column: string | null }>();
-  let nonRedistributable = false;
+  let isNonRedistributable = false;
   let resolved = 0;
 
   // A wall-clock ceiling for the WHOLE loop. Each request is individually
@@ -219,17 +220,17 @@ async function collectSources(
     const indicator = await fetchIndicatorMetadata(ctx, id).catch(() => undefined);
     if (!indicator) continue;
     resolved++;
-    const restricted = indicator.nonRedistributable === true;
-    if (restricted) nonRedistributable = true;
+    const isRestricted = indicator.nonRedistributable === true;
+    if (isRestricted) isNonRedistributable = true;
     // Only advertise a Parquet URL for data OWID actually publishes. It does
     // not push non-redistributable tables to the catalog — that URL 404s — and
     // offering one would read as a way around a licence the CSV endpoint
     // enforces on purpose.
-    const table = restricted ? undefined : catalogParquet(indicator.catalogPath);
+    const table = isRestricted ? undefined : catalogParquet(indicator.catalogPath);
     if (table) tables.set(id, { parquet: table.url, column: table.column });
     addSources(indicator.origins ?? [], sources, seen);
   }
-  return { sources, nonRedistributable, tables, resolved };
+  return { sources, nonRedistributable: isNonRedistributable, tables, resolved };
 }
 
 /** Append each origin not already represented, deduped on producer|licence|citation. */

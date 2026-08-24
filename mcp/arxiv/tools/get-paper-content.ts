@@ -92,14 +92,14 @@ export const getPaperContent = tool({
 
     // Budget the total body text across the selected sections.
     let remaining = maxChars;
-    let truncated = false;
+    let isTruncated = false;
     const budgeted = sections.map((s) => {
       if (remaining <= 0) {
-        truncated = true;
+        isTruncated = true;
         return { ...s, text: '' };
       }
       if (s.text.length > remaining) {
-        truncated = true;
+        isTruncated = true;
         const text = `${s.text.slice(0, remaining).trimEnd()}…`;
         remaining = 0;
         return { ...s, text };
@@ -115,7 +115,7 @@ export const getPaperContent = tool({
     const bodyText = kept.map((s) => `## ${s.title}\n${s.text}`).join('\n\n');
 
     return {
-      text: `${headerLines}\n\n${bodyText || content.abstract}${truncated ? '\n\n(text truncated — raise maxChars or request one section)' : ''}`,
+      text: `${headerLines}\n\n${bodyText || content.abstract}${isTruncated ? '\n\n(text truncated — raise maxChars or request one section)' : ''}`,
       structured: {
         id: paper.id,
         title: paper.title,
@@ -125,7 +125,7 @@ export const getPaperContent = tool({
         availableSections,
         references: content.references,
         citedArxivIds: content.citedArxivIds,
-        truncated,
+        truncated: isTruncated,
       },
     };
   },

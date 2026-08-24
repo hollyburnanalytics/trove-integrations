@@ -42,9 +42,9 @@ function stripHtml(html: unknown): string | null {
   const text = loc(html);
   if (text === null) return null;
   return text
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&#?\w+;/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replaceAll(/<[^<>]+>/g, ' ')
+    .replaceAll(/&#?\w+;/g, ' ')
+    .replaceAll(/\s+/g, ' ')
     .trim();
 }
 
@@ -163,10 +163,12 @@ export default defineToolkit({
           };
         }
         const lines = members
-          .map(
-            (m) =>
-              `  ${m.name}${m.party ? ` (${m.party})` : ''}${m.riding ? ` — ${m.riding}${m.province ? `, ${m.province}` : ''}` : ''}`,
-          )
+          .map((m) => {
+            const party = m.party ? ` (${m.party})` : '';
+            const province = m.province ? `, ${m.province}` : '';
+            const riding = m.riding ? ` — ${m.riding}${province}` : '';
+            return `  ${m.name}${party}${riding}`;
+          })
           .join('\n');
         return {
           text: `${members.length} MP(s) matching "${name}":\n${lines}`,

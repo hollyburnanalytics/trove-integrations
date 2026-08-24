@@ -115,11 +115,13 @@ export const getSubcontractChangeOrders = tool({
     }
     const lines = changeOrders
       .slice(0, 15)
-      .map(
-        (c) =>
+      .map((c) => {
+        const job = c.jobNumber ? ` · job ${c.jobNumber}` : '';
+        return (
           `  SCO ${c.scoNumber ?? '?'} on ${c.subcontractNumber ?? '?'} — ${fmt(c.amount)} ` +
-          `[${c.scoStatus ?? '?'}]${c.jobNumber ? ` · job ${c.jobNumber}` : ''}`,
-      )
+          `[${c.scoStatus ?? '?'}]${job}`
+        );
+      })
       .join('\n');
     return {
       text:

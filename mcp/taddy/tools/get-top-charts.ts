@@ -40,10 +40,11 @@ export const getTopChartsTool = tool({
       ...result.podcasts.map((p) => renderPodcastLine(p)),
       ...result.episodes.map((e) => renderEpisodeLine(e)),
     ];
+    const charted = result.type === 'PODCASTSERIES' ? 'shows' : 'episodes';
     const heading =
       result.count === 0
         ? `No Apple Podcasts chart entries for ${result.scope}.`
-        : `Apple Podcasts top ${result.type === 'PODCASTSERIES' ? 'shows' : 'episodes'} — ${result.scope} (page ${String(result.page)}):`;
+        : `Apple Podcasts top ${charted} — ${result.scope} (page ${String(result.page)}):`;
     return { text: renderList(heading, lines), structured: result };
   },
 });

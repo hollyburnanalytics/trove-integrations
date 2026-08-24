@@ -81,8 +81,8 @@ export const findLocation: ToolDefinition = {
       longitude?: number;
       count: number;
     };
-    const byCoordinate = latitude !== undefined && longitude !== undefined;
-    if (name === undefined && !byCoordinate) {
+    const isByCoordinate = latitude !== undefined && longitude !== undefined;
+    if (name === undefined && !isByCoordinate) {
       throw new ToolError('Pass either name, or both latitude and longitude.', {
         retryable: false,
       });
@@ -90,7 +90,7 @@ export const findLocation: ToolDefinition = {
 
     const url = itemsUrl(
       CITYPAGE_COLLECTION,
-      byCoordinate && latitude !== undefined && longitude !== undefined
+      isByCoordinate && latitude !== undefined && longitude !== undefined
         ? {
             bbox: boxAround(latitude, longitude, SEARCH_BOX_DEG),
             limit: '200',
@@ -119,8 +119,8 @@ export const findLocation: ToolDefinition = {
           : null;
       return { ...location, distanceKm: away };
     });
-    if (byCoordinate) {
-      rows.sort((a, b) => (a.distanceKm ?? Number.NaN) - (b.distanceKm ?? Number.NaN));
+    if (isByCoordinate) {
+      rows.sort((a, b) => (a.distanceKm ?? NaN) - (b.distanceKm ?? NaN));
     } else if (name !== undefined) {
       const ranked = rows.map((row, index) => ({
         row,
@@ -131,7 +131,7 @@ export const findLocation: ToolDefinition = {
       rows.splice(0, rows.length, ...ranked.map((entry) => entry.row));
     }
     const locations = rows.slice(0, count);
-    const query = byCoordinate ? `${latitude},${longitude}` : (name ?? '');
+    const query = isByCoordinate ? `${latitude},${longitude}` : (name ?? '');
 
     if (locations.length === 0) {
       return {
@@ -140,11 +140,11 @@ export const findLocation: ToolDefinition = {
       };
     }
     const lines = locations
-      .map(
-        (l) =>
-          `  ${l.name ?? l.siteId}${l.region ? `, ${l.region}` : ''} → ${l.siteId}` +
-          `${l.distanceKm === null ? '' : ` (${l.distanceKm} km away)`}`,
-      )
+      .map((l) => {
+        const region = l.region ? `, ${l.region}` : '';
+        const away = l.distanceKm === null ? '' : ` (${l.distanceKm} km away)`;
+        return `  ${l.name ?? l.siteId}${region} → ${l.siteId}${away}`;
+      })
       .join('\n');
     // `numberMatched` is a true total, so say "showing N of M" rather than
     // letting the page size read as the number of matching sites.

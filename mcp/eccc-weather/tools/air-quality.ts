@@ -146,10 +146,10 @@ export const airQuality: ToolDefinition = {
     });
     // Keep a single run — mixing publications would interleave hours from
     // different model cycles — then order it forward in time.
-    const newestRun = rows.reduce(
-      (newest, row) => (row.publishedAt > newest ? row.publishedAt : newest),
-      '',
-    );
+    let newestRun = '';
+    for (const row of rows) {
+      if (row.publishedAt > newestRun) newestRun = row.publishedAt;
+    }
     // A run also covers hours that have already elapsed by the time it is
     // read — the 00Z publication still carries 00Z–03Z at 04Z — so a caller
     // asking for "the next N hours" would be handed the past. Drop elapsed
@@ -160,7 +160,7 @@ export const airQuality: ToolDefinition = {
     const cutoff = currentHour.toISOString();
     const inRun = rows
       .filter((row) => row.publishedAt === newestRun)
-      .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
+      .toSorted((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
     const upcoming = inRun.filter((row) => (row.time ?? '') >= cutoff);
     const forecast = (upcoming.length > 0 ? upcoming : inRun)
       .slice(0, hours)

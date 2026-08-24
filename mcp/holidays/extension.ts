@@ -66,7 +66,10 @@ function holidayResult<T extends Record<string, unknown>>(
     };
   }
   const lines = holidays
-    .map((h) => `  ${h.date}: ${h.localName}${h.name !== h.localName ? ` (${h.name})` : ''}`)
+    .map((h) => {
+      const english = h.name === h.localName ? '' : ` (${h.name})`;
+      return `  ${h.date}: ${h.localName}${english}`;
+    })
     .join('\n');
   return {
     text: `${holidays.length} holiday(s) for ${heading}:\n${lines}`,

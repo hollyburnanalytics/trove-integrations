@@ -87,7 +87,9 @@ export const companyFilings = tool({
       startDate,
       endDate,
     );
-    const matching = pool.filter(isMatch).sort((a, b) => b.filedDate.localeCompare(a.filedDate));
+    const matching = pool
+      .filter(isMatch)
+      .toSorted((a, b) => b.filedDate.localeCompare(a.filedDate));
     const filings = matching.slice(0, limit).map((f) => ({
       form: f.form,
       filedDate: f.filedDate,
@@ -113,7 +115,8 @@ export const companyFilings = tool({
     const lines = filings
       .map((f) => {
         const detail = decodeItems(f.items) ?? f.description;
-        return `  ${f.filedDate} ${f.form}${detail ? ` — ${detail}` : ''}`;
+        const about = detail ? ` — ${detail}` : '';
+        return `  ${f.filedDate} ${f.form}${about}`;
       })
       .join('\n');
     const matchedLabel = historyComplete ? `${matching.length}` : `${matching.length}+`;

@@ -325,10 +325,8 @@ export function ecccError(res: Response, body: string): ToolError {
     } catch {
       detail = body.slice(0, 120);
     }
-    return new ToolError(
-      `Environment Canada rejected the request: ${detail || `HTTP ${res.status}`}.`,
-      { retryable: false },
-    );
+    const why = detail || `HTTP ${res.status}`;
+    return new ToolError(`Environment Canada rejected the request: ${why}.`, { retryable: false });
   }
   return new ToolError('Environment Canada is temporarily unavailable.', { retryable: true });
 }

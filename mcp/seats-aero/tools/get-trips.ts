@@ -44,7 +44,7 @@ export function summarise(sorted: readonly Trip[], limit: number): Trip[] {
   // Keep the overall cheapest-first reading by re-sorting the chosen subset.
   return [...cheapestPerCabin, ...rest]
     .slice(0, Math.max(limit, cheapestPerCabin.length))
-    .sort(
+    .toSorted(
       (a, b) =>
         (a.mileageCost ?? Number.MAX_SAFE_INTEGER) - (b.mileageCost ?? Number.MAX_SAFE_INTEGER),
     );
@@ -115,7 +115,7 @@ export const getTrips = tool({
         ? `Seats.aero returned no flight-level trips for availability ${id}. That happens when the program does not publish trip data, or when the cached availability has since been re-priced.`
         : `No ${args.cabin} trips among the ${all.length} returned for availability ${id}.`;
 
-    const sorted = [...trips].sort(
+    const sorted = trips.toSorted(
       (a, b) =>
         (a.mileageCost ?? Number.MAX_SAFE_INTEGER) - (b.mileageCost ?? Number.MAX_SAFE_INTEGER),
     );
@@ -129,18 +129,19 @@ export const getTrips = tool({
         : [];
 
     return {
-      text: trips.length
-        ? [
-            `${trips.length} trip(s) for availability ${id}${
-              args.cabin ? ` in ${args.cabin}` : ''
-            }, cheapest first (one per cabin guaranteed):`,
-            '',
-            ...shown.flatMap((trip) => tripLines(trip)),
-            ...clipped,
-            ...bookingLinkLines(links),
-            ...quotaNote(quota).map((line) => `\n${line}`),
-          ].join('\n')
-        : empty,
+      text:
+        trips.length > 0
+          ? [
+              `${trips.length} trip(s) for availability ${id}${
+                args.cabin ? ` in ${args.cabin}` : ''
+              }, cheapest first (one per cabin guaranteed):`,
+              '',
+              ...shown.flatMap((trip) => tripLines(trip)),
+              ...clipped,
+              ...bookingLinkLines(links),
+              ...quotaNote(quota).map((line) => `\n${line}`),
+            ].join('\n')
+          : empty,
       structured: {
         availabilityId: id,
         count: trips.length,

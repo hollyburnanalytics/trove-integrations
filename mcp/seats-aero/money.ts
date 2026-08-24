@@ -41,12 +41,12 @@ export function csv(value: unknown): string[] {
 }
 
 /** Whether a mileage program publishes taxes at all. Unknown programs: assume yes. */
-export function publishesTaxes(source: string | undefined): boolean {
+export function hasPublishedTaxes(source: string | undefined): boolean {
   return programFor(source)?.taxes !== false;
 }
 
 /** Whether a mileage program publishes seat counts at all. */
-export function publishesSeats(source: string | undefined): boolean {
+export function hasPublishedSeats(source: string | undefined): boolean {
   return programFor(source)?.seatCounts !== 'no';
 }
 
@@ -61,7 +61,7 @@ export function toTaxes(
   source: string | undefined,
 ): Taxes | undefined {
   const minor = num(minorUnits);
-  if (!publishesTaxes(source) || minor === undefined || minor === 0) return undefined;
+  if (minor === undefined || minor === 0 || !hasPublishedTaxes(source)) return undefined;
   return { amount: minor / 100, currency: str(currency), symbol: str(symbol) };
 }
 
@@ -79,16 +79,16 @@ export function miles(value: number | undefined): string {
  * always wins over the table, so the table can only ever soften an explanation
  * of a *missing* number, never contradict one that is present.
  */
-export function seatsText(seats: number | undefined, published: boolean): string {
+export function seatsText(seats: number | undefined, arePublished: boolean): string {
   if (seats !== undefined && seats > 0) return `${seats} seat${seats === 1 ? '' : 's'}`;
-  return published
+  return arePublished
     ? 'seats not reported'
     : "seats not reported (this program usually doesn't publish them)";
 }
 
 /** The taxes phrase — explicit about which kind of nothing a missing figure is. */
 export function taxesText(taxes: Taxes | undefined, source: string | undefined): string {
-  if (!publishesTaxes(source)) return 'taxes not published by this program';
+  if (!hasPublishedTaxes(source)) return 'taxes not published by this program';
   if (!taxes) return 'taxes not reported';
   const money = `${taxes.symbol ?? ''}${taxes.amount.toFixed(2)}`;
   return taxes.currency ? `${money} ${taxes.currency}` : `${money} (currency not reported)`;

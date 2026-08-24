@@ -8,8 +8,8 @@ import {
   requireCompany,
 } from '../client.ts';
 import {
+  areFiscalStampsTrusted,
   factsForUnit,
-  fiscalStampsTrusted,
   kindOf,
   latestFiledByPeriod,
   pickUnitKey,
@@ -60,7 +60,8 @@ function collectMatchingConcepts(
   needle: string,
 ): DiscoveredConcept[] {
   const found: DiscoveredConcept[] = [];
-  for (const [tag, entry] of Object.entries(taxFacts ?? {})) {
+  const tagged = Object.entries(taxFacts ?? {});
+  for (const [tag, entry] of tagged) {
     if (!tag.toLowerCase().includes(needle)) continue;
     const summary = summarizeTag(entry);
     if (summary.factCount === 0) continue;
@@ -100,16 +101,17 @@ async function discoverConcepts(
   const concepts = found.slice(0, limit);
 
   const lines = concepts
-    .map(
-      (c) =>
-        `  ${c.tag} — ${c.factCount} fact(s), ${c.units.join('/')}` +
-        `${c.latestEnd ? `, latest ${c.latestEnd}` : ''}${c.label ? `\n    ${c.label}` : ''}`,
-    )
+    .map((c) => {
+      const latest = c.latestEnd ? `, latest ${c.latestEnd}` : '';
+      const label = c.label ? `\n    ${c.label}` : '';
+      return `  ${c.tag} — ${c.factCount} fact(s), ${c.units.join('/')}${latest}${label}`;
+    })
     .join('\n');
+  const showing = found.length > concepts.length ? ` (showing top ${concepts.length})` : '';
   const text =
     concepts.length > 0
       ? `${name} reports ${found.length} ${taxonomy} tag(s) matching "${search}"` +
-        `${found.length > concepts.length ? ` (showing top ${concepts.length})` : ''}:\n${lines}\n` +
+        `${showing}:\n${lines}\n` +
         'Call again with concept=<tag> for the full value history.'
       : `${name} reports no ${taxonomy} tags matching "${search}". Try a shorter fragment.`;
   return {
@@ -246,7 +248,7 @@ export const getXbrlConcept = tool({
     const facts = deduped.slice(0, limit);
 
     const label = typeof body.label === 'string' ? body.label : null;
-    const money = unitKey === 'USD' || /^[A-Z]{3}$/.test(unitKey);
+    const isMoney = unitKey === 'USD' || /^[A-Z]{3}$/.test(unitKey);
     const lines = facts
       .map((fact) => {
         const window = fact.start ? `${fact.start} → ${fact.end}` : `as of ${fact.end}`;
@@ -256,13 +258,12 @@ export const getXbrlConcept = tool({
         const trusted =
           fact.fiscalYear !== null &&
           fact.fiscalPeriod !== null &&
-          fiscalStampsTrusted(factKind === 'annual' ? 'annual' : 'quarterly', fact);
+          areFiscalStampsTrusted(factKind === 'annual' ? 'annual' : 'quarterly', fact);
+        const period = fact.fiscalPeriod === 'FY' ? '' : `${fact.fiscalPeriod} `;
         const fiscal = trusted
-          ? fact.fiscalPeriod === 'FY'
-            ? ` (FY${fact.fiscalYear}, ${fact.form})`
-            : ` (${fact.fiscalPeriod} FY${fact.fiscalYear}, ${fact.form})`
+          ? ` (${period}FY${fact.fiscalYear}, ${fact.form})`
           : ` (${fact.form})`;
-        const value = money ? fmtMoney(fact.value, unitKey) : String(fact.value);
+        const value = isMoney ? fmtMoney(fact.value, unitKey) : String(fact.value);
         return `  ${window}${fiscal}: ${value}`;
       })
       .join('\n');

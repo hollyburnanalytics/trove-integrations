@@ -235,7 +235,7 @@ function bucket(
 }
 
 /** Fields handled elsewhere on the row, so they never reach {@link bucket}. */
-function claimed(key: string): boolean {
+function isClaimed(key: string): boolean {
   return (
     IDENTITY_KEYS.has(key) ||
     ACTION_KEYS.has(key) ||
@@ -252,7 +252,7 @@ export function mapRow(
 ): InsightRow {
   const buckets: Buckets = { metrics: {}, labels: {}, breakdowns: {}, rates: {} };
   for (const [key, value] of Object.entries(raw)) {
-    if (!claimed(key)) bucket(buckets, key, value, breakdownKeys);
+    if (!isClaimed(key)) bucket(buckets, key, value, breakdownKeys);
   }
 
   // ROAS is a one-entry list (`omni_purchase`), and its entries are ratios:

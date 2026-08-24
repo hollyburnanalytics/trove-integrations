@@ -27,6 +27,13 @@ const ZERO_DECIMAL = new Set([
 /** ISO 4217 currencies with three-decimal minor units (exponent 3). */
 const THREE_DECIMAL = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND']);
 
+/** The ISO 4217 exponent as a divisor: minor units to major, per currency. */
+function minorUnitDivisor(currency: string | null): number {
+  if (currency && ZERO_DECIMAL.has(currency)) return 1;
+  if (currency && THREE_DECIMAL.has(currency)) return 1000;
+  return 100;
+}
+
 /** A UCP `Price` (`amount` in minor units + ISO currency) as a decimal, or null. */
 export function price(obj: unknown): { amount: number | null; currency: string | null } {
   const o = (obj ?? {}) as Record<string, unknown>;
@@ -34,13 +41,8 @@ export function price(obj: unknown): { amount: number | null; currency: string |
   const currency = typeof o.currency === 'string' ? o.currency : null;
   // UCP amounts are minor units; the divisor follows the currency's ISO 4217
   // exponent (JPY/KRW etc. have none, a few dinar currencies have three).
-  const divisor =
-    currency && ZERO_DECIMAL.has(currency)
-      ? 1
-      : currency && THREE_DECIMAL.has(currency)
-        ? 1000
-        : 100;
-  return { amount: minor !== null ? minor / divisor : null, currency };
+  const divisor = minorUnitDivisor(currency);
+  return { amount: minor === null ? null : minor / divisor, currency };
 }
 
 /** The first variant image URL, for products whose own media array is empty. */
@@ -65,7 +67,7 @@ function productUrl(variants: unknown[]): string | null {
       const variant = u.searchParams.get('variant');
       u.search = '';
       if (variant) u.searchParams.set('variant', variant);
-      return u.toString();
+      return u.href;
     } catch {
       return raw;
     }
@@ -120,20 +122,24 @@ export function mapProduct(raw: unknown) {
   };
 }
 
+/** The price, or a range, or a plain statement that there isn't one. */
+function priceText(product: ReturnType<typeof mapProduct>): string {
+  if (product.priceMin === null) return 'price n/a';
+  const currency = product.currency ?? '';
+  if (product.priceMin === product.priceMax || product.priceMax === null) {
+    return `${currency} ${product.priceMin}`;
+  }
+  return `${currency} ${product.priceMin}–${product.priceMax}`;
+}
+
 /** One-line product summary for the human-readable text block. */
 export function formatProduct(product: ReturnType<typeof mapProduct>): string {
-  const priceLabel =
-    product.priceMin !== null
-      ? product.priceMin === product.priceMax || product.priceMax === null
-        ? `${product.currency ?? ''} ${product.priceMin}`
-        : `${product.currency ?? ''} ${product.priceMin}–${product.priceMax}`
-      : 'price n/a';
-  const ratingLabel =
-    product.rating !== null
-      ? ` ★${product.rating}${product.ratingCount ? ` (${product.ratingCount})` : ''}`
-      : '';
+  const priceLabel = priceText(product);
+  const ratingCount = product.ratingCount ? ` (${product.ratingCount})` : '';
+  const ratingLabel = product.rating === null ? '' : ` ★${product.rating}${ratingCount}`;
   const stock = product.available ? '' : ' [out of stock]';
-  return `"${product.title}" — ${priceLabel}${product.store ? ` · ${product.store}` : ''}${ratingLabel}${stock}\n  ${product.url ?? product.id ?? ''}`;
+  const store = product.store ? ` · ${product.store}` : '';
+  return `"${product.title}" — ${priceLabel}${store}${ratingLabel}${stock}\n  ${product.url ?? product.id ?? ''}`;
 }
 
 /** Map a UCP search result to the tool's structured page shape. */

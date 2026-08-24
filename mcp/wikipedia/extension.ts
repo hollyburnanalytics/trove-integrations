@@ -68,7 +68,10 @@ export default defineToolkit({
           };
         }
         const lines = articles
-          .map((a) => `  ${a.title}${a.description ? ` — ${a.description}` : ''}`)
+          .map((a) => {
+            const description = a.description ? ` — ${a.description}` : '';
+            return `  ${a.title}${description}`;
+          })
           .join('\n');
         return {
           text: `${articles.length} article(s) for "${query}":\n${lines}`,
@@ -114,16 +117,17 @@ export default defineToolkit({
           throw new ToolError(`No Wikipedia article titled "${args.title}".`, { retryable: false });
         }
         const full = str(page.extract);
-        const truncated = full.length > MAX_EXTRACT;
+        const isTruncated = full.length > MAX_EXTRACT;
         const title = str(page.title);
         const result = {
           title,
           description: str(page.description) || null,
-          extract: truncated ? `${full.slice(0, MAX_EXTRACT)}…` : full,
-          truncated,
+          extract: isTruncated ? `${full.slice(0, MAX_EXTRACT)}…` : full,
+          truncated: isTruncated,
           url: `${BASE_URL}/wiki/${encodeURIComponent(title.replaceAll(' ', '_'))}`,
         };
-        const text = `${title}${result.description ? ` — ${result.description}` : ''}\n\n${result.extract}`;
+        const described = result.description ? ` — ${result.description}` : '';
+        const text = `${title}${described}\n\n${result.extract}`;
         return { text, structured: result };
       },
     }),

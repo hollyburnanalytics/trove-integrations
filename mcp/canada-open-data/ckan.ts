@@ -88,7 +88,7 @@ export function en(value: unknown): string | null {
 /** The English half of a bilingual "English | Français" org/title string. */
 export function englishHalf(value: unknown): string | null {
   const s = en(value);
-  return s ? (s.split('|')[0] ?? s).trim() : null;
+  return s ? (s.split('|', 1)[0] ?? s).trim() : null;
 }
 
 /** Human dataset landing page from its CKAN name (slug). */

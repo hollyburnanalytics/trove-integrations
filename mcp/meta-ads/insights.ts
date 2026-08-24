@@ -262,7 +262,7 @@ function readSummary(body: Record<string, unknown>): InsightsResult['summary'] {
  * sorted here — which the caller is told, because sorting a page is not the
  * same promise as sorting the result set.
  */
-function enforceSort(rows: InsightRow[], query: InsightsQuery): boolean {
+function didSortLocally(rows: InsightRow[], query: InsightsQuery): boolean {
   if (!query.sortBy || rows.length < 2) return false;
   const key = query.sortBy;
   const sign = query.sortDirection === 'asc' ? 1 : -1;
@@ -284,7 +284,7 @@ export async function fetchInsights(
   const { body, rateLimit } = await graphGet(ctx, narrowing(query).path, params);
   const raw = Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [];
   const rows = raw.map((row) => mapRow(row, query.level, query.breakdowns));
-  const sortedLocally = enforceSort(rows, query);
+  const isSortedLocally = didSortLocally(rows, query);
   // An entity id is not scoped to the account that was resolved for it, so a
   // campaign belonging to another reachable account answers from there. The
   // rows say whose they are; labelling them with the account we assumed would
@@ -297,7 +297,7 @@ export async function fetchInsights(
     paging: readPaging(body),
     rateLimit,
     summary: readSummary(body),
-    sortedLocally,
+    sortedLocally: isSortedLocally,
     reportedAccountId,
   };
 }

@@ -6,7 +6,9 @@ import unicorn from 'eslint-plugin-unicorn';
 // at their recommended presets, looking for correctness and complexity rather
 // than formatting. Both presets are opinionated, and a handful of their rules
 // are wrong about these repos rather than about the code — those are turned off
-// below, each with the reason. Everything else is expected to stay at zero.
+// below, each with the reason. Everything else is expected to stay at zero, and
+// is: the twenty-nine rules that used to sit here as "deferred, not settled"
+// were worked off rather than argued away, so there is no waiting list.
 //
 // THIS FILE IS SHARED, BYTE FOR BYTE, between `trove-integrations` and
 // `trove-matt-helm`. The two catalogs meet the same platform and are written to
@@ -88,17 +90,15 @@ export default [
       // belongs.
       'unicorn/prefer-https': 'off',
 
-      // Fixture builders compose: `ok(rss(rssItem({ title: 'A' })))` is one
-      // recorded response spelled in the vocabulary of the format, and
-      // `feed([entry({ id })])` is one Atom document. The rule's limit of three
-      // is right about production call chains and wrong about a test suite
-      // whose whole idiom is small named builders nested to the depth of the
-      // document they describe — 72 sites across the two repos, and hoisting an
-      // intermediate `const` at each one makes every test longer and none of
-      // them clearer. Genuine assertion plumbing —
-      // `expect(String(at(mock.calls)[0]))` — reads better hoisted, and is,
-      // because that was worth doing on its own merits rather than to satisfy
-      // a counter.
+      // A schema IS a tree of calls. `z.array(z.object({ values: z.array(
+      // z.union([z.number(), z.string(), z.null()])) }))` is one shape written
+      // once, and every tool's argument and result contract is spelled that
+      // way — 2,412 sites here, 86 of the 91 files production rather than
+      // tests. The limit of three cannot be met without hoisting a named
+      // constant for each interior node, which would scatter one schema over a
+      // dozen single-use bindings and put the shape back together only in the
+      // reader's head. (An earlier note here blamed test fixture builders. It
+      // was measured wrong: they are 5 of the 91 files.)
       'unicorn/max-nested-calls': 'off',
 
       // Flags every `.sort()`/`.toSorted()` without a comparator, because it
@@ -164,12 +164,12 @@ export default [
       // (`BusinessNumber`); where it need only be *read*, plain is right.
       'sonarjs/redundant-type-aliases': 'off',
 
-      // Counts three regexes as too complex at 21, 23 and 30 against a limit of
-      // 20. All three mirror something a publisher emits — an ISO-8601 date, a
-      // price cell in Ship & Bunker's markup, the ways a T3010 spells "total
-      // gifts" — and are exactly as complex as the format they mirror.
-      // Splitting one in three moves the complexity into the code that joins
-      // them back up.
+      // One regex here scores 21 against a limit of 20: `ISO_DATE` in
+      // `taddy/params.ts`, which accepts a bare `YYYY-MM-DD` or a full ISO
+      // instant because Taddy's callers send both. It is exactly as complex as
+      // the format it mirrors, and splitting it in two moves the complexity
+      // into the code that joins them back up. (The other catalog carries the
+      // same rule off for its own publisher-shaped patterns.)
       'sonarjs/regex-complexity': 'off',
 
       // Wants `Object.hasOwn(obj, key)` in place of `obj[key] ? … : …`. Under
@@ -183,9 +183,9 @@ export default [
       // Right about JavaScript, redundant here. It exists because
       // `['1','2'].map(parseInt)` passes the index as a radix; in strict
       // TypeScript the callee's signature is checked against `map`'s callback
-      // type, so an unexpected parameter is a compile error. All 76 sites are
-      // named unary renderers — `rows.map(toEntity)` — and every one was checked
-      // for a second parameter before this went in.
+      // type, so an unexpected parameter is a compile error. All 21 sites left
+      // here are named unary renderers — `rows.map(toEntity)` — and every one
+      // was checked for a second parameter.
       'unicorn/no-array-callback-reference': 'off',
 
       // Wants `for…of` over the string. The one site walks a Gutenberg book by
@@ -195,15 +195,18 @@ export default [
       'unicorn/no-for-loop': 'off',
 
       // Type-blind, and these repos compare ISO date strings as often as
-      // numbers: `row.publishedAt > newest ? …` picks the newest model run, and
-      // `Math.max` on those strings is `NaN`. The genuinely numeric sites were
-      // rewritten.
+      // numbers: `row.publishedAt > newest` picks the newest model run, and
+      // `Math.max` on those strings is `NaN`. Zero sites remain in this
+      // catalog; the line stays because the file is shared and the other one
+      // still has them.
       'unicorn/prefer-math-min-max': 'off',
 
       // Reads `Number.parseInt(String(x), 10)` as a number being truncated. It
       // is not: `x` is an `unknown` from a remote payload and `parseInt` is
       // there for its leniency about what follows the digits, where `Math.trunc`
-      // returns `NaN`.
+      // returns `NaN`. Zero sites remain in this catalog — the guards were
+      // written out under `prefer-number-coercion` — and the line stays only
+      // because the file is shared with the other one.
       'unicorn/prefer-math-trunc': 'off',
 
       // Wants `subtype` for `subType`. `AccountSubType` is QuickBooks' own field
@@ -236,55 +239,10 @@ export default [
       'unicorn/no-useless-undefined': ['error', { checkArrowFunctionBody: false }],
 
       // Biome's formatter normalises hex literals to lowercase; this rule wants
-      // uppercase digits. They cannot both be satisfied, and `bun run lint`
-      // (Biome) is the gate that runs first, so Biome wins.
+      // uppercase digits. They cannot both be satisfied — writing `0xFE_FF` in
+      // `owid/csv.ts` makes `biome check` fail on formatting — and `bun run
+      // lint` (Biome) is the gate that runs first, so Biome wins.
       'unicorn/number-literal-case': 'off',
-    },
-  },
-  {
-    // ---- Deferred, not settled (task #170) ----
-    //
-    // These twenty-nine rules are off because the gate has to run, not because
-    // anyone has decided they are wrong. All of them arrived the day `.ts` came
-    // into scope, and between the two catalogs they carry 1,532 findings across
-    // code no linter had read. That is a sweep of its own; landing the parser
-    // should not wait for it, and turning them off silently would repeat the
-    // mistake this file exists to prevent.
-    //
-    // Counts are `(trove-integrations + trove-matt-helm)` as measured on the
-    // commit that added this block. Retire a line by getting its rule to zero in
-    // BOTH repos; there is no baseline file to raise.
-    files: SOURCES,
-    rules: {
-      'sonarjs/no-nested-template-literals': 'off', // 405 (144+261) — the render idiom: one sentence, one expression
-      'unicorn/consistent-boolean-name': 'off', //     178  (58+120) — includes `structured` result fields, which are the wire contract
-      'unicorn/prefer-string-replace-all': 'off', //   137   (63+74) — mechanical; `.replace(/x/g)` → `.replaceAll`
-      'sonarjs/no-nested-conditional': 'off', //       126   (50+76) — nested ternaries
-      'unicorn/no-array-sort': 'off', //                80   (13+67) — `.sort()` → `.toSorted()`; check each for an intended mutation
-      'unicorn/no-nested-ternary': 'off', //            56   (21+35) — overlaps no-nested-conditional
-      'sonarjs/super-linear-regex': 'off', //           53   (11+42) — backtracking risk in scraper patterns; worth reading, not sweeping
-      'unicorn/consistent-conditional-object-spread': 'off', // 47 (13+34)
-      'unicorn/prefer-number-coercion': 'off', //       39   (14+25)
-      'unicorn/consistent-function-scoping': 'off', //  39    (5+34) — production copies of what tests are already excused
-      'unicorn/no-negated-condition': 'off', //         38   (19+19)
-      'unicorn/no-unreadable-for-of-expression': 'off', // 37 (8+29) — a ternary in the `for…of` head
-      'unicorn/prefer-simple-condition-first': 'off', // 34   (8+26)
-      'unicorn/prefer-global-number-constants': 'off', // 28  (5+23)
-      'unicorn/prefer-split-limit': 'off', //           27   (13+14)
-      'unicorn/no-break-in-nested-loop': 'off', //      26    (5+21)
-      'unicorn/explicit-length-check': 'off', //        25   (13+12)
-      'unicorn/prefer-url-href': 'off', //              20    (5+15)
-      'unicorn/numeric-separators-style': 'off', //     18    (10+8) — conflicts with Biome's useSimpleNumberKeys on numeric object keys, and with the FIPS table below
-      'unicorn/no-await-expression-member': 'off', //   18    (4+14)
-      'unicorn/no-declarations-before-early-exit': 'off', // 18 (10+8)
-      'unicorn/switch-case-braces': 'off', //           15     (8+7)
-      'unicorn/prefer-string-raw': 'off', //            12     (3+9)
-      'unicorn/catch-error-name': 'off', //             10     (2+8)
-      'unicorn/prefer-includes-over-repeated-comparisons': 'off', // 10 (2+8)
-      'unicorn/prefer-single-call': 'off', //            9     (3+6)
-      'unicorn/no-array-reduce': 'off', //               8     (1+7)
-      'unicorn/prefer-direct-iteration': 'off', //       8     (1+7)
-      'sonarjs/use-type-alias': 'off', //                6     (1+5)
     },
   },
   {

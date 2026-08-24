@@ -21,9 +21,9 @@ export function costNote(
   userLookups: number,
   unit: 'post' | 'bookmark' = 'post',
 ): string {
-  const owned = unit === 'bookmark';
-  const rate = owned ? OWNED_READ_USD : POST_READ_USD;
-  const rateLabel = owned
+  const isOwned = unit === 'bookmark';
+  const rate = isOwned ? OWNED_READ_USD : POST_READ_USD;
+  const rateLabel = isOwned
     ? '$0.001/bookmark (owned read) + $0.010/user lookup'
     : '$0.005/post + $0.010/user lookup';
   const dollars = resources * rate + userLookups * USER_READ_USD;

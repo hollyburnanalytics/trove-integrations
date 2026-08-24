@@ -29,14 +29,14 @@ export const resolveUserTool = tool({
     const profile = mapProfile(raw);
     const note = costNote(0, 1);
     const counts =
-      profile.followers !== null
-        ? ` · ${profile.followers} followers, ${profile.tweetCount ?? '?'} posts`
-        : '';
+      profile.followers === null
+        ? ''
+        : ` · ${profile.followers} followers, ${profile.tweetCount ?? '?'} posts`;
+    const bio = profile.bio ? `\n  ${snippet(profile.bio)}` : '';
     return {
       text:
         `${profile.name ?? username} (@${profile.username ?? username})` +
-        `${profile.verified ? ' ✓' : ''}${counts}` +
-        `${profile.bio ? `\n  ${snippet(profile.bio)}` : ''}\n${note}`,
+        `${profile.verified ? ' ✓' : ''}${counts}${bio}\n${note}`,
       structured: { ...profile, note },
     };
   },

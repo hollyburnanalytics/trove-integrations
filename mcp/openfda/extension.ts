@@ -47,8 +47,9 @@ async function getResults(
  * @returns The ready-to-append `search` value.
  */
 function fdaSearch(fields: string[], term: string): string {
-  const t = encodeURIComponent(term.replace(/"/g, ''));
-  return `(${fields.map((f) => `${f}:%22${t}%22`).join('+')})`;
+  const t = encodeURIComponent(term.replaceAll('"', ''));
+  const clauses = fields.map((f) => `${f}:%22${t}%22`);
+  return `(${clauses.join('+')})`;
 }
 
 /** First entry of a string-array openFDA field, or null. */
@@ -59,7 +60,7 @@ function first(value: unknown): string | null {
 /** Truncate an openFDA narrative field (often a long single-element array). */
 function snippet(value: unknown, max = 240): string | null {
   const text = Array.isArray(value) ? value.find((v) => typeof v === 'string') : value;
-  return typeof text === 'string' ? text.replace(/\s+/g, ' ').trim().slice(0, max) : null;
+  return typeof text === 'string' ? text.replaceAll(/\s+/g, ' ').trim().slice(0, max) : null;
 }
 
 export default defineToolkit({
@@ -122,10 +123,11 @@ export default defineToolkit({
           };
         }
         const lines = labels
-          .map(
-            (l) =>
-              `  ${l.brandName ?? l.genericName ?? '?'}${l.manufacturer ? ` (${l.manufacturer})` : ''}${l.indications ? `\n    Indications: ${l.indications}` : ''}`,
-          )
+          .map((l) => {
+            const maker = l.manufacturer ? ` (${l.manufacturer})` : '';
+            const indications = l.indications ? `\n    Indications: ${l.indications}` : '';
+            return `  ${l.brandName ?? l.genericName ?? '?'}${maker}${indications}`;
+          })
           .join('\n');
         return {
           text: `${labels.length} drug label(s) for "${name}":\n${lines}`,

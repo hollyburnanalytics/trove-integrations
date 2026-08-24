@@ -62,7 +62,7 @@ const s2 = createEgressClient({
     accept: 'application/json',
     'user-agent': 'Trove MCP (semantic-scholar@ontrove.sh)',
   },
-  throttleMs: 1_100,
+  throttleMs: 1100,
   backoffBaseMs: 500,
   cache: { ttlMs: 5 * 60_000, maxEntries: 128, maxEntryBytes: 256 * 1024 },
 });

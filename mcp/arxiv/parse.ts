@@ -12,26 +12,26 @@
 
 /** Collapse runs of whitespace to single spaces and trim. */
 function squish(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
+  return value.replaceAll(/\s+/g, ' ').trim();
 }
 
 /** Decode the XML/HTML entities arXiv and LaTeXML emit (named + numeric). */
 function decodeEntities(value: string): string {
   return value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => codePoint(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec: string) => codePoint(Number.parseInt(dec, 10)))
-    .replace(/&amp;/g, '&');
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&apos;', "'")
+    .replaceAll('&nbsp;', ' ')
+    .replaceAll(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => codePoint(Number.parseInt(hex, 16)))
+    .replaceAll(/&#(\d+);/g, (_, dec: string) => codePoint(Number(dec)))
+    .replaceAll('&amp;', '&');
 }
 
 /** Safely turn a code point into a string, dropping invalid ones. */
 function codePoint(n: number): string {
-  return Number.isFinite(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '';
+  return Number.isFinite(n) && n >= 0 && n <= 0x10_ff_ff ? String.fromCodePoint(n) : '';
 }
 
 /**
@@ -47,7 +47,7 @@ function codePoint(n: number): string {
  * math that carries neither.
  */
 function collapseMath(html: string): string {
-  return html.replace(
+  return html.replaceAll(
     /<math\b([^>]*)>([\s\S]*?)<\/math>/gi,
     (_full, attrs: string, inner: string) => {
       const alt = /\balttext="([^"]*)"/i.exec(attrs)?.[1];
@@ -59,7 +59,7 @@ function collapseMath(html: string): string {
       // No TeX anywhere: keep the rendered glyphs, minus any annotation, so the
       // content survives rather than vanishing.
       if (tex === undefined) {
-        return ` ${inner.replace(/<annotation\b[^>]*>[\s\S]*?<\/annotation>/gi, ' ')} `;
+        return ` ${inner.replaceAll(/<annotation\b[^>]*>[\s\S]*?<\/annotation>/gi, ' ')} `;
       }
       const clean = squish(decodeEntities(tex));
       return clean ? ` $${clean}$ ` : ' ';
@@ -70,8 +70,8 @@ function collapseMath(html: string): string {
 /** Strip HTML/XML tags to plain text (dropping script/style), then decode + squish. */
 function htmlToText(html: string): string {
   const stripped = collapseMath(html)
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ');
+    .replaceAll(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replaceAll(/<[^<>]+>/g, ' ');
   return squish(decodeEntities(stripped));
 }
 
@@ -93,7 +93,7 @@ export interface ArxivPaper {
 
 /** Extract the inner text of the first `<tag>...</tag>` in `xml`, or `''`. */
 function tagText(xml: string, tag: string): string {
-  const match = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`).exec(xml);
+  const match = new RegExp(String.raw`<${tag}[^>]*>([\s\S]*?)</${tag}>`).exec(xml);
   return match?.[1] ? decodeEntities(squish(match[1])) : '';
 }
 
@@ -153,7 +153,7 @@ export function parseFeed(xml: string): ArxivPaper[] {
 /** Total match count arXiv reports for the query (for pagination), or 0. */
 export function totalResults(xml: string): number {
   const match = /<opensearch:totalResults[^>]*>(\d+)<\/opensearch:totalResults>/.exec(xml);
-  return match ? Number.parseInt(match[1] ?? '0', 10) : 0;
+  return match ? Number(match[1] ?? '0') : 0;
 }
 
 // ---------------------------------------------------------------------------

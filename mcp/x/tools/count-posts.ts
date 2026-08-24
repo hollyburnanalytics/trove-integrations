@@ -92,12 +92,12 @@ export const countPosts = tool({
     const countFee = args.scope === 'archive' ? 0.01 : 0.005;
     const countLabel = args.scope === 'archive' ? 'Counts: All' : 'Counts: Recent';
     // Describe the window honestly: an explicit date range, else the scope default.
+    const defaultWindow =
+      args.scope === 'archive' ? 'across the full archive' : 'in the last 7 days';
     const windowLabel =
       args.start_time || args.end_time
         ? `between ${args.start_time ?? 'the start'} and ${args.end_time ?? 'now'}`
-        : args.scope === 'archive'
-          ? 'across the full archive'
-          : 'in the last 7 days';
+        : defaultWindow;
     const note =
       `${countLabel} — a flat $${countFee.toFixed(3)} per request (the count itself ` +
       `is not billed per result). Reading these ${total} posts would cost ≈ ` +

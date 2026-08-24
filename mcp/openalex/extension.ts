@@ -104,10 +104,11 @@ export default defineToolkit({
           };
         }
         const lines = works
-          .map(
-            (w) =>
-              `  "${w.title}"${w.year ? ` (${w.year})` : ''} — ${w.authors.slice(0, 3).join(', ') || '?'}, ${w.citations} cites`,
-          )
+          .map((w) => {
+            const year = w.year ? ` (${w.year})` : '';
+            const authors = w.authors.slice(0, 3).join(', ') || '?';
+            return `  "${w.title}"${year} — ${authors}, ${w.citations} cites`;
+          })
           .join('\n');
         return {
           text: `${works.length} of ${metaCount(body, works.length)} work(s) for "${query}":\n${lines}`,
@@ -170,10 +171,10 @@ export default defineToolkit({
           };
         }
         const lines = authors
-          .map(
-            (a) =>
-              `  ${a.name}${a.institution ? ` (${a.institution})` : ''} — ${a.worksCount} works, ${a.citations} cites`,
-          )
+          .map((a) => {
+            const affiliation = a.institution ? ` (${a.institution})` : '';
+            return `  ${a.name}${affiliation} — ${a.worksCount} works, ${a.citations} cites`;
+          })
           .join('\n');
         return {
           text: `${authors.length} author(s) for "${name}":\n${lines}`,

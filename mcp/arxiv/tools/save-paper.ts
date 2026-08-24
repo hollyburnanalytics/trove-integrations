@@ -137,8 +137,8 @@ async function ingestOrExplain(
   }
   try {
     return await trove.ingest(docs);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
     ctx.log('save_paper ingest failed', { reason });
     throw new ToolError(`Trove refused the save: ${reason}`, { retryable: true });
   }

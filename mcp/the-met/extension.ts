@@ -85,15 +85,16 @@ export default defineToolkit({
           ? body.objectIDs.filter((n): n is number => typeof n === 'number')
           : [];
         const total = typeof body.total === 'number' ? body.total : ids.length;
-        const objects = (
-          await Promise.all(
-            ids.slice(0, limit).map((id) =>
-              getJson(`${BASE_URL}/objects/${id}`, ctx, { service: 'The Met API' })
-                .then(toArtwork)
-                .catch(() => undefined),
-            ),
-          )
-        ).filter((object): object is ReturnType<typeof toArtwork> => object !== undefined);
+        const fetched = await Promise.all(
+          ids.slice(0, limit).map((id) =>
+            getJson(`${BASE_URL}/objects/${id}`, ctx, { service: 'The Met API' })
+              .then(toArtwork)
+              .catch(() => undefined),
+          ),
+        );
+        const objects = fetched.filter(
+          (object): object is ReturnType<typeof toArtwork> => object !== undefined,
+        );
         if (objects.length === 0) {
           return {
             text: `No Met artworks matched "${query}".`,
@@ -101,10 +102,11 @@ export default defineToolkit({
           };
         }
         const lines = objects
-          .map(
-            (o) =>
-              `  [${o.objectId}] "${o.title}"${o.artist ? ` — ${o.artist}` : ''}${o.date ? ` (${o.date})` : ''}`,
-          )
+          .map((o) => {
+            const artist = o.artist ? ` — ${o.artist}` : '';
+            const made = o.date ? ` (${o.date})` : '';
+            return `  [${o.objectId}] "${o.title}"${artist}${made}`;
+          })
           .join('\n');
         return {
           text: `${objects.length} of ${total} artwork(s) for "${query}":\n${lines}`,
@@ -154,11 +156,12 @@ export default defineToolkit({
           period: orNull(object.period),
           creditLine: orNull(object.creditLine),
         };
+        const artist = detail.artist ? ` — ${detail.artist}` : '';
+        const department = detail.department ? `\n  ${detail.department}` : '';
+        const image = detail.image ? `\n  ${detail.image}` : '';
         const text =
-          `[${detail.objectId}] "${detail.title}"${detail.artist ? ` — ${detail.artist}` : ''}\n` +
-          `  ${detail.date ?? ''} · ${detail.medium ?? ''}` +
-          `${detail.department ? `\n  ${detail.department}` : ''}` +
-          `${detail.image ? `\n  ${detail.image}` : ''}`;
+          `[${detail.objectId}] "${detail.title}"${artist}\n` +
+          `  ${detail.date ?? ''} · ${detail.medium ?? ''}${department}${image}`;
         return { text, structured: detail };
       },
     }),

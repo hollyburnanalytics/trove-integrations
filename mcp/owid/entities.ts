@@ -6,6 +6,11 @@ import {
 } from './client.ts';
 import type { CsvRow } from './csv.ts';
 
+/** Entity names as the caller wrote them, quoted and comma-joined for a note. */
+export function quotedList(names: readonly string[]): string {
+  return names.map((name) => `"${name}"`).join(', ');
+}
+
 /**
  * Resolving which entities a caller actually asked for.
  *
@@ -166,7 +171,7 @@ export async function diagnoseMissing(
   const entities = await chartEntities(ctx, metadata).catch(() => undefined);
   if (!entities) {
     notes.push(
-      `No data returned for: ${missing.map((m) => `"${m}"`).join(', ')}. Check the spelling — entity names are Our World in Data’s own (e.g. "United States", "World") or ISO-3 codes (e.g. "USA").`,
+      `No data returned for: ${quotedList(missing)}. Check the spelling — entity names are Our World in Data’s own (e.g. "United States", "World") or ISO-3 codes (e.g. "USA").`,
     );
     return;
   }
@@ -174,7 +179,7 @@ export async function diagnoseMissing(
   const known = missing.filter((name) => entities.canonical.has(name.toLowerCase()));
   if (known.length > 0) {
     notes.push(
-      `On this chart but with no data in the requested range: ${known.map((k) => `"${k}"`).join(', ')}. Try a wider \`time\`, or omit it.`,
+      `On this chart but with no data in the requested range: ${quotedList(known)}. Try a wider \`time\`, or omit it.`,
     );
   }
   if (unknown.length > 0) {

@@ -186,7 +186,7 @@ export function catalogParquet(
   catalogPath: string | null | undefined,
 ): { url: string; column: string | null } | undefined {
   if (typeof catalogPath !== 'string' || catalogPath === '') return undefined;
-  const [table, column] = catalogPath.split('#');
+  const [table, column] = catalogPath.split('#', 2);
   if (table === undefined || table === '') return undefined;
   return { url: `${CATALOG}/${table}.parquet`, column: column ?? null };
 }
@@ -284,8 +284,9 @@ export async function fetchChartMetadata(
   if (status === 404) return undefined;
   if (status === 403 || status === 400) {
     const reason = upstreamReason(body);
+    const because = reason ? `: ${reason}` : '.';
     throw new ToolError(
-      `Our World in Data refused the metadata request for "${slug}" (HTTP ${String(status)})${reason ? `: ${reason}` : '.'}`,
+      `Our World in Data refused the metadata request for "${slug}" (HTTP ${String(status)})${because}`,
       { retryable: false },
     );
   }
@@ -315,7 +316,7 @@ export async function fetchIndicatorMetadata(
   // 20-second budgets is four minutes for a tool nobody will still be waiting on.
   const { status, body } = await owid.fetch(ctx, url, {
     accept: 'application/json',
-    overallTimeoutMs: 6_000,
+    overallTimeoutMs: 6000,
   });
   if (status !== 200) return undefined;
   try {
@@ -412,12 +413,12 @@ export async function searchIndicators(
  * advice about a transient fault.
  */
 function searchFailure(service: string, status: number): ToolError {
-  const transient = status === 429 || status >= 500;
+  const isTransient = status === 429 || status >= 500;
   return new ToolError(
-    transient
+    isTransient
       ? `${service} is temporarily unavailable (HTTP ${String(status)}). Try again shortly.`
       : `${service} rejected the query. Simplify it to plain keywords, and drop \`countries\` if set.`,
-    { retryable: transient },
+    { retryable: isTransient },
   );
 }
 

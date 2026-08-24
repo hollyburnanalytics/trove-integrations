@@ -68,7 +68,7 @@ async function mintToken(ctx: ToolContext): Promise<string> {
   });
   const body = await res.text();
   if (!res.ok) {
-    if (res.status === 400 || res.status === 401 || res.status === 403) {
+    if ([400, 401, 403].includes(res.status)) {
       throw new ToolError(
         'Premier rejected the API credentials. Check JONAS_USERNAME/JONAS_PASSWORD — they must ' +
           'belong to an API user created in the Premier tenant (Settings → API users).',
@@ -162,9 +162,8 @@ function throwPremierError(status: number, body: string): never {
     } catch {
       reason = body.slice(0, 120);
     }
-    throw new ToolError(`Premier rejected the request: ${reason || `HTTP ${status}`}.`, {
-      retryable: false,
-    });
+    const why = reason || `HTTP ${status}`;
+    throw new ToolError(`Premier rejected the request: ${why}.`, { retryable: false });
   }
   throw new ToolError(`Premier returned ${status}: ${body.slice(0, 100)}`, {
     retryable: status === 429 || status >= 500,
@@ -195,10 +194,11 @@ export async function jonasGet(
   const query = buildQuery(params);
   for (let attempt = 0; ; attempt++) {
     const token = await getToken(ctx);
-    const res = await ctx.fetch(`${BASE_URL}${path}${query ? `?${query}` : ''}`, {
+    const search = query ? `?${query}` : '';
+    const res = await ctx.fetch(`${BASE_URL}${path}${search}`, {
       headers: { accept: 'application/json', authorization: `Bearer ${token}` },
     });
-    if (res.status === 401 && attempt === 0) {
+    if (attempt === 0 && res.status === 401) {
       tokenCache.delete(ctx.userId);
       continue;
     }

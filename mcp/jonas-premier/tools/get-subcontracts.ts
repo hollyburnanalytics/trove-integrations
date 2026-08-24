@@ -97,13 +97,14 @@ export const getSubcontracts = tool({
     }
     const lines = subcontracts
       .slice(0, 15)
-      .map(
-        (s) =>
+      .map((s) => {
+        const holdback = s.holdbackPercent === null ? '' : ` (holdback ${s.holdbackPercent}%)`;
+        const job = s.jobNumber ? ` · job ${s.jobNumber}` : '';
+        return (
           `  ${s.subcontractNumber ?? '?'} · ${s.vendorCode ?? '?'} — ` +
-          `${fmt(s.subcontractAmount)}` +
-          `${s.holdbackPercent !== null ? ` (holdback ${s.holdbackPercent}%)` : ''}` +
-          `${s.jobNumber ? ` · job ${s.jobNumber}` : ''}`,
-      )
+          `${fmt(s.subcontractAmount)}${holdback}${job}`
+        );
+      })
       .join('\n');
     return {
       text:

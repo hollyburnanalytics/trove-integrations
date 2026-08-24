@@ -68,10 +68,9 @@ export const listAdAccounts = tool({
       };
     });
     const paging = readPaging(body);
+    const cursorHint = paging.after ? ` — pass after: "${paging.after}"` : '';
     const notes = [
-      paging.hasMore
-        ? `TRUNCATED: more accounts exist${paging.after ? ` — pass after: "${paging.after}"` : ''}.`
-        : undefined,
+      paging.hasMore ? `TRUNCATED: more accounts exist${cursorHint}.` : undefined,
       rateLimitNote(rateLimit),
     ].filter((note): note is string => note !== undefined);
 

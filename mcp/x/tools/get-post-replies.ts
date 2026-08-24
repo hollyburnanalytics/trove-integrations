@@ -128,11 +128,13 @@ export const getPostReplies = tool({
         },
       };
     }
+    const posted = root.createdAt ? `[${root.createdAt}] ` : '';
+    const lines = replies.map((t) => `${t.author ?? '?'}:${tweetLine(t)}`).join('\n');
     return {
       text:
-        `${root.author ?? '?'} ${root.createdAt ? `[${root.createdAt}] ` : ''}${snippet(root.text)}\n` +
+        `${root.author ?? '?'} ${posted}${snippet(root.text)}\n` +
         `  ${replies.length} repl${replies.length === 1 ? 'y' : 'ies'} in the thread:\n` +
-        `${replies.map((t) => `${t.author ?? '?'}:${tweetLine(t)}`).join('\n')}\n${note}`,
+        `${lines}\n${note}`,
       structured: {
         conversation_id: conversationId,
         root,

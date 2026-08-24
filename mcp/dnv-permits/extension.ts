@@ -161,7 +161,7 @@ export default defineToolkit({
         }
         const lines = permits
           .map((p) => {
-            const val = p.value !== null ? ` — $${p.value.toLocaleString()}` : '';
+            const val = p.value === null ? '' : ` — $${p.value.toLocaleString()}`;
             const date = p.date ? p.date.slice(0, 10) : '?';
             return `  ${p.caseNumber} (${date}) ${p.status ?? '?'}: ${p.workclass ?? '?'}${val} [${p.contact ?? '?'}]`;
           })
@@ -204,8 +204,9 @@ export default defineToolkit({
             structured: { prefix, count: 0, addresses: [] },
           };
         }
+        const lines = addresses.map((a) => `  ${a}`).join('\n');
         return {
-          text: `${addresses.length} address match(es) for "${prefix}":\n${addresses.map((a) => `  ${a}`).join('\n')}`,
+          text: `${addresses.length} address match(es) for "${prefix}":\n${lines}`,
           structured: { prefix, count: addresses.length, addresses },
         };
       },

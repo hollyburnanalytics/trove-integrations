@@ -20,7 +20,7 @@ function foldChar(ch: string): string {
   for (const [ascii, variants] of Object.entries(SMART_PUNCTUATION)) {
     if (variants.includes(ch)) return ascii;
   }
-  return ch.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+  return ch.toLowerCase().normalize('NFD').replaceAll(/\p{M}/gu, '');
 }
 
 /**
@@ -33,18 +33,18 @@ function foldChar(ch: string): string {
 export function foldForSearch(text: string): { folded: string; map: number[] } {
   let folded = '';
   const map: number[] = [];
-  let gap = false;
+  let isGap = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (ch === undefined) continue; // the loop bound guarantees this; satisfies noUncheckedIndexedAccess
     if (/\s/.test(ch)) {
-      gap = folded.length > 0; // a separating space, emitted lazily before the next visible char
+      isGap = folded.length > 0; // a separating space, emitted lazily before the next visible char
       continue;
     }
-    if (gap) {
+    if (isGap) {
       folded += ' ';
       map.push(i);
-      gap = false;
+      isGap = false;
     }
     for (const c of foldChar(ch)) {
       folded += c;
@@ -58,6 +58,6 @@ export function foldForSearch(text: string): { folded: string; map: number[] } {
 export function snippetAround(text: string, start: number, end: number, context: number): string {
   const s = Math.max(0, start - context);
   const e = Math.min(text.length, end + context);
-  const body = text.slice(s, e).replace(/\s+/g, ' ').trim();
+  const body = text.slice(s, e).replaceAll(/\s+/g, ' ').trim();
   return `${s > 0 ? '…' : ''}${body}${e < text.length ? '…' : ''}`;
 }

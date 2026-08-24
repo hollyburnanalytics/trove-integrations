@@ -40,7 +40,7 @@ function parseSearchHits(rawHits: unknown[]): SearchFiling[] {
   const filings: SearchFiling[] = [];
   for (const h of rawHits) {
     const hit = h as { _id?: unknown; _source?: unknown };
-    const accession = typeof hit._id === 'string' ? (hit._id.split(':')[0] ?? '') : '';
+    const accession = typeof hit._id === 'string' ? (hit._id.split(':', 1)[0] ?? '') : '';
     if (accession && seen.has(accession)) continue;
     seen.add(accession);
     filings.push(toSearchFiling((hit._source ?? {}) as Record<string, unknown>, accession));
@@ -100,7 +100,7 @@ export const searchFilings = tool({
       .number()
       .int()
       .min(0)
-      .max(9_990)
+      .max(9990)
       .default(0)
       .describe('Result offset for pagination; pass the returned nextFrom.'),
   }),
@@ -139,18 +139,18 @@ export const searchFilings = tool({
     const totalRaw = ((hits.total ?? {}) as { value?: unknown }).value;
     const total = typeof totalRaw === 'number' ? totalRaw : rawHits.length;
     const filings = parseSearchHits(rawHits);
-    const consumed = from + rawHits.length;
-    const nextFrom = rawHits.length > 0 && consumed < Math.min(total, 10_000) ? consumed : null;
     if (filings.length === 0) {
       return {
         text: `No EDGAR filings matching "${query}".`,
         structured: { query, cik, total: 0, count: 0, from, nextFrom: null, filings: [] },
       };
     }
+    const consumed = from + rawHits.length;
+    const nextFrom = rawHits.length > 0 && consumed < Math.min(total, 10_000) ? consumed : null;
     const lines = filings
       .map((f) => `  ${f.filedDate} ${f.form} — ${f.company} [${f.accession}]`)
       .join('\n');
-    const more = nextFrom !== null ? `\n(more — call again with from=${nextFrom})` : '';
+    const more = nextFrom === null ? '' : `\n(more — call again with from=${nextFrom})`;
     return {
       text: `${filings.length} of ${total} filing(s) for "${query}":\n${lines}${more}`,
       structured: { query, cik, total, count: filings.length, from, nextFrom, filings },

@@ -179,7 +179,7 @@ export const getInsights = tool({
     // The rows say which account they belong to; that beats the one assumed.
     const reportedAccount = result.reportedAccountId ?? accountId;
     const notes = [
-      result.reportedAccountId && accountId !== undefined
+      accountId !== undefined && result.reportedAccountId
         ? `These rows are from ${result.reportedAccountId}, not the ${accountId} this call ` +
           'resolved — the entity id given belongs to that account. Amounts are in ITS currency.'
         : undefined,

@@ -131,7 +131,7 @@ export function escapeLinkPart(value: string, isUrl: boolean): string {
 /**
  * Escape source text so it cannot be re-read as markup.
  *
- * Only the characters that change the PARSE are escaped, and `atLineStart`
+ * Only the characters that change the PARSE are escaped, and `isAtLineStart`
  * decides which set applies. A `#` mid-sentence is a `#`; a `#` opening a line is
  * a heading, and a post whose prose begins "# 1 in a series" would otherwise
  * enter the corpus as an `<h1>` that its author never wrote. The same holds for
@@ -142,16 +142,18 @@ export function escapeLinkPart(value: string, isUrl: boolean): string {
  * converter that failed to do its job.
  *
  * @param value - The source text.
- * @param atLineStart - Whether it will open a line, which decides
+ * @param isAtLineStart - Whether it will open a line, which decides
  *   whether the block markers need escaping too.
  * @returns The escaped text.
  */
-export function escapeText(value: string, atLineStart: boolean): string {
+export function escapeText(value: string, isAtLineStart: boolean): string {
   const inline = value
     .replaceAll('\\', '\\\\')
     .replaceAll(/([[\]`])/g, String.raw`\$1`)
     .replaceAll(/<(?=[a-zA-Z/!?])/g, String.raw`\<`);
-  return atLineStart ? inline.replace(/^(\s*)([#>+-]|\d+[.)])(?=\s|$)/, String.raw`$1\$2`) : inline;
+  return isAtLineStart
+    ? inline.replace(/^(\s*)([#>+-]|\d+[.)])(?=\s|$)/, String.raw`$1\$2`)
+    : inline;
 }
 
 /**

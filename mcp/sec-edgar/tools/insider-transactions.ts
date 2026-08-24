@@ -63,12 +63,14 @@ interface FilingRow {
 }
 
 /** Render one filing block: a header line plus its indented transaction list. */
-function formatFilingRow(row: FilingRow, byOwner: boolean): string {
+function formatFilingRow(row: FilingRow, isByOwner: boolean): string {
   const role = row.officerTitle ?? (row.isDirector ? 'Director' : null);
   // By-owner reads list the issuer per filing; by-company reads the insider.
-  const head = byOwner
-    ? `${row.issuer ?? '?'}${row.issuerTicker ? ` (${row.issuerTicker})` : ''}`
-    : `${row.owners.join(' / ') || '?'}${role ? ` (${role})` : ''}`;
+  const ticker = row.issuerTicker ? ` (${row.issuerTicker})` : '';
+  const roleLabel = role ? ` (${role})` : '';
+  const head = isByOwner
+    ? `${row.issuer ?? '?'}${ticker}`
+    : `${row.owners.join(' / ') || '?'}${roleLabel}`;
   const txns =
     row.transactions.length > 0
       ? row.transactions.map((t) => `    ${renderTransaction(t)}`).join('\n')
@@ -78,13 +80,14 @@ function formatFilingRow(row: FilingRow, byOwner: boolean): string {
 }
 
 /** One-line open-market buy/sell recap with net share direction. */
+function netFlowText(netShares: number): string {
+  if (netShares === 0) return 'net flat';
+  const count = netShares.toLocaleString('en-US');
+  return netShares > 0 ? `net +${count} shares bought` : `net ${count} shares sold`;
+}
+
 function formatOpenMarketSummary(summary: InsiderSummary): string {
-  const net =
-    summary.netShares === 0
-      ? 'net flat'
-      : summary.netShares > 0
-        ? `net +${summary.netShares.toLocaleString('en-US')} shares bought`
-        : `net ${summary.netShares.toLocaleString('en-US')} shares sold`;
+  const net = netFlowText(summary.netShares);
   return (
     `Open-market summary across these filings: ${summary.openMarketPurchases.transactions} ` +
     `buy(s) (${fmtMoney(summary.openMarketPurchases.value, 'USD')}), ` +
@@ -118,8 +121,8 @@ async function resolveSubject(
         { retryable: false },
       );
     }
-    const issuerFilter = company ? (await requireCompany(ctx, company)).cik : null;
-    return { subjectCik: ownerCik, subjectRef: owner, issuerFilter };
+    const issuer = company ? await requireCompany(ctx, company) : null;
+    return { subjectCik: ownerCik, subjectRef: owner, issuerFilter: issuer?.cik ?? null };
   }
   if (!company) {
     throw new ToolError(
@@ -127,11 +130,8 @@ async function resolveSubject(
       { retryable: false },
     );
   }
-  return {
-    subjectCik: (await requireCompany(ctx, company)).cik,
-    subjectRef: company,
-    issuerFilter: null,
-  };
+  const issuer = await requireCompany(ctx, company);
+  return { subjectCik: issuer.cik, subjectRef: company, issuerFilter: null };
 }
 
 const transactionShape = z.object({
