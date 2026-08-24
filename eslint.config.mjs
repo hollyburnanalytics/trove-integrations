@@ -331,8 +331,10 @@ export default [
   {
     // `Math.random()` here is jitter on a retry backoff — it spreads a fleet of
     // channel syncs across the hour so they do not all wake together. It picks
-    // no secret, id or key; a stronger source would buy only a slower loop.
-    files: ['sources/youtube-videos/extension.ts'],
+    // no secret, id or key; a stronger source would buy only a slower loop. Two
+    // paths, named not globbed: `backoffMs` carries the jitter and moves when
+    // the source is split, and a glob would cover the next file unread.
+    files: ['sources/youtube-videos/bot-wall.ts', 'sources/youtube-videos/extension.ts'],
     rules: { 'sonarjs/pseudo-random': 'off' },
   },
   {
