@@ -47,7 +47,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['oeis.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_sequences',

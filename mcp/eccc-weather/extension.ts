@@ -45,6 +45,6 @@ export default defineToolkit({
   secrets: [],
   egress: ['api.weather.gc.ca', 'geo.weather.gc.ca'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [findLocation, forecast, observations, modelPoint, airQuality, wildfireSmoke],
 });

@@ -47,7 +47,7 @@ export default defineToolkit({
   version: '1.0.0',
   secrets: ['JONAS_USERNAME', 'JONAS_PASSWORD'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   egress: ['api.jonas-premier.com'],
   tools: [
     listCompanies,

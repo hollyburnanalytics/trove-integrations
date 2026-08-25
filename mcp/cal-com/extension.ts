@@ -40,7 +40,7 @@ export default defineToolkit({
   secrets: ['CALCOM_API_KEY'],
   egress: ['api.cal.com'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'list_event_types',

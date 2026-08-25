@@ -189,7 +189,7 @@ export default defineToolkit({
   secrets: ['EBAY_CLIENT_ID', 'EBAY_CLIENT_SECRET'],
   egress: ['api.ebay.com'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   auth: {
     type: 'oauth2_client_credentials',
     tokenUrl: `${BASE_URL}/identity/v1/oauth2/token`,

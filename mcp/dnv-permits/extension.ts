@@ -115,7 +115,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['app.dnv.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_permits',

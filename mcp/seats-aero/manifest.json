@@ -11,7 +11,7 @@
     "seats.aero"
   ],
   "scopes": [],
-  "visibility": "public",
+  "visibility": "shared",
   "config": {
     "home_airports": {
       "label": "Home airports",

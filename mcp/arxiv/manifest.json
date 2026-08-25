@@ -13,6 +13,6 @@
   "scopes": [
     "trove:ingest"
   ],
-  "visibility": "public",
+  "visibility": "shared",
   "generated": true
 }

@@ -79,7 +79,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['archive.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_archive',

@@ -19,6 +19,6 @@ export default defineToolkit({
     'archive-api.open-meteo.com',
   ],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [geocodePlaceTool, forecastTool, airQualityTool, historicalTool],
 });

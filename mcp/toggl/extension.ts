@@ -51,7 +51,7 @@ export default defineToolkit({
   secrets: ['TOGGL_API_TOKEN'],
   egress: ['api.track.toggl.com'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'check_auth',

@@ -9,6 +9,6 @@
     "www.businessregistration-inscriptionentreprise.gc.ca"
   ],
   "scopes": [],
-  "visibility": "public",
+  "visibility": "shared",
   "generated": true
 }

@@ -60,7 +60,7 @@ export default defineToolkit({
   secrets: ['MAPBOX_TOKEN'],
   egress: ['api.mapbox.com'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'isochrone',

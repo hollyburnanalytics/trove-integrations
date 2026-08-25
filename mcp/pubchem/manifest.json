@@ -9,6 +9,6 @@
     "pubchem.ncbi.nlm.nih.gov"
   ],
   "scopes": [],
-  "visibility": "public",
+  "visibility": "shared",
   "generated": true
 }

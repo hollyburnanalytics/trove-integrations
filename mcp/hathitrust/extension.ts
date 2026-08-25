@@ -77,7 +77,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['catalog.hathitrust.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'lookup_volume',

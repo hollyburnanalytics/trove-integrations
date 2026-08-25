@@ -29,6 +29,6 @@ export default defineToolkit({
   secrets: [],
   egress: ['gutendex.com', 'mirror.csclub.uwaterloo.ca', 'www.gutenberg.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [searchBooks, getBook, searchInside, getExcerpt],
 });

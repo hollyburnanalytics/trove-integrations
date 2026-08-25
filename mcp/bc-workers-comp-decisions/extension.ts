@@ -30,6 +30,6 @@ export default defineToolkit({
   secrets: [],
   egress: ['www.wcat.bc.ca', 'rdpubsearch.online.worksafebc.com'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [searchWcatDecisions, getWcatDecision, searchReviewDecisions],
 });

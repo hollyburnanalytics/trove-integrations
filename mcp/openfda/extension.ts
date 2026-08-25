@@ -73,7 +73,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['api.fda.gov'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_drug_labels',

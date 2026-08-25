@@ -64,7 +64,7 @@ export default defineToolkit({
   version: '1.0.0',
   secrets: ['TADDY_USER_ID', 'TADDY_API_KEY'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   egress: ['api.taddy.org'],
   tools: [
     searchPodcastsTool,

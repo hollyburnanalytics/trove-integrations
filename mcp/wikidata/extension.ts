@@ -159,7 +159,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['www.wikidata.org'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_entities',

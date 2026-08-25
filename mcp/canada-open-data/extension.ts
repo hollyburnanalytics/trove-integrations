@@ -30,7 +30,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['open.canada.ca'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'search_datasets',

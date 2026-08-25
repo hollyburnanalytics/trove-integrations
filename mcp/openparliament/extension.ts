@@ -108,7 +108,7 @@ export default defineToolkit({
   secrets: [],
   egress: ['api.openparliament.ca'],
   scopes: [],
-  visibility: 'public',
+  visibility: 'shared',
   tools: [
     tool({
       name: 'find_mp',
