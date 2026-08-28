@@ -142,16 +142,45 @@ export function formatProduct(product: ReturnType<typeof mapProduct>): string {
   return `"${product.title}" — ${priceLabel}${store}${ratingLabel}${stock}\n  ${product.url ?? product.id ?? ''}`;
 }
 
+/**
+ * Split a UCP result's `messages[]` into the ids it could not resolve and the
+ * advisory notes about the request itself.
+ *
+ * The catalog answers a filter it did not honour with a message rather than an
+ * error — an unsupported attribute name is ignored and reported here, and a
+ * price band is FX-converted to a USD basis and reports the rate it used as
+ * `price_filter_applied`. Dropping these left the caller quoting a filtered set
+ * that had not been filtered the way they asked.
+ */
+export function mapMessages(result: Record<string, unknown>): {
+  notes: string[];
+  notFound: string[];
+} {
+  const messages = Array.isArray(result.messages) ? result.messages : [];
+  const notes: string[] = [];
+  const notFound: string[] = [];
+  for (const raw of messages) {
+    const m = (raw ?? {}) as Record<string, unknown>;
+    const code = typeof m.code === 'string' ? m.code : '';
+    const content = typeof m.content === 'string' ? m.content : '';
+    if (code === 'not_found') notFound.push(content || 'unknown id');
+    else notes.push(code ? `${code}: ${content}` : content);
+  }
+  return { notes, notFound };
+}
+
 /** Map a UCP search result to the tool's structured page shape. */
 export function mapSearchPage(result: Record<string, unknown>): {
   totalEstimate: number | null;
   count: number;
   nextCursor: string | null;
+  notes: string[];
   products: ReturnType<typeof mapProduct>[];
 } {
   const rawProducts = Array.isArray(result.products) ? result.products : [];
   const products = rawProducts.map(mapProduct);
   const pagination = (result.pagination ?? {}) as Record<string, unknown>;
+  const { notes } = mapMessages(result);
   return {
     totalEstimate: typeof pagination.total_count === 'number' ? pagination.total_count : null,
     count: products.length,
@@ -159,6 +188,7 @@ export function mapSearchPage(result: Record<string, unknown>): {
       pagination.has_next_page === true && typeof pagination.cursor === 'string'
         ? pagination.cursor
         : null,
+    notes,
     products,
   };
 }

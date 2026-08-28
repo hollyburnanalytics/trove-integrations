@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { callTool } from '../lib/test-harness.mjs';
 import server from './extension.ts';
@@ -56,9 +58,10 @@ describe('shopify-catalog MCP server', () => {
     );
     expect(captured.body.params.arguments.catalog.query).toBe('walnut desk organizer');
     expect(captured.body.params.arguments.catalog.view).toBe('offer');
-    // Major units in, minor units on the wire, currency pinned for determinism.
+    // Major units in, minor units on the wire. The band is evaluated on a USD
+    // basis upstream regardless of any currency we send, so we send none.
     expect(captured.body.params.arguments.catalog.filters.price.max).toBe(8000);
-    expect(captured.body.params.arguments.catalog.filters.price.currency).toBe('USD');
+    expect(captured.body.params.arguments.catalog.filters.price).not.toHaveProperty('currency');
 
     expect(structured.count).toBe(1);
     expect(structured.totalEstimate).toBe(37);
@@ -178,7 +181,7 @@ describe('shopify-catalog MCP server', () => {
       'search_products',
       {
         similarTo: 'gid://shopify/p/abc123',
-        imageUrl: 'https://cdn.example.com/ref.jpg',
+        image: { contentType: 'image/jpeg', data: 'aGVsbG8=' },
         minRating: 4,
       },
       (_url, init) => {
@@ -187,11 +190,14 @@ describe('shopify-catalog MCP server', () => {
       },
     );
     expect(call.ok).toBe(true);
+    // Upstream `like` items are a strict oneOf: a `gid://shopify/...` id, or an
+    // inline base64 image object. A bare image URL string is rejected upstream.
     expect(captured.params.arguments.catalog.like).toEqual([
       { id: 'gid://shopify/p/abc123' },
-      { image: 'https://cdn.example.com/ref.jpg' },
+      { image: { content_type: 'image/jpeg', data: 'aGVsbG8=' } },
     ]);
-    expect(captured.params.arguments.catalog.filters.rating).toEqual({ min: 4 });
+    // Ratings filter on the variant leg: `{ variant: { min, min_count } }`.
+    expect(captured.params.arguments.catalog.filters.rating).toEqual({ variant: { min: 4 } });
     expect(captured.params.arguments.catalog.query).toBeUndefined();
 
     const bare = await callTool(server, 'search_products', {}, () =>
@@ -199,6 +205,31 @@ describe('shopify-catalog MCP server', () => {
     );
     expect(bare.ok).toBe(false);
     expect(String(bare.error?.message ?? bare.error)).toMatch(/query, a similarTo/);
+  });
+
+  it('carries minRatingCount onto the variant rating filter', async () => {
+    let captured;
+    const call = await callTool(
+      server,
+      'search_products',
+      { query: 'coffee grinder', minRating: 4.5, minRatingCount: 25 },
+      (_url, init) => {
+        captured = JSON.parse(init.body);
+        return rpcResult({ products: [], pagination: {} });
+      },
+    );
+    expect(call.ok).toBe(true);
+    expect(captured.params.arguments.catalog.filters.rating).toEqual({
+      variant: { min: 4.5, min_count: 25 },
+    });
+  });
+
+  it('rejects a similarTo id that is not a Shopify GID before spending a request', async () => {
+    const call = await callTool(server, 'search_products', { similarTo: 'abc123' }, () => {
+      throw new Error('must not reach the network');
+    });
+    expect(call.ok).toBe(false);
+    expect(String(call.error?.message ?? call.error)).toMatch(/gid:\/\/shopify\//);
   });
 
   it('sends documented filter shapes: condition array, available boolean, ships_to object', async () => {
@@ -292,5 +323,124 @@ describe('shopify-catalog MCP server', () => {
     }));
     expect(call.ok).toBe(false);
     expect(String(call.error?.message ?? call.error)).toMatch(/profile_unreachable/);
+  });
+
+  it('maps buyer locale onto the UCP context field names on every tool', async () => {
+    const context = { country: 'CA', language: 'en', currency: 'CAD' };
+    // `country` is our friendly input name; upstream reads `address_country`
+    // and ignores a bare `country`, silently pricing in the merchant currency.
+    const wire = { address_country: 'CA', language: 'en', currency: 'CAD' };
+
+    let searched;
+    const search = await callTool(
+      server,
+      'search_products',
+      { query: 'x', context },
+      (_u, init) => {
+        searched = JSON.parse(init.body);
+        return rpcResult({ products: [], pagination: {} });
+      },
+    );
+    expect(search.ok).toBe(true);
+    expect(searched.params.arguments.catalog.context).toEqual(wire);
+
+    let looked;
+    const lookup = await callTool(
+      server,
+      'lookup_products',
+      { ids: ['gid://shopify/p/abc123'], context },
+      (_u, init) => {
+        looked = JSON.parse(init.body);
+        return rpcResult({ products: [] });
+      },
+    );
+    expect(lookup.ok).toBe(true);
+    expect(looked.params.arguments.catalog.context).toEqual(wire);
+
+    let detailed;
+    const detail = await callTool(
+      server,
+      'get_product',
+      { id: 'gid://shopify/p/abc123', context },
+      (_u, init) => {
+        detailed = JSON.parse(init.body);
+        return rpcResult({ product: SEARCH_CONTENT.products[0] });
+      },
+    );
+    expect(detail.ok).toBe(true);
+    expect(detailed.params.arguments.catalog.context).toEqual(wire);
+  });
+
+  it('omits the context entirely when no locale signal is given', async () => {
+    let captured;
+    const call = await callTool(server, 'search_products', { query: 'x' }, (_u, init) => {
+      captured = JSON.parse(init.body);
+      return rpcResult({ products: [], pagination: {} });
+    });
+    expect(call.ok).toBe(true);
+    expect(captured.params.arguments.catalog).not.toHaveProperty('context');
+  });
+
+  it('surfaces upstream advisory messages from a search instead of dropping them', async () => {
+    const call = await callTool(server, 'search_products', { query: 'x', maxPrice: 100 }, () =>
+      rpcResult({
+        products: [],
+        messages: [
+          {
+            type: 'info',
+            code: 'price_filter_applied',
+            content: 'Price filtering was applied on a USD basis; returned prices may differ.',
+          },
+        ],
+        pagination: {},
+      }),
+    );
+    expect(call.ok).toBe(true);
+    expect(call.result.structured.notes).toEqual([
+      'price_filter_applied: Price filtering was applied on a USD basis; returned prices may differ.',
+    ]);
+    expect(call.result.text).toContain('USD basis');
+  });
+
+  it('separates lookup not_found ids from other advisory messages', async () => {
+    const call = await callTool(
+      server,
+      'lookup_products',
+      { ids: ['gid://shopify/p/abc123', 'https://shop.example.com/products/gone'] },
+      () =>
+        rpcResult({
+          products: [],
+          messages: [
+            { code: 'not_found', content: 'https://shop.example.com/products/gone' },
+            { type: 'info', code: 'price_filter_applied', content: 'Applied on a USD basis.' },
+          ],
+        }),
+    );
+    expect(call.ok).toBe(true);
+    expect(call.result.structured.notFound).toEqual(['https://shop.example.com/products/gone']);
+    expect(call.result.structured.notes).toEqual(['price_filter_applied: Applied on a USD basis.']);
+  });
+
+  it('declares both catalog capability versions in the shipped agent profile', () => {
+    const profile = JSON.parse(
+      readFileSync(path.join(import.meta.dirname, 'ucp-agent-profile.json'), 'utf8'),
+    );
+    // Both versions, newest first. UCP negotiates down to the highest version
+    // the SERVER also speaks, and catalog.shopify.com still advertises only
+    // 2026-04-08 in its .well-known document — so dropping the older entry
+    // would leave nothing in common and break every call. Keeping both means
+    // the day Shopify ships 2026-08-25 we move up without a code change.
+    for (const capability of [
+      'dev.ucp.shopping.catalog.search',
+      'dev.ucp.shopping.catalog.lookup',
+    ]) {
+      expect(profile.ucp.capabilities[capability].map((entry) => entry.version)).toEqual([
+        '2026-08-25',
+        '2026-04-08',
+      ]);
+    }
+    // The profile's own protocol version is the newest release it is written
+    // against, not the one a given server happens to be on.
+    expect(profile.ucp.version).toBe('2026-08-25');
   });
 });

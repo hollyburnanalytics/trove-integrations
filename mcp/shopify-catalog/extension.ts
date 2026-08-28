@@ -1,6 +1,6 @@
 import { defineToolkit, ToolError, tool, z } from '@ontrove/extend/toolkit';
-import { buildSearchFilters, resolveCatalogId, ucpCall } from './catalog-client.ts';
-import { formatProduct, mapProduct, mapSearchPage, price } from './map.ts';
+import { buildContext, buildSearchFilters, resolveCatalogId, ucpCall } from './catalog-client.ts';
+import { formatProduct, mapMessages, mapProduct, mapSearchPage, price } from './map.ts';
 
 /**
  * Shopify Global Catalog — a hosted MCP server over Shopify's Universal
@@ -20,7 +20,11 @@ import { formatProduct, mapProduct, mapSearchPage, price } from './map.ts';
  * required. Spec: https://ucp.dev/2026-04-08/specification/catalog/mcp/
  */
 
-/** Shared context input: buyer signals for relevance and localization. */
+/**
+ * Shared context input: buyer signals for relevance and localization. Mapped
+ * onto the UCP wire names by `buildContext` — `country` travels as
+ * `address_country`, which is what actually localizes the prices.
+ */
 const contextInput = z
   .object({
     country: z.string().length(2).optional().describe('ISO 3166 country, e.g. "CA".'),
@@ -30,13 +34,16 @@ const contextInput = z
   .optional()
   .describe('Buyer locale signals for relevance, localization, and pricing.');
 
+/** A Shopify GID, the only id shape upstream accepts as a `like` reference. */
+const SHOPIFY_GID = /^gid:\/\/shopify\//;
+
 export default defineToolkit({
   id: 'shopify-catalog',
   name: 'Shopify Global Catalog',
   description:
     "Search products across every Shopify storefront worldwide via Shopify's Universal Commerce Protocol catalog — free-text and similar-item search with price, availability, condition, and shipping filters, plus variant-level product detail. Real-time, no key required.",
   icon: '🛍️',
-  version: '1.0.0',
+  version: '2.0.0',
   secrets: [],
   egress: ['catalog.shopify.com'],
   scopes: [],
@@ -52,8 +59,11 @@ export default defineToolkit({
         'summaries — title, description, price range, storefront domain, stock ' +
         'flag, product-page URL — with a cursor for paging. Also does ' +
         'similar-item search (similarTo: a product id) and visual search ' +
-        '(imageUrl). Price filters apply in context.currency (default USD); ' +
-        "displayed prices stay in each merchant's own currency. Discovery only: the " +
+        '(image: inline base64 bytes). A price band is read in context.currency ' +
+        '(default USD) and FX-converted to a USD basis upstream, while displayed ' +
+        "prices are localized to the buyer's market — so a band can admit an item " +
+        'whose shown price falls outside it; notes[] carries the upstream advisory ' +
+        'saying exactly how the band was applied. Discovery only: the ' +
         'catalog is semantic (nearest matches always return, even for nonsense ' +
         'queries; treat weak matches skeptically), totalEstimate is a rough ' +
         'fluctuating estimate, and locale context localizes results but does NOT ' +
@@ -70,16 +80,37 @@ export default defineToolkit({
           .describe('Free-text search, e.g. "walnut desk organizer".'),
         similarTo: z
           .string()
+          .regex(SHOPIFY_GID, 'similarTo must be a Shopify GID, e.g. "gid://shopify/p/abc123".')
           .optional()
-          .describe('A catalog product id — find visually/semantically similar products.'),
-        imageUrl: z
-          .string()
-          .url()
+          .describe('A catalog product/variant GID — find visually/semantically similar products.'),
+        image: z
+          .object({
+            contentType: z.string().describe('MIME type, e.g. "image/jpeg".'),
+            data: z.string().describe('Base64-encoded image bytes.'),
+          })
           .optional()
-          .describe('An image URL — visual search for products resembling it.'),
+          .describe(
+            'An inline base64 image — visual search for products resembling it. Upstream ' +
+              'takes bytes, not a URL, and this server may only reach the catalog host, ' +
+              'so the caller supplies the encoded image.',
+          ),
         minPrice: z.number().min(0).optional().describe('Minimum price (major units).'),
         maxPrice: z.number().min(0).optional().describe('Maximum price (major units).'),
-        minRating: z.number().min(0).max(5).optional().describe('Minimum product rating (0–5).'),
+        minRating: z
+          .number()
+          .min(0)
+          .max(5)
+          .optional()
+          .describe(
+            'Minimum variant rating (0–5). Filters upstream, but the catalog does not ' +
+              'return rating values, so matched products come back with rating: null.',
+          ),
+        minRatingCount: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Minimum number of reviews behind that rating.'),
         includeUnavailable: z
           .boolean()
           .optional()
@@ -109,6 +140,9 @@ export default defineToolkit({
           ),
         count: z.number(),
         nextCursor: z.string().nullable(),
+        notes: z
+          .array(z.string())
+          .describe('Upstream advisories about how the request was interpreted.'),
         products: z.array(
           z.object({
             id: z.string().nullable(),
@@ -132,10 +166,11 @@ export default defineToolkit({
         const {
           query,
           similarTo,
-          imageUrl,
+          image,
           minPrice,
           maxPrice,
           minRating,
+          minRatingCount,
           includeUnavailable,
           condition,
           shipsTo,
@@ -143,8 +178,8 @@ export default defineToolkit({
           cursor,
           limit,
         } = args;
-        if (!query && !similarTo && !imageUrl) {
-          throw new ToolError('Provide a query, a similarTo product id, or an imageUrl.', {
+        if (!query && !similarTo && !image) {
+          throw new ToolError('Provide a query, a similarTo product GID, or an image.', {
             retryable: false,
           });
         }
@@ -157,16 +192,18 @@ export default defineToolkit({
           minPrice,
           maxPrice,
           minRating,
+          minRatingCount,
           includeUnavailable,
           condition,
           shipsTo,
-          currency: context?.currency,
         });
+        // A `like` item is a strict oneOf upstream: a GID, or inline image bytes.
         const like = [
           ...(similarTo ? [{ id: similarTo }] : []),
-          ...(imageUrl ? [{ image: imageUrl }] : []),
+          ...(image ? [{ image: { content_type: image.contentType, data: image.data } }] : []),
         ];
         ctx.log('search_products', { query, similarTo, limit });
+        const wireContext = buildContext(context);
 
         const result = await ucpCall(
           'search_catalog',
@@ -175,17 +212,18 @@ export default defineToolkit({
             ...(like.length > 0 && { like }),
             view: 'offer',
             ...(Object.keys(filters).length > 0 && { filters }),
-            ...(context && { context }),
+            ...(wireContext && { context: wireContext }),
             pagination: { limit, ...(cursor && { cursor }) },
           },
           ctx,
         );
         const structured = mapSearchPage(result);
-        const text =
+        const listing =
           structured.products.length === 0
-            ? `No products found for "${query ?? similarTo ?? imageUrl ?? ''}".`
+            ? `No products found for "${query ?? similarTo ?? 'the supplied image'}".`
             : structured.products.map(formatProduct).join('\n');
-        return { structured, text };
+        const notes = structured.notes.map((n) => `\nNote: ${n}`).join('');
+        return { structured, text: listing + notes };
       },
     }),
     tool({
@@ -209,29 +247,30 @@ export default defineToolkit({
       output: z.object({
         count: z.number(),
         notFound: z.array(z.string()),
+        notes: z
+          .array(z.string())
+          .describe('Upstream advisories about how the request was interpreted.'),
         products: z.array(z.record(z.string(), z.unknown())),
       }),
       async handler(args, ctx) {
         ctx.log('lookup_products', { count: args.ids.length });
+        const wireContext = buildContext(args.context);
         const result = await ucpCall(
           'lookup_catalog',
-          { ids: args.ids, view: 'offer', ...(args.context && { context: args.context }) },
+          { ids: args.ids, view: 'offer', ...(wireContext && { context: wireContext }) },
           ctx,
         );
         const rawProducts = Array.isArray(result.products) ? result.products : [];
         const products = rawProducts.map(mapProduct);
-        const messages = Array.isArray(result.messages) ? result.messages : [];
-        const notFound = messages
-          .map((m) => (m ?? {}) as Record<string, unknown>)
-          .filter((m) => m.code === 'not_found')
-          .map((m) => (typeof m.content === 'string' ? m.content : 'unknown id'));
-        const structured = { count: products.length, notFound, products };
+        const { notes, notFound } = mapMessages(result);
+        const structured = { count: products.length, notFound, notes, products };
         const missing = notFound.length > 0 ? `\nNot found: ${notFound.join(', ')}` : '';
-        const text =
+        const listing =
           products.length === 0
             ? 'No products found for the given ids.'
-            : products.map(formatProduct).join('\n') + missing;
-        return { structured, text };
+            : products.map(formatProduct).join('\n');
+        const advisories = notes.map((n) => `\nNote: ${n}`).join('');
+        return { structured, text: listing + missing + advisories };
       },
     }),
     tool({
@@ -259,13 +298,14 @@ export default defineToolkit({
       async handler(args, ctx) {
         ctx.log('get_product', { id: args.id });
         const id = await resolveCatalogId(args.id, ctx);
+        const wireContext = buildContext(args.context);
         const result = await ucpCall(
           'get_product',
           {
             id,
             view: 'offer',
             ...(args.selected && { selected: args.selected }),
-            ...(args.context && { context: args.context }),
+            ...(wireContext && { context: wireContext }),
           },
           ctx,
         );

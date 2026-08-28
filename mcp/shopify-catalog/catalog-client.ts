@@ -68,28 +68,60 @@ export async function ucpCall(
 }
 
 /**
- * Build the UCP search `filters` object. Price bands pin an explicit currency
- * (verified live: without one the band is interpreted in an unspecified
- * currency and can disagree with the displayed merchant-currency prices).
+ * Map our friendly buyer-locale input onto the UCP `context` field names.
+ *
+ * The country key is `address_country`, not `country`: upstream ignores an
+ * unrecognized key silently, and a dropped country means prices come back in
+ * the merchant's own currency rather than the buyer's market — a wrong number
+ * with no error attached. Returns undefined when there is no signal to send.
+ */
+export function buildContext(
+  input: { country?: string; language?: string; currency?: string } | undefined,
+): Record<string, string> | undefined {
+  if (!input) return undefined;
+  const context: Record<string, string> = {
+    ...(input.country && { address_country: input.country }),
+    ...(input.language && { language: input.language }),
+    ...(input.currency && { currency: input.currency }),
+  };
+  return Object.keys(context).length > 0 ? context : undefined;
+}
+
+/**
+ * Build the UCP search `filters` object.
+ *
+ * The price band carries no currency of its own. Upstream reads the band in
+ * `context.currency` and FX-converts it to a USD basis — verified live, where
+ * the `price_filter_applied` message reports `request_currency` taken from the
+ * context and never from the band. The `currency` key this used to set was
+ * inert, and pinning it to USD implied a determinism it did not buy.
  */
 export function buildSearchFilters(input: {
   minPrice?: number;
   maxPrice?: number;
   minRating?: number;
+  minRatingCount?: number;
   includeUnavailable?: boolean;
   condition?: string;
   shipsTo?: string;
-  currency?: string;
 }): Record<string, unknown> {
   const filters: Record<string, unknown> = {};
   if (input.minPrice !== undefined || input.maxPrice !== undefined) {
     filters.price = {
       ...(input.minPrice !== undefined && { min: Math.round(input.minPrice * 100) }),
       ...(input.maxPrice !== undefined && { max: Math.round(input.maxPrice * 100) }),
-      currency: input.currency ?? 'USD',
     };
   }
-  if (input.minRating !== undefined) filters.rating = { min: input.minRating };
+  // Ratings hang off the variant leg: `{ variant: { min, min_count } }`. The
+  // flat `{ min }` this used to send is not a recognized key and was ignored.
+  if (input.minRating !== undefined || input.minRatingCount !== undefined) {
+    filters.rating = {
+      variant: {
+        ...(input.minRating !== undefined && { min: input.minRating }),
+        ...(input.minRatingCount !== undefined && { min_count: input.minRatingCount }),
+      },
+    };
+  }
   // Documented shape: `available` defaults true (sale-ready only); false widens
   // the set to include unavailable items. There is no "only out-of-stock".
   if (input.includeUnavailable) filters.available = false;
