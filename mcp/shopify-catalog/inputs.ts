@@ -20,3 +20,9 @@ export const contextInput = z
 
 /** A Shopify GID, the only id shape upstream accepts as a `like` reference. */
 export const SHOPIFY_GID = /^gid:\/\/shopify\//;
+
+/** A Shopify shop GID, the only form the `shops` filter matches. */
+export const SHOP_GID = /^gid:\/\/shopify\/Shop\/\w+$/;
+
+/** A Shopify taxonomy category GID, the only form the `categories` filter matches. */
+export const TAXONOMY_GID = /^gid:\/\/shopify\/TaxonomyCategory\/[\w-]+$/;

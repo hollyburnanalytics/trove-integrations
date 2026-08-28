@@ -12,8 +12,21 @@
       ]
     },
     "capabilities": {
-      "dev.ucp.shopping.catalog.search": [{ "version": "2026-04-08" }],
-      "dev.ucp.shopping.catalog.lookup": [{ "version": "2026-04-08" }]
+      "dev.ucp.shopping.catalog.search": [
+        {
+          "version": "2026-04-08"
+        }
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          "version": "2026-04-08"
+        }
+      ],
+      "dev.shopify.catalog.global": [
+        {
+          "version": "2026-04-08"
+        }
+      ]
     },
     "payment_handlers": {}
   },

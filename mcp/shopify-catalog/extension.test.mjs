@@ -338,6 +338,123 @@ describe('shopify-catalog MCP server', () => {
     ]);
   });
 
+  it('sends shop and taxonomy-category filters as GID arrays', async () => {
+    let captured;
+    const call = await callTool(
+      server,
+      'search_products',
+      {
+        query: 'organizer',
+        shops: ['gid://shopify/Shop/71786430654'],
+        categories: ['gid://shopify/TaxonomyCategory/hg'],
+      },
+      (_u, init) => {
+        captured = JSON.parse(init.body);
+        return rpcResult({ products: [], pagination: {} });
+      },
+    );
+    expect(call.ok).toBe(true);
+    const filters = captured.params.arguments.catalog.filters;
+    expect(filters.shops).toEqual(['gid://shopify/Shop/71786430654']);
+    expect(filters.categories).toEqual(['gid://shopify/TaxonomyCategory/hg']);
+  });
+
+  it('rejects shop and category ids that are not GIDs, before spending a request', async () => {
+    const boom = () => {
+      throw new Error('must not reach the network');
+    };
+    // Upstream answers an unrecognized GID with zero results and no message,
+    // which is indistinguishable from a shop that stocks nothing. Catching the
+    // shape here turns a silent empty page into a fixable error.
+    const shop = await callTool(
+      server,
+      'search_products',
+      { query: 'x', shops: ['acme.com'] },
+      boom,
+    );
+    expect(shop.ok).toBe(false);
+    expect(String(shop.error?.message ?? shop.error)).toMatch(/gid:\/\/shopify\/Shop\//);
+
+    const category = await callTool(
+      server,
+      'search_products',
+      { query: 'x', categories: ['Home & Garden'] },
+      boom,
+    );
+    expect(category.ok).toBe(false);
+    expect(String(category.error?.message ?? category.error)).toMatch(/TaxonomyCategory/);
+  });
+
+  it('surfaces the seller so a caller can feed storeId back into the shops filter', async () => {
+    const call = await callTool(server, 'search_products', { query: 'walnut organizer' }, () =>
+      rpcResult({
+        products: [
+          {
+            id: 'gid://shopify/p/w1',
+            title: 'Walnut Organizer',
+            rating: { value: 4.5, scale_min: 1, scale_max: 5, count: 7139 },
+            price_range: {
+              min: { amount: 7990, currency: 'USD' },
+              max: { amount: 7990, currency: 'USD' },
+            },
+            variants: [
+              {
+                id: 'v1',
+                url: 'https://walnutaddicted.com/products/pivo?variant=1&_gsid=abc',
+                availability: { available: true },
+                seller: {
+                  id: 'gid://shopify/Shop/71786430654',
+                  name: 'Walnut Addicted',
+                  url: 'https://walnutaddicted.com',
+                  // The internal domain — never the one to show a buyer.
+                  domain: '4iv2q6-x1.myshopify.com',
+                },
+              },
+            ],
+          },
+        ],
+        pagination: {},
+      }),
+    );
+    expect(call.ok).toBe(true);
+    const [product] = call.result.structured.products;
+    expect(product.storeId).toBe('gid://shopify/Shop/71786430654');
+    expect(product.storeName).toBe('Walnut Addicted');
+    // seller.url wins over seller.domain, which is the myshopify alias.
+    expect(product.store).toBe('walnutaddicted.com');
+    expect(product.storeUrl).toBe('https://walnutaddicted.com');
+    // Ratings arrive only under the Shopify extension capability.
+    expect(product.rating).toBe(4.5);
+    expect(product.ratingCount).toBe(7139);
+  });
+
+  it('falls back to the variant URL host when no seller is present', async () => {
+    const call = await callTool(server, 'search_products', { query: 'x' }, () =>
+      rpcResult({
+        products: [
+          {
+            id: 'gid://shopify/p/n1',
+            title: 'No Seller',
+            price_range: { min: { amount: 100, currency: 'USD' } },
+            variants: [
+              {
+                id: 'v1',
+                url: 'https://www.shop.example.com/products/thing',
+                availability: { available: true },
+              },
+            ],
+          },
+        ],
+        pagination: {},
+      }),
+    );
+    expect(call.ok).toBe(true);
+    const [product] = call.result.structured.products;
+    expect(product.store).toBe('shop.example.com');
+    expect(product.storeId).toBeNull();
+    expect(product.storeName).toBeNull();
+  });
+
   it('rejects an inverted price range with a clean validation error', async () => {
     const call = await callTool(
       server,
@@ -529,6 +646,12 @@ describe('shopify-catalog MCP server', () => {
     // in `supported_versions`, move this string and the capability versions
     // together — never one without the other.
     expect(profile.ucp.version).toBe('2026-04-08');
+    // The Shopify extension is what makes `seller` (and with it the shop GID
+    // the `shops` filter needs), `rating` and `condition` appear at all. With
+    // only the base capabilities the same query returns none of them.
+    expect(profile.ucp.capabilities['dev.shopify.catalog.global']).toEqual([
+      { version: '2026-04-08' },
+    ]);
     for (const capability of [
       'dev.ucp.shopping.catalog.search',
       'dev.ucp.shopping.catalog.lookup',

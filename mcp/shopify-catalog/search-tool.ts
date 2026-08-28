@@ -1,6 +1,6 @@
 import { ToolError, tool, z } from '@ontrove/extend/toolkit';
 import { buildContext, buildSearchFilters, ucpCall } from './catalog-client.ts';
-import { contextInput, SHOPIFY_GID } from './inputs.ts';
+import { contextInput, SHOP_GID, SHOPIFY_GID, TAXONOMY_GID } from './inputs.ts';
 import { formatProduct, mapSearchPage } from './map.ts';
 
 /**
@@ -114,6 +114,31 @@ export const searchProductsTool = tool({
           'ignored upstream and reported in notes[], not rejected, so check notes[] ' +
           'before trusting that the filter narrowed anything.',
       ),
+    shops: z
+      .array(z.string().regex(SHOP_GID, 'Each shop must be a "gid://shopify/Shop/..." GID.'))
+      .max(1000)
+      .optional()
+      .describe(
+        'Restrict results to these shops (OR-ed, max 1000). Take the GID from a ' +
+          "previous result's storeId — it is the only place one is published.",
+      ),
+    categories: z
+      .array(
+        z
+          .string()
+          .regex(TAXONOMY_GID, 'Each category must be a "gid://shopify/TaxonomyCategory/..." GID.'),
+      )
+      .optional()
+      .describe(
+        'Shopify taxonomy category GIDs, OR-ed, e.g. ' +
+          '"gid://shopify/TaxonomyCategory/hg". The vertical prefix is what matters: ' +
+          'hg (Home & Garden — includes furniture), aa (Apparel), sg (Sporting Goods), ' +
+          'hb (Health & Beauty), el (Electronics), bi (Business & Industrial), ' +
+          'ha (Hardware), ae (Arts & Entertainment), ap (Animals & Pet Supplies), ' +
+          'me (Media), fb (Food & Beverages), lb (Luggage & Bags). An id that matches ' +
+          'nothing returns zero results without an advisory, so widen before concluding ' +
+          'a category is empty.',
+      ),
     priceTier: z
       .array(z.enum(['low', 'medium', 'high']))
       .optional()
@@ -147,6 +172,11 @@ export const searchProductsTool = tool({
         currency: z.string().nullable(),
         store: z.string().nullable(),
         storeUrl: z.string().nullable(),
+        storeId: z
+          .string()
+          .nullable()
+          .describe('Shop GID — pass back via the shops filter to search one storefront.'),
+        storeName: z.string().nullable(),
         available: z.boolean(),
         variantCount: z.number(),
         rating: z.number().nullable(),
@@ -170,6 +200,8 @@ export const searchProductsTool = tool({
       shipsFrom,
       attributes,
       priceTier,
+      shops,
+      categories,
       context,
       cursor,
       limit,
@@ -195,6 +227,8 @@ export const searchProductsTool = tool({
       shipsFrom,
       attributes,
       priceTier,
+      shops,
+      categories,
       // Not sent on the wire — the band has no currency key. It scales the
       // major-unit input into the context currency's minor units.
       currency: context?.currency,

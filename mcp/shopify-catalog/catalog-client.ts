@@ -93,21 +93,8 @@ export function buildContext(
   return Object.keys(context).length > 0 ? context : undefined;
 }
 
-/**
- * Build the UCP search `filters` object.
- *
- * The price band carries no currency of its own. Upstream reads the band in
- * `context.currency` and FX-converts it to a USD basis — verified live, where
- * the `price_filter_applied` message reports `request_currency` taken from the
- * context and never from the band. The `currency` key this used to set was
- * inert, and pinning it to USD implied a determinism it did not buy.
- *
- * That is also why `currency` still comes in here: the band is denominated in
- * the *context* currency's minor units, so the major-to-minor scaling has to
- * follow that currency's ISO 4217 exponent. A ¥8,000 band is `8000`, not
- * `800000` — a hardcoded ×100 would widen it a hundredfold with no error.
- */
-export function buildSearchFilters(input: {
+/** Every narrowing the search tool can express, in tool-facing names. */
+export interface SearchFilterInput {
   minPrice?: number;
   maxPrice?: number;
   minRating?: number;
@@ -116,10 +103,31 @@ export function buildSearchFilters(input: {
   condition?: string;
   shipsTo?: string;
   shipsFrom?: string[];
+  shops?: string[];
+  categories?: string[];
   attributes?: { name: string; values: string[] }[];
   priceTier?: string[];
   currency?: string;
-}): Record<string, unknown> {
+}
+
+/**
+ * The numeric half: the price band and the variant rating thresholds.
+ *
+ * The price band carries no currency of its own. Upstream reads it in
+ * `context.currency` and FX-converts to a USD basis — verified live, where the
+ * `price_filter_applied` message reports `request_currency` taken from the
+ * context and never from the band. The `currency` key this once set was inert,
+ * and pinning it to USD implied a determinism it did not buy.
+ *
+ * That is why `currency` still arrives here: the band is denominated in the
+ * *context* currency's minor units, so the major-to-minor scaling follows that
+ * currency's ISO 4217 exponent. A ¥8,000 band is `8000`, not `800000` — a
+ * hardcoded ×100 would widen it a hundredfold with no error.
+ *
+ * Ratings hang off the variant leg (`{ variant: { min, min_count } }`); the
+ * flat `{ min }` this once sent is not a recognized key and was ignored.
+ */
+function numericFilters(input: SearchFilterInput): Record<string, unknown> {
   const filters: Record<string, unknown> = {};
   if (input.minPrice !== undefined || input.maxPrice !== undefined) {
     const scale = minorUnitDivisor(input.currency?.toUpperCase());
@@ -128,8 +136,6 @@ export function buildSearchFilters(input: {
       ...(input.maxPrice !== undefined && { max: Math.round(input.maxPrice * scale) }),
     };
   }
-  // Ratings hang off the variant leg: `{ variant: { min, min_count } }`. The
-  // flat `{ min }` this used to send is not a recognized key and was ignored.
   if (input.minRating !== undefined || input.minRatingCount !== undefined) {
     filters.rating = {
       variant: {
@@ -138,8 +144,20 @@ export function buildSearchFilters(input: {
       },
     };
   }
-  // Documented shape: `available` defaults true (sale-ready only); false widens
-  // the set to include unavailable items. There is no "only out-of-stock".
+  return filters;
+}
+
+/**
+ * The narrowing half: availability, condition, shipping and the list filters.
+ *
+ * Each list is omitted when empty rather than sent as `[]`. That is not
+ * cosmetic — upstream reads an empty list as "no constraint" for some keys and
+ * would leave a caller who passed one believing it had narrowed something.
+ */
+function narrowingFilters(input: SearchFilterInput): Record<string, unknown> {
+  const filters: Record<string, unknown> = {};
+  // `available` defaults true (sale-ready only); false widens the set to
+  // include unavailable items. There is no "only out-of-stock".
   if (input.includeUnavailable) filters.available = false;
   // Documented values: "new" | "secondhand", as an array (OR logic).
   if (input.condition) filters.condition = [input.condition];
@@ -155,27 +173,20 @@ export function buildSearchFilters(input: {
   if (input.attributes?.length) filters.attributes = input.attributes;
   // Relative band within each product's own category — not an absolute price.
   if (input.priceTier?.length) filters.price_tier = input.priceTier;
+  // Shop GIDs, OR-ed, <=1000. Read one off a result's `storeId` (variant
+  // `seller.id`), which only arrives under the Shopify extension capability.
+  if (input.shops?.length) filters.shops = input.shops;
+  // Shopify taxonomy category GIDs, OR-ed. Not capability-gated — this works on
+  // the base profile too; the vertical prefix is the whole trick (`hg` for Home
+  // & Garden covers furniture, there is no `fn`).
+  if (input.categories?.length) filters.categories = input.categories;
   return filters;
 }
 
-/*
- * Two filters the endpoint advertises are deliberately not exposed, because
- * both fail closed and silently — every value returns nothing, with no message
- * saying why, which reads to a caller as "this shop sells nothing":
- *
- *  - `shops` wants shop GIDs, and no response carries one. Bare domains,
- *    myshopify domains, `gid://shopify/Shop/...` and the `_gsid` query
- *    parameter on product URLs were each tried live and each returned zero
- *    (the `_gsid` is a search id — the same value appears on results from
- *    three different storefronts).
- *  - `categories` wants a vocabulary nothing publishes. Plain names, taxonomy
- *    slugs, `Furniture > Chairs` paths and `gid://shopify/TaxonomyCategory/...`
- *    all returned zero, while `categories: []` returned the full 375 — so the
- *    field is wired, and nothing we can name matches it.
- *
- * Expose either the moment a value can be discovered from a response or named
- * from published documentation.
- */
+/** Build the UCP search `filters` object from the tool's inputs. */
+export function buildSearchFilters(input: SearchFilterInput): Record<string, unknown> {
+  return { ...numericFilters(input), ...narrowingFilters(input) };
+}
 
 /**
  * Resolve a caller-supplied id to a catalog product id. The upstream

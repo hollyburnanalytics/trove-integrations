@@ -79,6 +79,25 @@ function productUrl(variants: unknown[]): string | null {
   return null;
 }
 
+/** The first variant's `seller`, present only under the Shopify extension. */
+function firstSeller(variants: unknown[]): Record<string, unknown> | null {
+  for (const v of variants) {
+    const seller = ((v ?? {}) as Record<string, unknown>).seller;
+    if (seller && typeof seller === 'object') return seller as Record<string, unknown>;
+  }
+  return null;
+}
+
+/** A URL's hostname without a `www.` prefix, or null when it will not parse. */
+function hostOf(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    return new URL(raw).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
 /** Read a nested string by path, or null. */
 function nestedStr(obj: unknown, ...path: string[]): string | null {
   let cur: unknown = obj;
@@ -98,11 +117,17 @@ export function mapProduct(raw: unknown) {
   const variants = Array.isArray(p.variants) ? p.variants : [];
   const media = Array.isArray(p.media) ? p.media : [];
   const rating = (p.rating ?? {}) as Record<string, unknown>;
-  // The catalog carries no seller object; the product page URL lives on each
-  // variant, and its hostname is the storefront — the honest attribution the
-  // catalog gives us. Tracking params are stripped, variant selection kept.
   const url = productUrl(variants);
-  const store = url ? new URL(url).hostname.replace(/^www\./, '') : null;
+  // `seller` arrives only under the Shopify extension capability, and it is the
+  // authoritative attribution: `id` is the shop GID the `shops` filter takes,
+  // so surfacing it is what makes that filter reachable at all. Prefer
+  // `seller.url` over `seller.domain` — the latter is the internal myshopify
+  // alias (`4iv2q6-x1.myshopify.com`), never a name to show a buyer. Without
+  // the capability there is no seller, and the product page URL's hostname is
+  // the only attribution on offer.
+  const seller = firstSeller(variants);
+  const sellerHost = hostOf(nestedStr(seller, 'url'));
+  const store = sellerHost ?? hostOf(url);
   const storeUrl = store ? `https://${store}` : null;
   const available = variants.some((v) => {
     const availability = ((v ?? {}) as Record<string, unknown>).availability;
@@ -115,6 +140,8 @@ export function mapProduct(raw: unknown) {
     url,
     store,
     storeUrl,
+    storeId: nestedStr(seller, 'id'),
+    storeName: nestedStr(seller, 'name'),
     available,
     priceMin: min.amount,
     priceMax: max.amount,
