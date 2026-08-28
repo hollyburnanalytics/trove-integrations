@@ -115,6 +115,9 @@ export function buildSearchFilters(input: {
   includeUnavailable?: boolean;
   condition?: string;
   shipsTo?: string;
+  shipsFrom?: string[];
+  attributes?: { name: string; values: string[] }[];
+  priceTier?: string[];
   currency?: string;
 }): Record<string, unknown> {
   const filters: Record<string, unknown> = {};
@@ -142,8 +145,37 @@ export function buildSearchFilters(input: {
   if (input.condition) filters.condition = [input.condition];
   // Documented shape: an object with country/region/postal_code.
   if (input.shipsTo) filters.ships_to = { country: input.shipsTo.toUpperCase() };
+  // An array of origins, OR'd. Unlike price_tier's flat strings, each entry is
+  // an object; an unrecognized code is rejected outright rather than ignored.
+  if (input.shipsFrom?.length) {
+    filters.ships_from = input.shipsFrom.map((country) => ({ country: country.toUpperCase() }));
+  }
+  // Taxonomy attributes: entries AND'd, values within an entry OR'd. An
+  // unsupported name is ignored and reported in `messages[]`, not rejected.
+  if (input.attributes?.length) filters.attributes = input.attributes;
+  // Relative band within each product's own category — not an absolute price.
+  if (input.priceTier?.length) filters.price_tier = input.priceTier;
   return filters;
 }
+
+/*
+ * Two filters the endpoint advertises are deliberately not exposed, because
+ * both fail closed and silently — every value returns nothing, with no message
+ * saying why, which reads to a caller as "this shop sells nothing":
+ *
+ *  - `shops` wants shop GIDs, and no response carries one. Bare domains,
+ *    myshopify domains, `gid://shopify/Shop/...` and the `_gsid` query
+ *    parameter on product URLs were each tried live and each returned zero
+ *    (the `_gsid` is a search id — the same value appears on results from
+ *    three different storefronts).
+ *  - `categories` wants a vocabulary nothing publishes. Plain names, taxonomy
+ *    slugs, `Furniture > Chairs` paths and `gid://shopify/TaxonomyCategory/...`
+ *    all returned zero, while `categories: []` returned the full 375 — so the
+ *    field is wired, and nothing we can name matches it.
+ *
+ * Expose either the moment a value can be discovered from a response or named
+ * from published documentation.
+ */
 
 /**
  * Resolve a caller-supplied id to a catalog product id. The upstream

@@ -155,6 +155,12 @@ export function formatProduct(product: ReturnType<typeof mapProduct>): string {
  * price band is FX-converted to a USD basis and reports the rate it used as
  * `price_filter_applied`. Dropping these left the caller quoting a filtered set
  * that had not been filtered the way they asked.
+ *
+ * `not_found` carries both meanings, and `path` is what separates them: an id
+ * that resolved to nothing arrives bare, while a filter that was ignored names
+ * where it sat (`$.filters.attributes[0]`). Reading every `not_found` as a
+ * missing id filed "Attribute X is not supported" under ids, and search — which
+ * has no ids to report — dropped it on the floor.
  */
 export function mapMessages(result: Record<string, unknown>): {
   notes: string[];
@@ -167,7 +173,8 @@ export function mapMessages(result: Record<string, unknown>): {
     const m = (raw ?? {}) as Record<string, unknown>;
     const code = typeof m.code === 'string' ? m.code : '';
     const content = typeof m.content === 'string' ? m.content : '';
-    if (code === 'not_found') {
+    const hasRequestPath = typeof m.path === 'string' && m.path.length > 0;
+    if (code === 'not_found' && !hasRequestPath) {
       notFound.push(content || 'unknown id');
       continue;
     }

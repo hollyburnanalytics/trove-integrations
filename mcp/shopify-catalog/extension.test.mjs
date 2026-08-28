@@ -269,6 +269,75 @@ describe('shopify-catalog MCP server', () => {
     expect(filters.ships_to).toEqual({ country: 'CA' });
   });
 
+  it('sends attributes, price tier and shipping origin in their wire shapes', async () => {
+    let captured;
+    const call = await callTool(
+      server,
+      'search_products',
+      {
+        query: 'running shorts',
+        attributes: [{ name: 'Color', values: ['Red', 'Blue'] }],
+        priceTier: ['low', 'medium'],
+        shipsFrom: ['ca', 'US'],
+      },
+      (_u, init) => {
+        captured = JSON.parse(init.body);
+        return rpcResult({ products: [], pagination: {} });
+      },
+    );
+    expect(call.ok).toBe(true);
+    const filters = captured.params.arguments.catalog.filters;
+    expect(filters.attributes).toEqual([{ name: 'Color', values: ['Red', 'Blue'] }]);
+    // A flat array of strings — OR logic, unlike ships_from's array of objects.
+    expect(filters.price_tier).toEqual(['low', 'medium']);
+    expect(filters.ships_from).toEqual([{ country: 'CA' }, { country: 'US' }]);
+  });
+
+  it('omits the new filters entirely when the caller passes empty arrays', async () => {
+    let captured;
+    const call = await callTool(
+      server,
+      'search_products',
+      { query: 'x', attributes: [], priceTier: [], shipsFrom: [] },
+      (_u, init) => {
+        captured = JSON.parse(init.body);
+        return rpcResult({ products: [], pagination: {} });
+      },
+    );
+    expect(call.ok).toBe(true);
+    // An empty `categories: []` still returns results upstream while any value
+    // returns none — an empty filter must never reach the wire as a narrowing.
+    expect(captured.params.arguments.catalog).not.toHaveProperty('filters');
+  });
+
+  it('surfaces the advisory when upstream ignores an unsupported attribute name', async () => {
+    const call = await callTool(
+      server,
+      'search_products',
+      { query: 'tee', attributes: [{ name: 'Flavour', values: ['Red'] }] },
+      () =>
+        rpcResult({
+          products: [],
+          messages: [
+            {
+              type: 'info',
+              code: 'not_found',
+              path: '$.filters.attributes[0]',
+              content: 'Attribute "Flavour" is not supported and was ignored.',
+            },
+          ],
+          pagination: {},
+        }),
+    );
+    expect(call.ok).toBe(true);
+    // Upstream reports an ignored filter as `not_found`, which the lookup path
+    // reads as a missing id. On a search there are no ids — it is an advisory,
+    // and silently dropping it leaves the caller believing the filter applied.
+    expect(call.result.structured.notes).toEqual([
+      'not_found: Attribute "Flavour" is not supported and was ignored.',
+    ]);
+  });
+
   it('rejects an inverted price range with a clean validation error', async () => {
     const call = await callTool(
       server,
