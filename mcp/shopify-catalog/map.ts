@@ -183,11 +183,15 @@ export function formatProduct(product: ReturnType<typeof mapProduct>): string {
  * `price_filter_applied`. Dropping these left the caller quoting a filtered set
  * that had not been filtered the way they asked.
  *
- * `not_found` carries both meanings, and `path` is what separates them: an id
- * that resolved to nothing arrives bare, while a filter that was ignored names
- * where it sat (`$.filters.attributes[0]`). Reading every `not_found` as a
- * missing id filed "Attribute X is not supported" under ids, and search — which
- * has no ids to report — dropped it on the floor.
+ * `not_found` carries both meanings, and `path` is what separates them: a
+ * filter that was ignored names where it sat, always under `$.filters`
+ * (`$.filters.attributes[0]`), while an id that resolved to nothing points at
+ * the request's id leg — `$.ids[2]` — or arrives bare. So the test is the
+ * `$.filters` prefix, not the mere presence of a path: keying off any path at
+ * all would empty `lookup_products.notFound` the moment upstream started
+ * naming the id it could not resolve. Reading every `not_found` as a missing
+ * id, the other way round, filed "Attribute X is not supported" under ids, and
+ * search — which has no ids to report — dropped it on the floor.
  */
 export function mapMessages(result: Record<string, unknown>): {
   notes: string[];
@@ -200,8 +204,8 @@ export function mapMessages(result: Record<string, unknown>): {
     const m = (raw ?? {}) as Record<string, unknown>;
     const code = typeof m.code === 'string' ? m.code : '';
     const content = typeof m.content === 'string' ? m.content : '';
-    const hasRequestPath = typeof m.path === 'string' && m.path.length > 0;
-    if (code === 'not_found' && !hasRequestPath) {
+    const isFilterAdvisory = typeof m.path === 'string' && m.path.startsWith('$.filters');
+    if (code === 'not_found' && !isFilterAdvisory) {
       notFound.push(content || 'unknown id');
       continue;
     }
@@ -225,7 +229,11 @@ export function mapSearchPage(result: Record<string, unknown>): {
   const rawProducts = Array.isArray(result.products) ? result.products : [];
   const products = rawProducts.map(mapProduct);
   const pagination = (result.pagination ?? {}) as Record<string, unknown>;
-  const { notes } = mapMessages(result);
+  // A search has no `ids` output to hang unresolved references on, so anything
+  // upstream could not resolve — a `similarTo` GID that names nothing, say —
+  // belongs in `notes[]`. Dropping it left the caller staring at an empty page
+  // with no hint that their reference, not the catalog, was the problem.
+  const { notes, notFound } = mapMessages(result);
   return {
     totalEstimate: typeof pagination.total_count === 'number' ? pagination.total_count : null,
     count: products.length,
@@ -233,7 +241,7 @@ export function mapSearchPage(result: Record<string, unknown>): {
       pagination.has_next_page === true && typeof pagination.cursor === 'string'
         ? pagination.cursor
         : null,
-    notes,
+    notes: [...notes, ...notFound.map((id) => `not_found: ${id}`)],
     products,
   };
 }

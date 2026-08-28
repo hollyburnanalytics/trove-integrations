@@ -14,8 +14,9 @@ export const searchProductsTool = tool({
   description:
     'Search products across every Shopify storefront worldwide (the UCP global ' +
     'catalog). Free-text query with optional price range, availability, ' +
-    'condition, taxonomy-attribute (colour/size), relative price-tier and ' +
-    'shipping-origin filters plus buyer-locale context. Returns compact product ' +
+    'condition, taxonomy-attribute (colour/size), relative price-tier, ' +
+    'shipping-origin, shop and taxonomy-category filters plus buyer-locale ' +
+    'context. Returns compact product ' +
     'summaries — title, description, price range, storefront domain, stock ' +
     'flag, product-page URL — with a cursor for paging. Also does ' +
     'similar-item search (similarTo: a catalog GID — a URL or bare id is ' +
@@ -63,8 +64,8 @@ export const searchProductsTool = tool({
       .max(5)
       .optional()
       .describe(
-        'Minimum variant rating (0–5). Filters upstream, but the catalog does not ' +
-          'return rating values, so matched products come back with rating: null.',
+        'Minimum variant rating (0–5). Filters on the variant leg upstream; the ' +
+          'product-level rating/ratingCount come back alongside the results.',
       ),
     minRatingCount: z
       .number()

@@ -626,6 +626,49 @@ describe('shopify-catalog MCP server', () => {
     expect(call.result.structured.notes).toEqual(['price_filter_applied: Applied on a USD basis.']);
   });
 
+  it('keeps a lookup not_found that names the id leg out of the advisories', async () => {
+    const call = await callTool(
+      server,
+      'lookup_products',
+      { ids: ['https://shop.example.com/products/gone'] },
+      () =>
+        rpcResult({
+          products: [],
+          // Only a `$.filters...` path marks an ignored filter. A path into the
+          // id leg is still a missing id, and reading any path as an advisory
+          // would empty `notFound` the day upstream starts sending one.
+          messages: [
+            {
+              code: 'not_found',
+              path: '$.ids[0]',
+              content: 'https://shop.example.com/products/gone',
+            },
+          ],
+        }),
+    );
+    expect(call.ok).toBe(true);
+    expect(call.result.structured.notFound).toEqual(['https://shop.example.com/products/gone']);
+    expect(call.result.structured.notes).toEqual([]);
+  });
+
+  it('reports an unresolvable similarTo reference instead of an unexplained empty page', async () => {
+    const call = await callTool(
+      server,
+      'search_products',
+      { query: 'x', similarTo: 'gid://shopify/p/missing' },
+      () =>
+        rpcResult({
+          products: [],
+          messages: [{ code: 'not_found', content: 'gid://shopify/p/missing' }],
+          pagination: {},
+        }),
+    );
+    expect(call.ok).toBe(true);
+    // A search has no `notFound` output, so the reference it could not resolve
+    // has to reach the caller as a note or it vanishes.
+    expect(call.result.structured.notes).toEqual(['not_found: gid://shopify/p/missing']);
+  });
+
   it('ships an agent profile Shopify discovery will actually accept', () => {
     const profile = JSON.parse(
       readFileSync(path.join(import.meta.dirname, 'ucp-agent-profile.json'), 'utf8'),
