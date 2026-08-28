@@ -1,5 +1,6 @@
 import type { ToolContext } from '@ontrove/extend/toolkit';
 import { ToolError } from '@ontrove/extend/toolkit';
+import { minorUnitDivisor } from './map.ts';
 
 /**
  * Transport for the Shopify Global Catalog toolkit: the UCP JSON-RPC envelope,
@@ -79,10 +80,15 @@ export function buildContext(
   input: { country?: string; language?: string; currency?: string } | undefined,
 ): Record<string, string> | undefined {
   if (!input) return undefined;
+  // Normalized to the uppercase ISO 3166 / ISO 4217 forms the schema declares.
+  // The catalog case-folds these itself today — a lowercase "ca" localizes
+  // identically, verified live — so this is conformance, not a fix for an
+  // observed break; `ships_to.country` is the one the schema actually pins,
+  // with `pattern: ^[A-Z]{2}$`.
   const context: Record<string, string> = {
-    ...(input.country && { address_country: input.country }),
+    ...(input.country && { address_country: input.country.toUpperCase() }),
     ...(input.language && { language: input.language }),
-    ...(input.currency && { currency: input.currency }),
+    ...(input.currency && { currency: input.currency.toUpperCase() }),
   };
   return Object.keys(context).length > 0 ? context : undefined;
 }
@@ -95,6 +101,11 @@ export function buildContext(
  * the `price_filter_applied` message reports `request_currency` taken from the
  * context and never from the band. The `currency` key this used to set was
  * inert, and pinning it to USD implied a determinism it did not buy.
+ *
+ * That is also why `currency` still comes in here: the band is denominated in
+ * the *context* currency's minor units, so the major-to-minor scaling has to
+ * follow that currency's ISO 4217 exponent. A ¥8,000 band is `8000`, not
+ * `800000` — a hardcoded ×100 would widen it a hundredfold with no error.
  */
 export function buildSearchFilters(input: {
   minPrice?: number;
@@ -104,12 +115,14 @@ export function buildSearchFilters(input: {
   includeUnavailable?: boolean;
   condition?: string;
   shipsTo?: string;
+  currency?: string;
 }): Record<string, unknown> {
   const filters: Record<string, unknown> = {};
   if (input.minPrice !== undefined || input.maxPrice !== undefined) {
+    const scale = minorUnitDivisor(input.currency?.toUpperCase());
     filters.price = {
-      ...(input.minPrice !== undefined && { min: Math.round(input.minPrice * 100) }),
-      ...(input.maxPrice !== undefined && { max: Math.round(input.maxPrice * 100) }),
+      ...(input.minPrice !== undefined && { min: Math.round(input.minPrice * scale) }),
+      ...(input.maxPrice !== undefined && { max: Math.round(input.maxPrice * scale) }),
     };
   }
   // Ratings hang off the variant leg: `{ variant: { min, min_count } }`. The
@@ -128,7 +141,7 @@ export function buildSearchFilters(input: {
   // Documented values: "new" | "secondhand", as an array (OR logic).
   if (input.condition) filters.condition = [input.condition];
   // Documented shape: an object with country/region/postal_code.
-  if (input.shipsTo) filters.ships_to = { country: input.shipsTo };
+  if (input.shipsTo) filters.ships_to = { country: input.shipsTo.toUpperCase() };
   return filters;
 }
 

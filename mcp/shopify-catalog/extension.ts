@@ -58,7 +58,8 @@ export default defineToolkit({
         'condition filters plus buyer-locale context. Returns compact product ' +
         'summaries — title, description, price range, storefront domain, stock ' +
         'flag, product-page URL — with a cursor for paging. Also does ' +
-        'similar-item search (similarTo: a product id) and visual search ' +
+        'similar-item search (similarTo: a catalog GID — a URL or bare id is ' +
+        'rejected) and visual search ' +
         '(image: inline base64 bytes). A price band is read in context.currency ' +
         '(default USD) and FX-converted to a USD basis upstream, while displayed ' +
         "prices are localized to the buyer's market — so a band can admit an item " +
@@ -196,6 +197,9 @@ export default defineToolkit({
           includeUnavailable,
           condition,
           shipsTo,
+          // Not sent on the wire — the band has no currency key. It scales the
+          // major-unit input into the context currency's minor units.
+          currency: context?.currency,
         });
         // A `like` item is a strict oneOf upstream: a GID, or inline image bytes.
         const like = [

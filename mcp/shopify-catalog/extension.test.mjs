@@ -224,6 +224,25 @@ describe('shopify-catalog MCP server', () => {
     });
   });
 
+  it('scales the price band by the context currency ISO exponent, not a flat 100', async () => {
+    let captured;
+    // The band is denominated in the context currency's minor units, and the
+    // yen has none — a flat *100 would send ¥800,000 for a ¥8,000 ceiling.
+    const call = await callTool(
+      server,
+      'search_products',
+      { query: 'kotatsu', maxPrice: 8000, minPrice: 1000, context: { currency: 'jpy' } },
+      (_u, init) => {
+        captured = JSON.parse(init.body);
+        return rpcResult({ products: [], pagination: {} });
+      },
+    );
+    expect(call.ok).toBe(true);
+    expect(captured.params.arguments.catalog.filters.price).toEqual({ min: 1000, max: 8000 });
+    // ISO codes travel in the uppercase form the schema declares.
+    expect(captured.params.arguments.catalog.context).toEqual({ currency: 'JPY' });
+  });
+
   it('rejects a similarTo id that is not a Shopify GID before spending a request', async () => {
     const call = await callTool(server, 'search_products', { similarTo: 'abc123' }, () => {
       throw new Error('must not reach the network');

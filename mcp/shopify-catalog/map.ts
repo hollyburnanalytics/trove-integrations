@@ -27,8 +27,12 @@ const ZERO_DECIMAL = new Set([
 /** ISO 4217 currencies with three-decimal minor units (exponent 3). */
 const THREE_DECIMAL = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND']);
 
-/** The ISO 4217 exponent as a divisor: minor units to major, per currency. */
-function minorUnitDivisor(currency: string | null): number {
+/**
+ * The ISO 4217 exponent as a divisor: minor units to major, per currency.
+ * Absent/unknown currency falls back to the two-decimal majority (and to USD's
+ * exponent, which is what the catalog assumes when no currency is supplied).
+ */
+export function minorUnitDivisor(currency: string | null | undefined): number {
   if (currency && ZERO_DECIMAL.has(currency)) return 1;
   if (currency && THREE_DECIMAL.has(currency)) return 1000;
   return 100;
@@ -163,8 +167,15 @@ export function mapMessages(result: Record<string, unknown>): {
     const m = (raw ?? {}) as Record<string, unknown>;
     const code = typeof m.code === 'string' ? m.code : '';
     const content = typeof m.content === 'string' ? m.content : '';
-    if (code === 'not_found') notFound.push(content || 'unknown id');
-    else notes.push(code ? `${code}: ${content}` : content);
+    if (code === 'not_found') {
+      notFound.push(content || 'unknown id');
+      continue;
+    }
+    // A message carrying neither a code nor content says nothing; emitting it
+    // would put a bare "Note:" line in the text block and an empty string in
+    // `notes[]`.
+    const note = [code, content].filter(Boolean).join(': ');
+    if (note) notes.push(note);
   }
   return { notes, notFound };
 }
