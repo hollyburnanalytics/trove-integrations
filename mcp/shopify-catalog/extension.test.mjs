@@ -421,26 +421,33 @@ describe('shopify-catalog MCP server', () => {
     expect(call.result.structured.notes).toEqual(['price_filter_applied: Applied on a USD basis.']);
   });
 
-  it('declares both catalog capability versions in the shipped agent profile', () => {
+  it('ships an agent profile Shopify discovery will actually accept', () => {
     const profile = JSON.parse(
       readFileSync(path.join(import.meta.dirname, 'ucp-agent-profile.json'), 'utf8'),
     );
-    // Both versions, newest first. UCP negotiates down to the highest version
-    // the SERVER also speaks, and catalog.shopify.com still advertises only
-    // 2026-04-08 in its .well-known document — so dropping the older entry
-    // would leave nothing in common and break every call. Keeping both means
-    // the day Shopify ships 2026-08-25 we move up without a code change.
+    // `services` is required, and its absence is not a style point: sending a
+    // profile without it earns `-32001 profile_malformed: Missing services` and
+    // every tool call fails. An agent declares the service it speaks and the
+    // transport it speaks it over; it has no endpoint of its own.
+    expect(profile.ucp.services['dev.ucp.shopping'][0]).toMatchObject({
+      version: '2026-04-08',
+      transport: 'mcp',
+    });
+    // The protocol version is negotiated against what the SHOP supports, before
+    // capabilities are intersected at all — so it is not ours to advance. The
+    // catalog accepts 2026-04-08, 2026-01-23 and draft; a profile declaring the
+    // 2026-08-25 release is rejected outright, verified against the live
+    // endpoint. When catalog.shopify.com/.well-known/ucp lists a newer version
+    // in `supported_versions`, move this string and the capability versions
+    // together — never one without the other.
+    expect(profile.ucp.version).toBe('2026-04-08');
     for (const capability of [
       'dev.ucp.shopping.catalog.search',
       'dev.ucp.shopping.catalog.lookup',
     ]) {
       expect(profile.ucp.capabilities[capability].map((entry) => entry.version)).toEqual([
-        '2026-08-25',
         '2026-04-08',
       ]);
     }
-    // The profile's own protocol version is the newest release it is written
-    // against, not the one a given server happens to be on.
-    expect(profile.ucp.version).toBe('2026-08-25');
   });
 });
