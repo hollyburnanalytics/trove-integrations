@@ -1,5 +1,6 @@
 import type { ToolContext } from '@ontrove/extend/toolkit';
 import { ToolError } from '@ontrove/extend/toolkit';
+import { minorUnitDivisor } from './map.ts';
 
 /**
  * Transport for the Shopify Global Catalog toolkit: the UCP JSON-RPC envelope,
@@ -68,36 +69,123 @@ export async function ucpCall(
 }
 
 /**
- * Build the UCP search `filters` object. Price bands pin an explicit currency
- * (verified live: without one the band is interpreted in an unspecified
- * currency and can disagree with the displayed merchant-currency prices).
+ * Map our friendly buyer-locale input onto the UCP `context` field names.
+ *
+ * The country key is `address_country`, not `country`: upstream ignores an
+ * unrecognized key silently, and a dropped country means prices come back in
+ * the merchant's own currency rather than the buyer's market — a wrong number
+ * with no error attached. Returns undefined when there is no signal to send.
  */
-export function buildSearchFilters(input: {
+export function buildContext(
+  input: { country?: string; language?: string; currency?: string } | undefined,
+): Record<string, string> | undefined {
+  if (!input) return undefined;
+  // Normalized to the uppercase ISO 3166 / ISO 4217 forms the schema declares.
+  // The catalog case-folds these itself today — a lowercase "ca" localizes
+  // identically, verified live — so this is conformance, not a fix for an
+  // observed break; `ships_to.country` is the one the schema actually pins,
+  // with `pattern: ^[A-Z]{2}$`.
+  const context: Record<string, string> = {
+    ...(input.country && { address_country: input.country.toUpperCase() }),
+    ...(input.language && { language: input.language }),
+    ...(input.currency && { currency: input.currency.toUpperCase() }),
+  };
+  return Object.keys(context).length > 0 ? context : undefined;
+}
+
+/** Every narrowing the search tool can express, in tool-facing names. */
+export interface SearchFilterInput {
   minPrice?: number;
   maxPrice?: number;
   minRating?: number;
+  minRatingCount?: number;
   includeUnavailable?: boolean;
   condition?: string;
   shipsTo?: string;
+  shipsFrom?: string[];
+  shops?: string[];
+  categories?: string[];
+  attributes?: { name: string; values: string[] }[];
+  priceTier?: string[];
   currency?: string;
-}): Record<string, unknown> {
+}
+
+/**
+ * The numeric half: the price band and the variant rating thresholds.
+ *
+ * The price band carries no currency of its own. Upstream reads it in
+ * `context.currency` and FX-converts to a USD basis — verified live, where the
+ * `price_filter_applied` message reports `request_currency` taken from the
+ * context and never from the band. The `currency` key this once set was inert,
+ * and pinning it to USD implied a determinism it did not buy.
+ *
+ * That is why `currency` still arrives here: the band is denominated in the
+ * *context* currency's minor units, so the major-to-minor scaling follows that
+ * currency's ISO 4217 exponent. A ¥8,000 band is `8000`, not `800000` — a
+ * hardcoded ×100 would widen it a hundredfold with no error.
+ *
+ * Ratings hang off the variant leg (`{ variant: { min, min_count } }`); the
+ * flat `{ min }` this once sent is not a recognized key and was ignored.
+ */
+function numericFilters(input: SearchFilterInput): Record<string, unknown> {
   const filters: Record<string, unknown> = {};
   if (input.minPrice !== undefined || input.maxPrice !== undefined) {
+    const scale = minorUnitDivisor(input.currency?.toUpperCase());
     filters.price = {
-      ...(input.minPrice !== undefined && { min: Math.round(input.minPrice * 100) }),
-      ...(input.maxPrice !== undefined && { max: Math.round(input.maxPrice * 100) }),
-      currency: input.currency ?? 'USD',
+      ...(input.minPrice !== undefined && { min: Math.round(input.minPrice * scale) }),
+      ...(input.maxPrice !== undefined && { max: Math.round(input.maxPrice * scale) }),
     };
   }
-  if (input.minRating !== undefined) filters.rating = { min: input.minRating };
-  // Documented shape: `available` defaults true (sale-ready only); false widens
-  // the set to include unavailable items. There is no "only out-of-stock".
+  if (input.minRating !== undefined || input.minRatingCount !== undefined) {
+    filters.rating = {
+      variant: {
+        ...(input.minRating !== undefined && { min: input.minRating }),
+        ...(input.minRatingCount !== undefined && { min_count: input.minRatingCount }),
+      },
+    };
+  }
+  return filters;
+}
+
+/**
+ * The narrowing half: availability, condition, shipping and the list filters.
+ *
+ * Each list is omitted when empty rather than sent as `[]`. That is not
+ * cosmetic — upstream reads an empty list as "no constraint" for some keys and
+ * would leave a caller who passed one believing it had narrowed something.
+ */
+function narrowingFilters(input: SearchFilterInput): Record<string, unknown> {
+  const filters: Record<string, unknown> = {};
+  // `available` defaults true (sale-ready only); false widens the set to
+  // include unavailable items. There is no "only out-of-stock".
   if (input.includeUnavailable) filters.available = false;
   // Documented values: "new" | "secondhand", as an array (OR logic).
   if (input.condition) filters.condition = [input.condition];
   // Documented shape: an object with country/region/postal_code.
-  if (input.shipsTo) filters.ships_to = { country: input.shipsTo };
+  if (input.shipsTo) filters.ships_to = { country: input.shipsTo.toUpperCase() };
+  // An array of origins, OR'd. Unlike price_tier's flat strings, each entry is
+  // an object; an unrecognized code is rejected outright rather than ignored.
+  if (input.shipsFrom?.length) {
+    filters.ships_from = input.shipsFrom.map((country) => ({ country: country.toUpperCase() }));
+  }
+  // Taxonomy attributes: entries AND'd, values within an entry OR'd. An
+  // unsupported name is ignored and reported in `messages[]`, not rejected.
+  if (input.attributes?.length) filters.attributes = input.attributes;
+  // Relative band within each product's own category — not an absolute price.
+  if (input.priceTier?.length) filters.price_tier = input.priceTier;
+  // Shop GIDs, OR-ed, <=1000. Read one off a result's `storeId` (variant
+  // `seller.id`), which only arrives under the Shopify extension capability.
+  if (input.shops?.length) filters.shops = input.shops;
+  // Shopify taxonomy category GIDs, OR-ed. Not capability-gated — this works on
+  // the base profile too; the vertical prefix is the whole trick (`hg` for Home
+  // & Garden covers furniture, there is no `fn`).
+  if (input.categories?.length) filters.categories = input.categories;
   return filters;
+}
+
+/** Build the UCP search `filters` object from the tool's inputs. */
+export function buildSearchFilters(input: SearchFilterInput): Record<string, unknown> {
+  return { ...numericFilters(input), ...narrowingFilters(input) };
 }
 
 /**
