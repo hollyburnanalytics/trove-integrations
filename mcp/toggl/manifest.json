@@ -1,16 +1,32 @@
 {
   "id": "toggl",
-  "name": "Toggl Time Tracking",
-  "description": "Query Toggl Track time entries, resolved to project/client/tag names, with named periods (today, week, lastMonth…) and a per-client duration roll-up. Requires a TOGGL_API_TOKEN secret (Toggl profile → API token). Read-only; honours Toggl's 1 request/second limit and backs off on HTTP 429.",
+  "name": "Toggl 2.0 Time Tracking",
+  "description": "Query Toggl 2.0 time entries, resolved to project/client/task/tag names, with named periods (today, week, lastMonth…), a per-client duration roll-up, the timer running now, and the workspace's projects. Requires a TOGGL_API_KEY secret (Toggl 2.0 profile → API key, toggl_sk_…) and the organization_id setting (first number in the Toggl 2.0 URL). Read-only; one request per call against Toggl's hourly quota, which it reports on every answer.",
   "icon": "⏱️",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "secrets": [
-    "TOGGL_API_TOKEN"
+    "TOGGL_API_KEY"
   ],
   "egress": [
-    "api.track.toggl.com"
+    "focus.toggl.com"
   ],
   "scopes": [],
   "visibility": "shared",
+  "config": {
+    "organization_id": {
+      "label": "Organization id",
+      "type": "text",
+      "pattern": "^[0-9]+$",
+      "placeholder": "1234567",
+      "hint": "The bare number from the Toggl 2.0 URL: focus.toggl.com/<organization id>/workspaces/<workspace id>/…. Required: the API offers no way to look it up with an API key."
+    },
+    "workspace_id": {
+      "label": "Default workspace id",
+      "type": "text",
+      "pattern": "^[0-9]+$",
+      "placeholder": "7654321",
+      "hint": "The bare number from the Toggl 2.0 URL: focus.toggl.com/<organization id>/workspaces/<workspace id>/…. Optional: defaults to the workspace the account has open."
+    }
+  },
   "generated": true
 }
