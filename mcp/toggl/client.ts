@@ -17,9 +17,10 @@ import { ToolError } from '@ontrove/extend/toolkit';
  * - **The budget is an hourly quota per user per organization**, tied to the
  *   plan — Free 30, Starter 240, Premium 600 requests an hour — and exhaustion
  *   is signalled with **HTTP 402**, not 429, because it is the plan's allocation
- *   that ran out. Every response carries `X-Toggl-Quota-Remaining` and
- *   `X-Toggl-Quota-Resets-In`, so the budget is read off every call rather than
- *   discovered by hitting it.
+ *   that ran out. The overview documents `X-Toggl-Quota-Remaining` and
+ *   `X-Toggl-Quota-Resets-In` response headers; live, a 200 carries neither,
+ *   so they are read when present and the budget is otherwise unknown until a
+ *   402 says it is gone.
  * - **Errors are `{ error, error_description, trace_id }`**: `error` is a code
  *   (`invalid_session`), `error_description` the sentence worth showing.
  */
@@ -228,7 +229,13 @@ export interface TogglClientLite {
   id: number;
   name: string;
 }
-/** `models.ProjectLite` — the project embedded on a time entry or task. */
+/**
+ * `models.ProjectLite` — the project embedded on a time entry or task.
+ *
+ * The OpenAPI document gives it a `client`; the live stream does not send one
+ * (`{ id, name, color, private, is_template, draft, permissions }`), so it is
+ * optional here and the client comes from the project list instead.
+ */
 export interface TogglProjectLite {
   id: number;
   name: string;
@@ -239,13 +246,27 @@ export interface TogglTaskLite {
   id: number;
   name?: string | null;
 }
-/** `timeentry.TimeEntryWithTask` — an entry as the workspace list returns it. */
+/**
+ * `timeentry.TimeEntryWithTask` — an entry as the workspace list returns it.
+ *
+ * Three kinds share the shape, told apart by which of `start` and `duration`
+ * are set. A **tracked** entry has both. A **running** one has `start` and no
+ * `duration`. A **planned** one — a calendar event or a scheduled block the
+ * user has not tracked — has neither, and carries `planned_start` /
+ * `planned_duration` instead; the live stream returns these alongside tracked
+ * entries, and there were sixteen of them among the twenty-three in the first
+ * real window read.
+ */
 export interface TogglEntry {
   id: number;
   description?: string | null;
-  /** Seconds. Absent or null while the entry is still running. */
+  /** Seconds. Absent or null while the entry is running, or not yet tracked. */
   duration?: number | null;
-  start: string;
+  /** Absent or null on a planned entry. */
+  start?: string | null;
+  planned_start?: string | null;
+  planned_duration?: number | null;
+  calendar_event_id?: number | null;
   billable?: boolean | null;
   type?: 'activity' | 'break' | null;
   workspace_id?: number;

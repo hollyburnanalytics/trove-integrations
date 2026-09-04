@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { callTool, fetchMock, withSecret } from '../lib/test-harness.mjs';
 import { parseBody, quotaNote, untilReset, upstreamMessage } from './client.ts';
 import { dateRangeFor, zonedMidnight } from './dates.ts';
-import { hydrate } from './entries.ts';
+import { hydrate, isTracked } from './entries.ts';
 import server from './extension.ts';
 
 const KEY = 'toggl_sk_test_123';
@@ -14,21 +14,26 @@ const BASE = 'https://focus.toggl.com/api';
 const SETTINGS = { current_workspace_id: 100, timezone: 'America/Vancouver', start_week_on: 1 };
 
 /**
- * Entries as `/time-entries/stream` serialises them (`timeentry.TimeEntryWithTask`):
- * raw JSON so the `null`s the API really sends — no `duration` on a running
- * entry, a `null` client on an internal project — survive into the fixture.
- * Project, client, task and tags arrive embedded; nothing is looked up.
+ * Entries as `/time-entries/stream` serialises them — the live shape, not the
+ * document's: the embedded `project` carries NO client (only the project list
+ * does), a running entry has `start` but no `duration`, and PLANNED entries
+ * (calendar events, scheduled blocks) come back with neither `start` nor
+ * `duration`, only `planned_start`/`planned_duration`. Raw JSON so the `null`s
+ * the API really sends survive into the fixture. The last two entries sit
+ * outside the window the tests ask for (one began the day before and ran into
+ * it, one begins exactly at the exclusive end) — the live filter returns both.
  */
 const ENTRIES_JSON = `[
   { "id": 1, "description": "Schema work", "duration": 5400, "start": "2026-07-24T16:00:00Z",
-    "billable": true, "type": "activity", "workspace_id": 100, "project_id": 900,
-    "project": { "id": 900, "name": "Orion", "color": "#f00", "client": { "id": 7, "name": "Northwind" } },
+    "billable": true, "billable_source": "task_default", "type": "activity", "workspace_id": 100,
+    "project_id": 900, "project": { "id": 900, "name": "Orion", "color": "#f00", "private": false,
+    "is_template": false, "draft": false, "permissions": null },
     "task_id": 55, "task": { "id": 55, "name": "Migration" }, "tag_ids": [5],
     "tags": [{ "id": 5, "name": "deep-work", "color": "#0f0" }], "toggl_user_id": 42,
-    "timezone": "America/Vancouver" },
+    "timezone": "America/Vancouver", "planned_start": null, "planned_duration": null },
   { "id": 2, "description": "  ", "duration": 900, "start": "2026-07-24T18:00:00Z",
     "billable": false, "type": "activity", "workspace_id": 100, "project_id": 901,
-    "project": { "id": 901, "name": "Internal", "client": null }, "task_id": null, "task": null,
+    "project": { "id": 901, "name": "Internal", "color": "#00f" }, "task_id": null, "task": null,
     "tag_ids": null, "tags": [], "toggl_user_id": 42 },
   { "id": 3, "description": "Lunch", "duration": 1800, "start": "2026-07-24T19:00:00Z",
     "billable": false, "type": "break", "workspace_id": 100, "project_id": null, "project": null,
@@ -38,9 +43,22 @@ const ENTRIES_JSON = `[
     "task_id": null, "task": null, "tags": [], "toggl_user_id": 42 },
   { "id": 5, "description": "Teammate", "duration": 600, "start": "2026-07-24T21:00:00Z",
     "billable": true, "type": "activity", "workspace_id": 100, "project_id": 900,
-    "project": { "id": 900, "name": "Orion", "client": { "id": 7, "name": "Northwind" } },
-    "task_id": null, "task": null, "tags": [], "toggl_user_id": 43 }
+    "project": { "id": 900, "name": "Orion", "color": "#f00" },
+    "task_id": null, "task": null, "tags": [], "toggl_user_id": 43 },
+  { "id": 6, "description": "Pick up the kids", "duration": null, "start": null,
+    "planned_start": "2026-07-24T23:45:00Z", "planned_duration": 2700, "planned_at": "2026-07-20T16:22:01Z",
+    "calendar_event_id": 926424033, "billable": false, "type": "activity", "workspace_id": 100,
+    "project_id": null, "project": null, "task_id": null, "task": null, "tags": [], "toggl_user_id": 42 },
+  { "id": 7, "description": "Late night before", "duration": 3600, "start": "2026-07-23T23:30:00Z",
+    "billable": true, "type": "activity", "workspace_id": 100, "project_id": 900,
+    "project": { "id": 900, "name": "Orion" }, "tags": [], "toggl_user_id": 42 },
+  { "id": 8, "description": "Starts at the exclusive end", "duration": 60, "start": "2026-07-25T00:00:00Z",
+    "billable": true, "type": "activity", "workspace_id": 100, "project_id": 900,
+    "project": { "id": 900, "name": "Orion" }, "tags": [], "toggl_user_id": 42 }
 ]`;
+
+/** The day the fixtures fall on, as an explicit range (period would resolve to the real today). */
+const DAY = { start_date: '2026-07-24', end_date: '2026-07-25', time_zone: 'UTC' };
 
 const PROJECTS = {
   data: [
@@ -71,7 +89,7 @@ const PROJECTS = {
     },
   ],
   page: 1,
-  per_page: 200,
+  per_page: 100,
   total: 3,
 };
 
@@ -176,6 +194,14 @@ describe('toggl MCP server', () => {
       expect(quotaNote()).toEqual([]);
       const [note] = quotaNote({ remaining: 2, resetsIn: 600 });
       expect(note).toMatch(/2 Toggl 2.0 API request\(s\) left this hour, resetting in 10m/);
+    });
+
+    it('tells a planned entry (no start) from a tracked one', () => {
+      expect(
+        isTracked({ id: 1, start: null, duration: null, planned_start: '2026-07-24T10:00:00Z' }),
+      ).toBe(false);
+      expect(isTracked({ id: 2, start: '2026-07-24T10:00:00Z', duration: null })).toBe(true);
+      expect(isTracked({ id: 3 })).toBe(false);
     });
 
     it('treats a missing duration as a running entry and computes its elapsed time', () => {
@@ -341,7 +367,7 @@ describe('toggl MCP server', () => {
 
   describe('get_time_entries', () => {
     it('uses the embedded project, client, task and tag names', async () => {
-      const result = await call('get_time_entries', { period: 'today', time_zone: 'UTC' });
+      const result = await call('get_time_entries', DAY);
       expect(result.ok).toBe(true);
       const [first, second, running] = result.result.structured.entries;
       expect(first).toMatchObject({
@@ -363,7 +389,7 @@ describe('toggl MCP server', () => {
     });
 
     it('rolls up by client and counts neither the running entry nor breaks', async () => {
-      const result = await call('get_time_entries', { period: 'today' });
+      const result = await call('get_time_entries', DAY);
       // 5400 + 900 + 600 = 6900s; the break (1800) and the running entry contribute nothing.
       expect(result.result.structured.count).toBe(4);
       expect(result.result.structured.totalSeconds).toBe(6900);
@@ -377,7 +403,7 @@ describe('toggl MCP server', () => {
     });
 
     it('includes breaks on request, still excluded from the roll-up', async () => {
-      const result = await call('get_time_entries', { period: 'today', include_breaks: true });
+      const result = await call('get_time_entries', { ...DAY, include_breaks: true });
       expect(result.result.structured.count).toBe(5);
       expect(result.result.structured.entries.find((e) => e.id === 3)).toMatchObject({
         type: 'break',
@@ -388,14 +414,14 @@ describe('toggl MCP server', () => {
     });
 
     it('filters to billable entries only', async () => {
-      const result = await call('get_time_entries', { period: 'today', billable_only: true });
+      const result = await call('get_time_entries', { ...DAY, billable_only: true });
       expect(result.result.structured.entries.map((e) => e.id)).toEqual([1, 5]);
     });
 
     it('filters by project and by user', async () => {
-      const byProject = await call('get_time_entries', { period: 'today', project_id: 901 });
+      const byProject = await call('get_time_entries', { ...DAY, project_id: 901 });
       expect(byProject.result.structured.entries.map((e) => e.id)).toEqual([2]);
-      const byUser = await call('get_time_entries', { period: 'today', user_id: 43 });
+      const byUser = await call('get_time_entries', { ...DAY, user_id: 43 });
       expect(byUser.result.structured.entries.map((e) => e.id)).toEqual([5]);
     });
 
@@ -430,29 +456,70 @@ describe('toggl MCP server', () => {
       const lines = JSON.parse(ENTRIES_JSON)
         .map((e) => JSON.stringify(e))
         .join('\n');
-      const result = await call(
-        'get_time_entries',
-        { period: 'today' },
-        togglApi({ entries: { text: lines } }),
-      );
+      const result = await call('get_time_entries', DAY, togglApi({ entries: { text: lines } }));
       expect(result.ok).toBe(true);
       expect(result.result.structured.count).toBe(4);
     });
 
-    it('spends nothing on scope when both ids are configured', async () => {
+    it('spends nothing on scope when both ids are configured: entries, then clients', async () => {
       const touched = [];
-      await call('get_time_entries', { period: 'today' }, (url) => {
+      await call('get_time_entries', DAY, (url) => {
         touched.push(url);
         return togglApi()(url);
       });
+      const toggl = touched.filter((u) => u.startsWith(BASE));
+      expect(toggl).toHaveLength(2);
+      expect(toggl[0]).toContain('/time-entries/stream');
+      expect(toggl[1]).toContain('/projects?');
+      expect(toggl.some((u) => u.endsWith('/users/me/settings'))).toBe(false);
+    });
+
+    it('skips the project list when no entry has a project', async () => {
+      const touched = [];
+      const result = await call('get_time_entries', DAY, (url) => {
+        touched.push(url);
+        if (url.includes('/time-entries/stream')) {
+          return {
+            text: `[{ "id": 9, "description": "x", "duration": 60, "start": "2026-07-24T10:00:00Z",
+              "project_id": null, "project": null, "tags": [] }]`,
+          };
+        }
+        return togglApi()(url);
+      });
+      expect(result.ok).toBe(true);
       expect(touched.filter((u) => u.startsWith(BASE))).toHaveLength(1);
+      expect(result.result.structured.byClient).toEqual([{ label: 'Unassigned', seconds: 60 }]);
+    });
+
+    it('names clients from the project list, since the stream embeds none', async () => {
+      const result = await call('get_time_entries', DAY);
+      const [first, second] = result.result.structured.entries;
+      expect(first).toMatchObject({ projectName: 'Orion', clientId: 7, clientName: 'Northwind' });
+      expect(second).toMatchObject({ projectName: 'Internal' });
+      expect(second.clientName).toBeUndefined();
+    });
+
+    it('leaves planned (untracked) entries out and counts them', async () => {
+      const result = await call('get_time_entries', DAY);
+      expect(result.result.structured.entries.map((e) => e.id)).not.toContain(6);
+      expect(result.result.structured.plannedSkipped).toBe(1);
+      expect(result.result.text).toContain('(1 planned, untracked entry left out.)');
+    });
+
+    it('re-filters the overlap-based, inclusive-end window onto [start, end)', async () => {
+      const result = await call('get_time_entries', DAY);
+      const ids = result.result.structured.entries.map((e) => e.id);
+      // 7 began the day before and ran into the window; 8 begins exactly at the end.
+      expect(ids).not.toContain(7);
+      expect(ids).not.toContain(8);
+      expect(ids).toEqual([1, 2, 4, 5]);
     });
 
     it('falls back to the current workspace when none is configured', async () => {
       const touched = [];
       const result = await call(
         'get_time_entries',
-        { period: 'today' },
+        DAY,
         (url) => {
           touched.push(url);
           return togglApi()(url);
@@ -466,7 +533,7 @@ describe('toggl MCP server', () => {
 
     it('prefers an explicit workspace_id over the configured one', async () => {
       let seen = '';
-      await call('get_time_entries', { period: 'today', workspace_id: 555 }, (url) => {
+      await call('get_time_entries', { ...DAY, workspace_id: 555 }, (url) => {
         if (url.includes('/time-entries/stream')) {
           seen = url;
           return { json: [] };
@@ -480,7 +547,7 @@ describe('toggl MCP server', () => {
       const touched = [];
       const result = await call(
         'get_time_entries',
-        { period: 'today' },
+        DAY,
         (url) => {
           touched.push(url);
           return togglApi()(url);
@@ -494,7 +561,7 @@ describe('toggl MCP server', () => {
     });
 
     it('rejects a non-numeric organization id from the settings', async () => {
-      const result = await call('get_time_entries', { period: 'today' }, togglApi(), {
+      const result = await call('get_time_entries', DAY, togglApi(), {
         organization_id: 'acme',
       });
       expect(result.ok).toBe(false);
@@ -539,7 +606,7 @@ describe('toggl MCP server', () => {
     it('surfaces a spent quota as retryable, with the reset time', async () => {
       const result = await call(
         'get_time_entries',
-        { period: 'today' },
+        DAY,
         togglApi({
           entries: {
             status: 402,
@@ -556,7 +623,7 @@ describe('toggl MCP server', () => {
     it('names a permission refusal, and the ids, on a 403', async () => {
       const result = await call(
         'get_time_entries',
-        { period: 'today' },
+        DAY,
         togglApi({
           entries: { status: 403, json: { error: 'forbidden', error_description: 'no access' } },
         }),
@@ -570,8 +637,11 @@ describe('toggl MCP server', () => {
     it('warns when the hourly budget is nearly spent', async () => {
       const result = await call(
         'get_time_entries',
-        { period: 'today' },
-        togglApi({ entries: { text: ENTRIES_JSON, headers: { 'x-toggl-quota-remaining': '3' } } }),
+        DAY,
+        togglApi({
+          entries: { text: ENTRIES_JSON, headers: { 'x-toggl-quota-remaining': '4' } },
+          projects: { json: PROJECTS, headers: { 'x-toggl-quota-remaining': '3' } },
+        }),
       );
       expect(result.ok).toBe(true);
       expect(result.result.text).toMatch(/BUDGET: 3 Toggl 2.0 API request/);
@@ -581,7 +651,7 @@ describe('toggl MCP server', () => {
     it('never leaks the key into an error message', async () => {
       const result = await call(
         'get_time_entries',
-        { period: 'today' },
+        DAY,
         togglApi({ entries: { status: 500, text: 'boom' } }),
       );
       expect(result.ok).toBe(false);
@@ -701,7 +771,7 @@ describe('toggl MCP server', () => {
       const params = new URL(seen).searchParams;
       expect(params.get('archived')).toBe('');
       expect(params.get('name')).toBe('ori');
-      expect(params.get('per_page')).toBe('200');
+      expect(params.get('per_page')).toBe('100');
     });
 
     it('omits the archived flag by default', async () => {
@@ -715,6 +785,42 @@ describe('toggl MCP server', () => {
       });
       expect(new URL(seen).searchParams.has('archived')).toBe(false);
       expect(result.result.text).toMatch(/No projects found/);
+    });
+
+    it('follows total across pages of 100', async () => {
+      const pages = [];
+      const result = await call('list_projects', {}, (url) => {
+        if (url.includes('/projects')) {
+          const page = Number(new URL(url).searchParams.get('page'));
+          pages.push(page);
+          const data = Array.from({ length: page === 1 ? 100 : 20 }, (_, i) => ({
+            id: (page - 1) * 100 + i + 1,
+            name: `P${(page - 1) * 100 + i + 1}`,
+          }));
+          return { json: { data, page, per_page: 100, total: 120 } };
+        }
+        return togglApi()(url);
+      });
+      expect(result.ok).toBe(true);
+      expect(pages).toEqual([1, 2]);
+      expect(result.result.structured.projects).toHaveLength(120);
+      expect(result.result.structured.truncated).toBe(false);
+    });
+
+    it('stops after five pages and says so', async () => {
+      let pages = 0;
+      const result = await call('list_projects', {}, (url) => {
+        if (url.includes('/projects')) {
+          pages += 1;
+          const data = Array.from({ length: 100 }, (_, i) => ({ id: pages * 1000 + i, name: 'P' }));
+          return { json: { data, page: pages, per_page: 100, total: 100_000 } };
+        }
+        return togglApi()(url);
+      });
+      expect(pages).toBe(5);
+      expect(result.result.structured.projects).toHaveLength(500);
+      expect(result.result.structured.truncated).toBe(true);
+      expect(result.result.text).toMatch(/Stopped after 500/);
     });
   });
 });

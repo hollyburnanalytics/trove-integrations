@@ -1,5 +1,5 @@
 import { z } from '@ontrove/extend/toolkit';
-import type { TogglEntry } from './client.ts';
+import type { TogglEntry, TogglProjectLite } from './client.ts';
 
 /**
  * Time entries as the tools present them: names attached, the running/stopped
@@ -58,16 +58,44 @@ export const QuotaSchema = z
   .object({ remaining: z.number().optional(), resetsIn: z.number().optional() })
   .optional();
 
+/** A tracked or running entry — one with a `start`. See {@link TogglEntry}. */
+export type TrackedEntry = TogglEntry & { start: string };
+
+/**
+ * Whether an entry has been tracked at all, as opposed to merely planned.
+ *
+ * The stream returns planned entries (calendar events, scheduled blocks) with
+ * no `start`, and they would otherwise read as running timers that began at
+ * an invalid date.
+ */
+export function isTracked(entry: TogglEntry): entry is TrackedEntry {
+  return typeof entry.start === 'string' && entry.start.length > 0;
+}
+
+/** Project id → its client, from the project list; see {@link hydrate}. */
+export type ClientLookup = ReadonlyMap<number, { id: number; name: string }>;
+
+/** The client embedded on the project when there is one, else the lookup's. */
+function resolveClient(
+  project: TogglProjectLite | undefined,
+  projectId: number | undefined,
+  clients: ClientLookup | undefined,
+): { id: number; name: string } | undefined {
+  if (project?.client) return project.client;
+  return projectId === undefined ? undefined : clients?.get(projectId);
+}
+
 /**
  * Attach names to a raw entry and normalise the running/stopped split.
  *
- * No lookups: the workspace list embeds `project` (with its `client`), `task`
- * and the effective `tags`, which is what lets a range read cost one request
- * against a 30-an-hour budget. A running entry has no `duration`; its elapsed
- * time is computed from `now` so the caller sees something rather than null,
- * and `running` says not to bill it yet.
+ * The workspace list embeds `project`, `task` and the effective `tags`, so
+ * those cost nothing; the project's **client** it does not embed (whatever the
+ * schema says), so `clients` — one project-list read per call — supplies it. A
+ * running entry has no `duration`; its elapsed time is computed from `now` so
+ * the caller sees something rather than null, and `running` says not to bill
+ * it yet.
  */
-export function hydrate(entry: TogglEntry, now: Date): HydratedEntry {
+export function hydrate(entry: TrackedEntry, now: Date, clients?: ClientLookup): HydratedEntry {
   const isRunning = entry.duration === undefined || entry.duration === null;
   const startMs = Date.parse(entry.start);
   const duration = isRunning
@@ -76,7 +104,8 @@ export function hydrate(entry: TogglEntry, now: Date): HydratedEntry {
   const stop =
     isRunning || Number.isNaN(startMs) ? null : new Date(startMs + duration * 1000).toISOString();
   const project = entry.project ?? undefined;
-  const client = project?.client ?? undefined;
+  const projectId = project?.id ?? entry.project_id ?? undefined;
+  const client = resolveClient(project, projectId, clients);
   return {
     id: entry.id,
     description: entry.description?.trim() || '(no description)',
@@ -87,7 +116,7 @@ export function hydrate(entry: TogglEntry, now: Date): HydratedEntry {
     billable: entry.billable === true,
     type: entry.type === 'break' ? 'break' : 'activity',
     workspaceId: entry.workspace_id,
-    projectId: project?.id ?? entry.project_id ?? undefined,
+    projectId,
     projectName: project?.name,
     clientId: client?.id,
     clientName: client?.name,

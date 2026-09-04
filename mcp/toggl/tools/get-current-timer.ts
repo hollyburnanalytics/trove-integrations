@@ -1,6 +1,13 @@
 import { tool, z } from '@ontrove/extend/toolkit';
 import { type Quota, quotaNote, type TogglEntry, type TogglProject, togglGet } from '../client.ts';
-import { EntrySchema, fmtDuration, hydrate, QuotaSchema, whereLabel } from '../entries.ts';
+import {
+  EntrySchema,
+  fmtDuration,
+  hydrate,
+  isTracked,
+  QuotaSchema,
+  whereLabel,
+} from '../entries.ts';
 import { resolveScope, scopePath } from '../scope.ts';
 
 /**
@@ -37,7 +44,7 @@ export const getCurrentTimer = tool({
       ctx,
       key,
     );
-    if (!body) {
+    if (!body || !isTracked(body)) {
       return {
         text: `No timer running in workspace ${scope.workspaceId}.`,
         structured: { running: false, quota },

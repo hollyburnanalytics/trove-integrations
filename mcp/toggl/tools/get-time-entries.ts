@@ -1,7 +1,8 @@
 import { tool, z } from '@ontrove/extend/toolkit';
 import { quotaNote, type TogglEntry, togglGet } from '../client.ts';
 import { PERIODS, resolveWindow } from '../dates.ts';
-import { entryLine, fmtDuration, hydrate, matching, summarise } from '../entries.ts';
+import { entryLine, fmtDuration, hydrate, isTracked, matching, summarise } from '../entries.ts';
+import { clientLookup, fetchProjects } from '../projects.ts';
 import { resolveScope, scopePath } from '../scope.ts';
 
 /** How many entries the text mirror lists before deferring to the structured result. */
@@ -10,18 +11,30 @@ const LISTED = 30;
 /**
  * `get_time_entries` — a period's entries, named, with a per-client roll-up.
  *
- * One request: `/time-entries/stream` returns the whole window as one array
- * (no paging to get wrong against an hourly budget), with `project` (and its
- * `client`), `task` and the effective `tags` embedded, so nothing is looked up
- * afterwards. `include_taskless=true` is load-bearing: entries logged without a
- * task — every Track-migrated entry, and anything typed straight into the
- * timer — are dropped unless asked for.
+ * `/time-entries/stream` returns the whole window as one JSON array, so there
+ * is no paging to get wrong against an hourly budget, and it embeds `project`,
+ * `task` and the effective `tags`. Three things the live API does that the
+ * document does not say, each handled here:
+ *
+ * - The window is **overlap-based with an inclusive `date_to`**: an entry that
+ *   began before `date_from` but ran into it is returned, and so is one that
+ *   begins exactly at `date_to`. Entries are therefore re-filtered on `start`
+ *   into `[from, to)`, which is what "the entries for that day" means.
+ * - **Planned entries come back too** — calendar events and scheduled blocks
+ *   with no `start` and no `duration`. They are not tracked time, so they are
+ *   dropped and counted, never listed as running timers.
+ * - **The embedded project has no client**, so when any entry has a project
+ *   the project list is read once (one more request) to name the clients.
+ *
+ * `include_taskless=true` is load-bearing: entries logged without a task —
+ * every Track-migrated entry, and anything typed straight into the timer — are
+ * dropped unless asked for.
  */
 export const getTimeEntries = tool({
   name: 'get_time_entries',
   title: 'Toggl: Get time entries',
   description:
-    'Get Toggl 2.0 time entries for a period or explicit date range, resolved to project, client, task and tag names, with a per-client duration roll-up. Good for invoicing and weekly reviews: ask for a range, get named entries plus totals. Breaks are left out unless include_breaks is set; a running entry is listed but never counted. One request.',
+    'Get Toggl 2.0 time entries for a period or explicit date range, resolved to project, client, task and tag names, with a per-client duration roll-up. Good for invoicing and weekly reviews: ask for a range, get named entries plus totals. Breaks are left out unless include_breaks is set; planned (untracked) entries are left out and counted; a running entry is listed but never counted. One request, two when clients need naming.',
   input: z.object({
     period: z
       .enum(PERIODS)
@@ -86,15 +99,28 @@ export const getTimeEntries = tool({
       key,
     );
     const raw = Array.isArray(body) ? body : [];
+    const tracked = raw
+      .filter(isTracked)
+      .filter((e) => e.start >= window.from && e.start < window.to);
+    const planned = raw.length - raw.filter(isTracked).length;
 
-    const entries = raw
-      .map((e) => hydrate(e, ctx.now()))
+    // The stream's project object carries no client; one project-list read
+    // names them all, and only when an entry actually has a project.
+    let budget = quota ?? scopeQuota;
+    let clients = clientLookup([]);
+    if (tracked.some((e) => e.project_id || e.project)) {
+      const pages = await fetchProjects(scope, ctx, key, { includeArchived: true });
+      clients = clientLookup(pages.projects);
+      budget = pages.quota ?? budget;
+    }
+
+    const entries = tracked
+      .map((e) => hydrate(e, ctx.now(), clients))
       .filter(matching(args))
       .toSorted((a, b) => a.start.localeCompare(b.start));
 
     const totalSeconds = entries.reduce((n, e) => n + (e.running ? 0 : e.duration), 0);
     const byClient = summarise(entries);
-    const budget = quota ?? scopeQuota;
 
     const lines = entries.slice(0, LISTED).map((e) => entryLine(e));
     if (entries.length > LISTED) {
@@ -105,10 +131,18 @@ export const getTimeEntries = tool({
     const heading =
       `${entries.length} entr${plural} from ${range.start} to ${range.end} ` +
       `(end exclusive, ${time_zone}) · ${fmtDuration(totalSeconds)} tracked`;
+    const skipped =
+      planned > 0
+        ? [`(${planned} planned, untracked entr${planned === 1 ? 'y' : 'ies'} left out.)`]
+        : [];
     const text =
       entries.length > 0
-        ? [heading, ...lines, '', 'By client:', ...rollup, ...quotaNote(budget)]
-        : [`No time entries between ${range.start} and ${range.end}.`, ...quotaNote(budget)];
+        ? [heading, ...lines, '', 'By client:', ...rollup, ...skipped, ...quotaNote(budget)]
+        : [
+            `No time entries between ${range.start} and ${range.end}.`,
+            ...skipped,
+            ...quotaNote(budget),
+          ];
     return {
       text: text.join('\n'),
       structured: {
@@ -120,6 +154,7 @@ export const getTimeEntries = tool({
         workspaceId: scope.workspaceId,
         byClient,
         entries,
+        plannedSkipped: planned,
         quota: budget,
       },
     };
