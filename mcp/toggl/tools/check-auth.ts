@@ -19,7 +19,7 @@ export const checkAuth = tool({
   name: 'check_auth',
   title: 'Toggl: Check authentication',
   description:
-    "Verify the Toggl 2.0 API key works and report the account's current workspace, time zone, how much of the hourly API quota is left, and whether the organization id is configured. One request.",
+    "Verify the Toggl 2.0 API key works and report the account's current workspace and time zone, whether the organization id is configured, and the hourly API quota left when Toggl reports it (a plain 200 carries no quota headers). One request.",
   input: z.object({}),
   output: z.object({
     authenticated: z.boolean(),

@@ -34,7 +34,7 @@ export default defineToolkit({
   id: 'toggl',
   name: 'Toggl 2.0 Time Tracking',
   description:
-    "Query Toggl 2.0 time entries, resolved to project/client/task/tag names, with named periods (today, week, lastMonth…), a per-client duration roll-up, the timer running now, and the workspace's projects. Requires a TOGGL_API_KEY secret (Toggl 2.0 profile → API key, toggl_sk_…) and the organization_id setting (first number in the Toggl 2.0 URL). Read-only; one request per call against Toggl's hourly quota, which it reports on every answer.",
+    "Query Toggl 2.0 time entries, resolved to project/client/task/tag names, with named periods (today, week, lastMonth…), a per-client duration roll-up, the timer running now, and the workspace's projects. Requires a TOGGL_API_KEY secret (Toggl 2.0 profile → API key, toggl_sk_…) and the organization_id setting (first number in the Toggl 2.0 URL). Read-only; one or two requests per call against Toggl's hourly quota (Free 30, Starter 240, Premium 600), reported when Toggl sends the quota headers.",
   icon: '⏱️',
   version: '3.0.0',
   secrets: ['TOGGL_API_KEY'],
