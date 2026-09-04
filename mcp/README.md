@@ -70,7 +70,7 @@ in their manifest `egress`.
 | Toolkit | Tools | Upstream | Auth |
 |---|---|---|---|
 | `jonas-premier` | `list_companies`, `search_jobs`, `get_job_transactions`, `get_job_estimate`, `search_vendors`, `get_ap_invoices`, `get_ap_payments`, `get_gl_accounts`, `get_subcontracts`, `get_subcontract_change_orders` | api.jonas-premier.com (Premier Construction Software External API) | **`JONAS_USERNAME` + `JONAS_PASSWORD`** ¶|
-| `toggl` | `check_auth`, `list_workspaces`, `get_time_entries` | api.track.toggl.com (Toggl Track API v9) | **`TOGGL_API_TOKEN`** ⏱|
+| `toggl` | `check_auth`, `get_current_timer`, `get_time_entries`, `list_projects` | focus.toggl.com (Toggl 2.0 API) | **`TOGGL_API_KEY`** + `organization_id` setting ⏱|
 | `meta-ads` | `list_ad_accounts`, `list_entities`, `get_insights`, `compare_periods` | graph.facebook.com (Meta Marketing API v26.0) | **`META_ACCESS_TOKEN`** (+ optional `META_APP_SECRET`) 📊|
 
 ### Social
@@ -642,29 +642,94 @@ the booking endpoints document `start` as **UTC**. Copying a slot straight into
 `bookingBody` normalises it — the slots → booking round-trip is correct whatever
 zone the slots were asked for.
 
-⏱ `toggl` — **read-only view of the caller's own Toggl Track account**, built
-for the questions people actually ask it: *what did I work on this week, and how
-much of it was billable to whom.* Entries come back resolved to **workspace,
-project, client and tag names** — not the bare ids the API returns — plus a
-per-client duration roll-up, and `period` accepts `today`/`yesterday`/`week`/
-`lastWeek`/`month`/`lastMonth` alongside explicit dates.
+⏱ `toggl` — **read-only view of the caller's own Toggl 2.0 account**, built
+for the questions people actually ask it: *what did I work on this week, how
+much of it was billable to whom, and what am I tracking right now.* Entries
+come back resolved to **project, client, task and tag names** — not the bare
+ids the API returns — plus a per-client duration roll-up; `period` accepts
+`today`/`yesterday`/`week`/`lastWeek`/`month`/`lastMonth` alongside explicit
+dates, and `list_projects` turns a name into the id the entry filter takes.
 
-Two design points worth knowing. **Named periods are timezone-aware**: the server
-runs in UTC, so a naive "today" rolls over mid-afternoon for a Pacific user —
-`time_zone` (IANA, default UTC) decides which calendar day is meant, and ranges
-are always `[start, end)` to match the API. **Hydration is bulk, not per-entry**:
-one `/projects`, `/tags` and `/clients` call per *referenced* workspace, then
-in-memory joins, each skipped entirely when no entry needs it. Cost is bounded
-per workspace no matter how many entries return — the alternative, resolving
-names one entry at a time, only works behind a long-lived cache a stateless
-hosted invocation doesn't have.
+This is the **Toggl 2.0** API (`focus.toggl.com/api`, the "Toggl Focus API" in
+its own OpenAPI document), not Toggl Track's v9 — a different product on a
+different host with a different credential and a different budget, and the
+three differences shape everything below.
 
-Rate limiting is the last trap: Toggl runs a leaky bucket at ~**1 request/second
-per token per IP** and counts *every* integration sharing that token (Zapier,
-Make, Timery) against the same budget, so this server can be limited through no
-fault of its own. A 429 is surfaced as a **retryable** error carrying
-`retryAfter` and — unlike a 401 — is never reported as "not authenticated", so a
-burst never looks like a bad token. The account email is masked in output.
+**The credential is a bearer API key, and it expires.** Toggl 2.0 keys
+(`toggl_sk_…`) are generated once in the profile settings, shown once, one
+active key per user, and expire on the date chosen at generation — so a 401 is
+as likely an expired key as a wrong one, and the error says so. Track's Basic
+`token:api_token` scheme does not exist here; a Track token stored as
+`TOGGL_API_KEY` is rejected with `invalid_session`.
+
+**The budget is an hourly quota, and it answers 402.** Free plans get **30
+requests an hour** per user per organization, Starter 240, Premium 600, shared
+with every integration using the key — and Toggl signals exhaustion with HTTP
+**402**, on the reasoning that it is the plan's allocation that ran out. The
+overview documents `X-Toggl-Quota-Remaining` / `-Resets-In` response headers;
+**live, a 200 carries neither**, so the toolkit reads them when present
+(structured `quota`, a prose warning below five left) and otherwise maps 402
+to a *retryable* error naming the reset. Thirty an hour also decides the shape
+of the tools: **each costs one request, two when clients need naming.** The
+entry list comes from `/time-entries/stream`, which returns the whole window
+as one JSON array (verified — not NDJSON, though both parse) with `project`,
+`task` and the effective `tags` embedded. Two flags there are load-bearing:
+`include_taskless=true` (entries logged without a task — every Track-migrated
+entry, and anything typed straight into the timer — are dropped without it)
+and `archived=false`.
+
+**Every resource is addressed by organization *and* workspace, and an API key
+can list neither.** `/workspaces/{id}/context`, which returns the organization
+for a workspace, answers an API key with `403 this endpoint requires session
+authentication`, exactly as documented; organization membership lives on
+`accounts.toggl.com`, which rejects the key as an invalid JWT; and the
+organization id is *validated*, not decorative (`403 organization does not
+exist, or is inaccessible`). Both ids are in the web app's address bar —
+`focus.toggl.com/<organization id>/workspaces/<workspace id>/…` — so
+`organization_id` is a **toolkit setting** (the tools refuse to call out
+without it, naming where to look), and `workspace_id` defaults to the one the
+account has open (`current_workspace_id` on `/users/me/settings`, the one
+API-key call Toggl's own authentication page demonstrates). A toolkit with both
+set spends nothing on scope. The old `list_workspaces` tool went with Track:
+there is no endpoint left to implement it on.
+
+**Three things the document does not say, found against a live key**, each
+the kind of confidently-wrong answer that arrives under a 200:
+
+- **The stream returns planned entries too.** Calendar events and scheduled
+  blocks the user has not tracked come back as time entries with no `start`
+  and no `duration`, only `planned_start`/`planned_duration` and a
+  `calendar_event_id` — sixteen of the twenty-three entries in the first real
+  window read. Read as the document implies, each is a running timer that
+  began at an invalid date. The toolkit keeps only entries with a `start`,
+  counts the rest (`plannedSkipped`), and says so in the text. A **running**
+  entry is one with a `start` and no `duration`.
+- **The window is overlap-based with an inclusive `date_to`.** An entry that
+  began before `date_from` but ran into it is returned, and so is one that
+  begins exactly at `date_to` (probed with a one-hour window against real
+  entries). Entries are re-filtered on `start` into `[from, to)` — what "the
+  entries for that day" means, and what the roll-up must not double-count.
+- **The embedded project has no client.** `ProjectLite` documents one; the
+  live object is `{ id, name, color, private, is_template, draft, permissions }`.
+  The project list does carry `client`, so when any entry has a project the
+  list is read once (`archived=` empty, all projects, so an entry on an
+  archived project still names its client) and joined in memory.
+
+Smaller live facts: the projects endpoint caps `per_page` at **100** (200 is a
+`400 validation … 'max' tag`) and paginates with `total`, so `list_projects`
+pages up to 500; `name=` filters server-side on project *or* client name; the
+account settings' `timezone` was null; the key is honoured by no other Toggl
+host. Still unverified, for want of a second user and a tag: whether the
+workspace list is scoped to the caller or to everyone the caller may see
+(`user_id` filters either way), and the exact shape of `tags` and `task` on an
+entry (taken from the schema).
+
+Two smaller design points. **Named periods are timezone-aware**, as before,
+but the Toggl 2.0 filters are *timestamps* rather than dates, so the toolkit
+sends the zone's own midnights (`zonedMidnight`, DST-safe) — a bare date would
+start a Vancouver "today" seven hours early. And breaks (`type: "break"`) are
+left out unless `include_breaks` is set; a running entry is listed but never
+counted.
 
 ✈ `seats-aero` — **airline award availability across 26 mileage programs**, over
 the Seats.aero partner API. Four tools cover the upstream — the cached search by
